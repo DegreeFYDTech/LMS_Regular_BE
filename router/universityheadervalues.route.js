@@ -9,6 +9,7 @@ import {
   bulkUploadCourseHeaderValues,
   updateSpecificField,
   updateCampusToLucknow,
+  bulkUpsertUniversityHeaderValues,
 } from '../controllers/universityheadervalues.controller.js';
 import { authorize } from '../middlewares/authMiddleware.js';
 
@@ -40,5 +41,6 @@ router.put('/updateField', updateSpecificField);
 
 // Update example (backward compatibility)
 router.put('/updateCampus', updateCampusToLucknow);
+router.post('/bulkUpdateUniversityHeaderValues', bulkUpsertUniversityHeaderValues);
 
 export default router;

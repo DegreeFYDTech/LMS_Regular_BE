@@ -14,7 +14,7 @@ async function findHeaderValue(collegeName) {
       }),
       order: [["created_at", "ASC"]],
     });
-
+console.log("hello,",courseHeaderValue)
     if (!courseHeaderValue || !courseHeaderValue.values) {
       console.error(`❌ Course header values not found for: ${collegeName}`);
       throw new Error('Course header values not found');

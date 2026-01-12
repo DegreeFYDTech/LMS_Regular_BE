@@ -269,11 +269,11 @@ export const saveCourseHeaderValues = async (req, res) => {
 
     let statusCode = 200;
     if (errors.length > 0) {
-      statusCode = 207; 
+      statusCode = 207;
     } else if (notFoundCourses.length > 0 && results.length === 0) {
-      statusCode = 404; 
+      statusCode = 404;
     } else if (notFoundCourses.length > 0) {
-      statusCode = 207; 
+      statusCode = 207;
     }
 
     return res.status(statusCode).json(response);
@@ -517,3 +517,102 @@ export const updateCampusToLucknow = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+
+
+
+export const bulkUpsertUniversityHeaderValues = async (req, res) => {
+  try {
+    console.log("hel")
+    const payload = Array.isArray(req.body) ? req.body : [req.body];
+    // console.log(payload)
+    let inserted = 0;
+    let updated = 0;
+    let skipped = [];
+
+    for (const item of payload) {
+      try {
+        // console.log(item,"harsh")
+        if (!item.course_id || !item.university_name || !item.values) {
+          skipped.push({
+            reason: 'Missing course_id / university_name / values',
+            data: item
+          });
+          continue;
+        }
+
+        console.log(item.course_id)
+        const courseExists = await UniversityCourse.findOne({
+          where: { course_id: item.course_id }
+        });
+console.log(courseExists)
+        if (!courseExists) {
+          skipped.push({
+            reason: 'course_id not found in university_courses',
+            course_id: item.course_id
+          });
+          continue;
+        }
+
+        // 🔹 Parse values
+        let parsedValues;
+        try {
+          parsedValues =
+            typeof item.values === 'string'
+              ? JSON.parse(item.values)
+              : item.values;
+        } catch {
+          skipped.push({
+            reason: 'Invalid JSON in values',
+            course_id: item.course_id
+          });
+          continue;
+        }
+
+        // 🔹 created_at handling
+        const createdAt =
+          item.created_at && item.created_at !== 'NULL'
+            ? new Date(item.created_at)
+            : new Date();
+
+        // 🔹 UPSERT
+        const [record, created] =
+          await UniversitiesAPIHeaderValues.upsert(
+            {
+              course_id: item.course_id,
+              university_name: item.university_name,
+              values: parsedValues,
+              created_at: createdAt
+            },
+            { returning: true }
+          );
+
+        created ? inserted++ : updated++;
+
+      } catch (err) {
+        skipped.push({
+          reason: err.message,
+          course_id: item.course_id
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      inserted,
+      updated,
+      skipped_count: skipped.length,
+      skipped
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+
+

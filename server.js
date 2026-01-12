@@ -16,7 +16,7 @@ const server = createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: ['http://localhost:3000', 'https://lms.degreefyd.com', 'https://testing-lms.degreefyd.com', 'https://lms-api-test.degreefyd.com'],
+    origin: ['http://localhost:3000','https://regularlms.degreefyd.com', 'https://lms.degreefyd.com', 'https://testing-lms.degreefyd.com', 'https://lms-api-test.degreefyd.com'],
     credentials: true,
     methods: ['GET', 'POST']
   },

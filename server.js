@@ -16,7 +16,17 @@ const server = createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: ['http://localhost:3000','https://regularlms.degreefyd.com', 'https://lms.degreefyd.com', 'https://testing-lms.degreefyd.com', 'https://lms-api-test.degreefyd.com'],
+    origin: [
+      'http://localhost:3000',
+      'https://regularlms.degreefyd.com',
+      'https://lms-regular.degreefyd.com', 
+      'https://lms.degreefyd.com',
+      'https://testing-lms.degreefyd.com',
+      'https://lms-api-test.degreefyd.com',
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000'
+    ],
     credentials: true,
     methods: ['GET', 'POST']
   },
@@ -42,6 +52,7 @@ const subClient = redis.duplicate();
 
 io.adapter(createAdapter(pubClient, subClient));
 console.log('Socket.IO Redis adapter enabled');
+global.io = io;
 
 global.connectedCounsellors = new Map();
 
@@ -319,9 +330,8 @@ class NotificationService {
   }
 
   async isRecentDuplicate(messageKey) {
-    const lastTime = await this.redis.get(`recent:${messageKey}`);
-    if (!lastTime) return false;
-    return (Date.now() - parseInt(lastTime)) < 10000;
+    const result = await this.redis.set(`recent:${messageKey}`, Date.now(), 'EX', 30, 'NX');
+    return result === null;
   }
 
   async markMessageAsProcessed(messageKey) {

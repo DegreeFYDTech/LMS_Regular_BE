@@ -187,6 +187,7 @@ export const updateStudentStatus = async (req, res) => {
         source: studentDetails.dataValues.source,
         first_source_url: studentDetails.dataValues.first_source_url,
         utm_campaign: studentleadActivityDetails.dataValues.utm_campaign,
+        is_transfered: true,
         utm_campaign_id: studentleadActivityDetails.dataValues.utm_campaign_id,
         student_comment: studentleadActivityDetails.dataValues.student_comment,
       }

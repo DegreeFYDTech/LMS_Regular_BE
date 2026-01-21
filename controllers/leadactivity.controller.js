@@ -43,6 +43,7 @@ export const createLeadActivity = async (leadData, studentId) => {
       student_id: studentId || "",
 
       student_name: leadData.name || "",
+      is_transfered: leadData.is_transfered || "",
       student_email: leadData.email || "",
       student_phone: leadData.phoneNumber || leadData.mobile || "",
       parents_number: leadData.parentsNumber || leadData.parents_number || "",

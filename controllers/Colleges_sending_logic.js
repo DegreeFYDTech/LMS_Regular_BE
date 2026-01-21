@@ -276,7 +276,59 @@ function processSpecialUniversityApiResponse(apiResponse, collegeName) {
   console.log(`✅ ${collegeName} result: ${result}`);
   return result;
 }
+function processJaypeeApiResponse(apiResponse, collegeName) {
+  console.log(`📊 Processing Jaypee (NoPaperForms) response:`, {
+    status: apiResponse.status,
+    data: apiResponse.data,
+  });
 
+  if (!apiResponse?.data) {
+    console.error(`❌ No response data from ${collegeName}`);
+    return "Failed due to Technical Issues";
+  }
+
+  const responseData = apiResponse.data;
+  const status = responseData.status || responseData.Status;
+  const message = responseData.message || responseData.Message;
+
+  console.log(`📋 Jaypee response analysis:`, { status, message });
+
+  // Handle Jaypee/NoPaperForms specific responses
+  if (status === "Success") {
+    console.log(`✅ ${collegeName}: Lead created successfully`);
+    return "Proceed";
+  }
+
+  if (status === "Duplicate") {
+    console.log(`⚠️ ${collegeName}: Email/Mobile already registered (DND)`);
+    return "Do not Proceed";
+  }
+
+  // Check for duplicate message in text
+  if (message && typeof message === "string") {
+    const msgLower = message.toLowerCase();
+    if (
+      msgLower.includes("already registered") ||
+      msgLower.includes("duplicate") ||
+      msgLower.includes("already exists")
+    ) {
+      console.log(`⚠️ ${collegeName}: Duplicate lead detected`);
+      return "Do not Proceed";
+    }
+
+    if (
+      msgLower.includes("required") ||
+      msgLower.includes("mandatory") ||
+      msgLower.includes("missing")
+    ) {
+      console.log(`⚠️ ${collegeName}: Field missing`);
+      return "Field Missing";
+    }
+  }
+
+  console.error(`❌ ${collegeName}: Failed due to technical issues`);
+  return "Failed due to Technical Issues";
+}
 function processShooliniApiResponse(apiResponse, collegeName) {
   console.log(`📊 Processing Shoolini response:`, {
     status: apiResponse.status,
@@ -990,7 +1042,155 @@ async function handleShooliniOnline(
     throw error;
   }
 }
+async function handleJaypeeNoPaperForms(
+  collegeName,
+  userResponse,
+  studentId,
+  sendType,
+  studentEmail,
+  studentPhone,
+  isPrimary,
+) {
+  console.log(`🎯 Handling Jaypee NoPaperForms API: ${collegeName}`, {
+    isPrimary,
+  });
 
+  const courseHeaderValue = await findHeaderValue(collegeName);
+
+  if (!courseHeaderValue?.values) {
+    throw new Error("Course header values not found");
+  }
+
+  const values = courseHeaderValue.values;
+  const apiUrl = values.API_URL;
+
+  if (!apiUrl) {
+    throw new Error("API URL not found in the course header values");
+  }
+
+  // Prepare form data for x-www-form-urlencoded
+  const formData = new URLSearchParams();
+
+  // Add all required fields from header values
+  for (const [key, value] of Object.entries(values)) {
+    if (key === "API_URL") continue;
+
+    let finalValue;
+
+    if (typeof value === "string" && value.startsWith("student.")) {
+      const userKey = value.replace("student.", "");
+      const mapping = {
+        student_name: "student_name",
+        student_email: "student_email",
+        student_phone: "student_phone",
+      };
+      const actualKey = mapping[userKey] || userKey;
+
+      // Use secondary contact details if provided and not primary
+      if (!isPrimary) {
+        if (actualKey === "student_email" && studentEmail) {
+          finalValue = studentEmail;
+        } else if (actualKey === "student_phone" && studentPhone) {
+          finalValue = studentPhone;
+        } else {
+          finalValue = userResponse[actualKey] || "";
+        }
+      } else {
+        finalValue = userResponse[actualKey] || "";
+      }
+    } else {
+      finalValue = value;
+    }
+
+    // Handle dynamic values for medium and campaign
+    if (
+      key === "medium" &&
+      finalValue === "Dynamic value as per the Publisher"
+    ) {
+      finalValue = "website"; // Default value or get from your system
+    }
+
+    if (
+      key === "campaign" &&
+      finalValue === "Dynamic value as per the Publisher"
+    ) {
+      finalValue = "default_campaign"; // Default value or get from your system
+    }
+
+    formData.append(key, finalValue);
+  }
+
+  const headers = {
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+
+  console.log(`📤 Sending to Jaypee (NoPaperForms):`, {
+    url: apiUrl,
+    isPrimary,
+    email:
+      !isPrimary && studentEmail ? studentEmail : userResponse.student_email,
+    phone:
+      !isPrimary && studentPhone ? studentPhone : userResponse.student_phone,
+  });
+
+  try {
+    const apiResponse = await axios({
+      method: "POST",
+      url: apiUrl,
+      headers: headers,
+      data: formData.toString(),
+      timeout: 15000,
+    });
+
+    const statusResult = processJaypeeApiResponse(apiResponse, collegeName);
+
+    if (studentId) {
+      await updateStudentShortlistStatus(
+        studentId,
+        collegeName,
+        statusResult,
+        Object.fromEntries(formData),
+        apiResponse.data,
+        headers,
+        sendType,
+        studentEmail || userResponse.student_email,
+        studentPhone || userResponse.student_phone,
+        isPrimary,
+      );
+    }
+
+    return statusResult;
+  } catch (error) {
+    console.error(`❌ Jaypee NoPaperForms API error:`, error.message);
+
+    // Handle specific NoPaperForms errors
+    if (error.response?.data) {
+      const statusResult = processJaypeeApiResponse(
+        error.response,
+        collegeName,
+      );
+
+      if (studentId) {
+        await updateStudentShortlistStatus(
+          studentId,
+          collegeName,
+          statusResult,
+          Object.fromEntries(formData),
+          error.response.data,
+          headers,
+          sendType,
+          studentEmail || userResponse.student_email,
+          studentPhone || userResponse.student_phone,
+          isPrimary,
+        );
+      }
+
+      return statusResult;
+    }
+
+    throw error;
+  }
+}
 async function handleSpecialUniversity(
   collegeName,
   userResponse,
@@ -1929,7 +2129,8 @@ export const sentStatustoCollege = async (req, res) => {
     const isMangalayatanOnline = collegeName?.includes(
       "Mangalayatan University online",
     );
-
+    // Add this near other university detections
+    const isJaypeeNoPaperForms = collegeName?.includes("Jaypee Institute");
     console.log(`🏫 University Detection:`, {
       isSpecialUniversity,
       isLPUOnline,
@@ -1947,6 +2148,17 @@ export const sentStatustoCollege = async (req, res) => {
     if (isSpecialUniversity) {
       console.log(`🔄 Routing to Special University handler`);
       statusResult = await handleSpecialUniversity(
+        collegeName,
+        userResponse,
+        studentId,
+        sendType,
+        studentEmail,
+        studentPhone,
+        isPrimary,
+      );
+    } else if (isJaypeeNoPaperForms) {
+      console.log(`🔄 Routing to Jaypee NoPaperForms handler`);
+      statusResult = await handleJaypeeNoPaperForms(
         collegeName,
         userResponse,
         studentId,

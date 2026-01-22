@@ -356,26 +356,22 @@ class WebsiteChatService {
 }
 
 
-  static notifySupervisors(event, data) {
+ static notifySupervisors(event, data) {
+    console.log(`Notifying supervisors of event: ${event}`,global.io? 'Socket.io available':'Socket.io not available');
     if (global.io) {
-          global.io.to('all_supervisors').emit('global_chat_notification', {
-              event,
-              data: {
-                  ...data,
-                  type: 'website_chat', 
-                  title: event === 'chat_created' ? 'New Chat Started' : 'Chat Closed',
-                  message: event === 'chat_created' 
-                      ? `${data.studentName || 'Student'} started a new chat` 
-                      : `Chat with ${data.studentName || 'Student'} was closed`
-              }
-          });
-           if(event=='chat_created')
-           {
-           global.io.of('/website-chat').to('supervisors').emit(event, data);
+      global.io.of('/website-chat').to('supervisors').emit(event, data);
 
-           }
+      if(event==='chat_created' || event==='chat_assigned')
+      {
+    global.io.to('all_supervisors').emit('global_chat_notification', {
+        eventType: event,
+        ...data
+      });
       }
+      
     }
+  }
+
 
     static notifyCounsellors(event, id, data) {
     if (global.io) {
@@ -457,11 +453,12 @@ class WebsiteChatService {
           
           if (global.io) {
                global.io.of('/website-chat').to(chatId).emit('chat_closed', { closedBy, chatId,name:chat.studentName  });
-               if (chat.counsellorId) {
-                   this.notifyCounsellors('chat_closed', chat.counsellorId, { closedBy, chatId, name: chat.studentName });
-               }
-               this.notifySupervisors('chat_closed', { closedBy, chatId, name: chat.studentName });
-          }
+            //    if (chat.counsellorId) {
+            //        this.notifyCounsellors('chat_closed', chat.counsellorId, { closedBy, chatId, name: chat.studentName });
+            //    }
+            //    this.notifySupervisors('chat_closed', { closedBy, chatId, name: chat.studentName });
+        
+            }
           
           return { success: true };
       } catch (error) {

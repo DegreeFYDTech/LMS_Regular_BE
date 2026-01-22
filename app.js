@@ -41,7 +41,7 @@ app.use(cors({
 
     if (
       allowedOrigins.includes(origin) ||
-      origin.endsWith('.degreefyd.com') ||
+      origin.includes('degreefyd.com') ||
       origin.endsWith('.findonlineuniversity.com')
     ) {
       return callback(null, true);

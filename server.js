@@ -16,21 +16,26 @@ const server = createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: [
-      'http://localhost:3000',
-      'https://regularlms.degreefyd.com',
-      'https://lms-regular.degreefyd.com', 
-      'https://lms.degreefyd.com',
-      'https://testing-lms.degreefyd.com',
-      'https://lms-api-test.degreefyd.com',
-      'http://localhost:5173',
-      'http://127.0.0.1:5173',
-      'http://127.0.0.1:3000'
-    ],
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+
+      if (
+        origin.includes("degreefyd.com") ||
+        origin === "http://localhost:3000" ||
+        origin === "http://localhost:5173" ||
+        origin === "http://127.0.0.1:3000" ||
+        origin === "http://127.0.0.1:5173"
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
-    methods: ['GET', 'POST']
+    methods: ["GET", "POST"],
   },
-  transports: ['websocket', 'polling'],
+
+  transports: ["websocket", "polling"],
   pingTimeout: 120000,
   pingInterval: 45000,
   connectTimeout: 60000,
@@ -46,6 +51,7 @@ const io = new Server(server, {
   allowUpgrades: true,
   perMessageDeflate: false,
 });
+
 
 const pubClient = redis.duplicate();
 const subClient = redis.duplicate();

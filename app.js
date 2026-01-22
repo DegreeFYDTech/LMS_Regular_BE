@@ -43,13 +43,13 @@ app.use(
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
 
-      if (
-        allowedOrigins.includes(origin) ||
-        origin.endsWith(".degreefyd.com") ||
-        origin.endsWith(".findonlineuniversity.com")
-      ) {
-        return callback(null, true);
-      }
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.includes('degreefyd.com') ||
+      origin.endsWith('.findonlineuniversity.com')
+    ) {
+      return callback(null, true);
+    }
 
       return callback(null, false);
     },

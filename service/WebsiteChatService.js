@@ -6,7 +6,26 @@ import sequelize from '../config/database-config.js';
 import redis from '../config/redis.js';
 import { Op } from 'sequelize';
 import { processStudentLead } from '../helper/leadAssignmentService.js';
+
+const STREAM_KEY = 'regular_website_chat:stream';
+const REDIS_TTL = 60 * 60 * 24 * 7; 
+
 class WebsiteChatService {
+
+  static getKeys(chatId) {
+    return {
+      unread: `chat:${chatId}:unread`,
+      lastMsg: `chat:${chatId}:last_message`,
+      meta: `chat:${chatId}:meta`
+    };
+  }
+
+  static getTimelineKeys(counsellorId) {
+    return {
+      global: 'regular:timeline:global',
+      counsellor: `regular:timeline:counsellor:${counsellorId}`
+    };
+  }
 
   static async initiateChat(studentData) {
     try {
@@ -54,10 +73,18 @@ class WebsiteChatService {
       });
       fullChat.setDataValue('lastMessage', 'New Chat Started');
 
+      // Initialize Redis Timeline
+      const timestamp = Date.now();
+      const timelines = this.getTimelineKeys(chat.counsellorId);
+      await redis.pipeline()
+        .zadd(timelines.global, timestamp, chat.id)
+        .zadd(timelines.counsellor, timestamp, chat.id)
+        .exec();
+
       await this.publishToStream('CHAT_CREATED', { chatId: chat.id });
       
-      this.notifySupervisors('chat_created', fullChat);
-       this.notifyCounsellors('chat_assigned',chat.counsellorId,fullChat);
+      this.notifySupervisors('chat_created', fullChat.get({ plain: true }));
+       this.notifyCounsellors('chat_assigned',chat.counsellorId,fullChat.get({ plain: true }));
       // if (global.io && chat.counsellorId) {
       //     console.log(`Socket Debug: Emitting chat_assigned to ${chat.counsellorId}`);
       //     global.io.of('/website-chat').to(chat.counsellorId).emit('chat_assigned', fullChat);
@@ -86,6 +113,10 @@ class WebsiteChatService {
         }
       });
 
+      const keys = this.getKeys(chatId);
+      const field = readerType === 'Student' ? 'student' : 'counsellor';
+      await redis.hset(keys.unread, field, 0);
+
       const updateData = readerType === 'Student' 
         ? { unreadCountStudent: 0 } 
         : { unreadCountCounsellor: 0 };
@@ -103,14 +134,18 @@ class WebsiteChatService {
     }
   }
 
-  static async addMessage(chatId, senderType, senderUserId, content,senderName) {
-    const t = await sequelize.transaction();
+ static async addMessage(chatId, senderType, senderUserId, content,senderName) {
     try {
+      
       const chat = await WebsiteChat.findByPk(chatId, { 
-          include: [{ model: Counsellor }],
-          transaction: t 
+          include: [{ model: Counsellor }] 
       });
-      if (!chat) throw new Error('Chat not found');
+              console.log(`Chat found for ID: ${chatId} type: ${typeof chatId}`);
+
+      if (!chat) {
+        console.error(`Chat not found for ID: ${chatId} type: ${typeof chatId}`);
+        throw new Error(`Chat not found for ID: ${chatId}`);
+      }
 
       let displayName = '';
       let userID=senderUserId;
@@ -128,20 +163,32 @@ class WebsiteChatService {
         displayName,
         content,
         isRead: false
-      }, { transaction: t });
+      });
 
-      const updates = { lastMessageAt: new Date() };
-      if (senderType === 'Student') {
-          updates.unreadCountCounsellor = sequelize.literal('unread_count_counsellor + 1');
-      } else {
-          updates.unreadCountStudent = sequelize.literal('unread_count_student + 1');
+      const keys = this.getKeys(chatId);
+      const timelines = this.getTimelineKeys(chat.counsellorId);
+      const timestamp = Date.now();
+      const targetField = senderType === 'Student' ? 'counsellor' : 'student';
+
+      const pipeline = redis.pipeline();
+      
+      pipeline.hincrby(keys.unread, targetField, 1);
+      
+      pipeline.hmset(keys.lastMsg, {
+        content: content.substring(0, 100),
+        createdAt: new Date().toISOString(),
+        senderName: displayName
+      });
+      pipeline.expire(keys.lastMsg, REDIS_TTL);
+      pipeline.expire(keys.unread, REDIS_TTL); 
+
+      pipeline.zadd(timelines.global, timestamp, chatId);
+      if (chat.counsellorId) {
+        pipeline.zadd(timelines.counsellor, timestamp, chatId);
       }
-      
-      await chat.update(updates, { transaction: t });
-      
-      await chat.reload({ transaction: t });
 
-      await t.commit();
+      const results = await pipeline.exec();
+      const newUnreadCount = results[0][1];
 
       const eventData = { 
           chatId, 
@@ -158,9 +205,8 @@ class WebsiteChatService {
         chatId, 
         lastMessage: content, 
         lastMessageAt: new Date(),
-        unreadCountStudent: chat.unreadCountStudent,
-        unreadCountStudent: chat.unreadCountStudent,
-        unreadCountCounsellor: chat.unreadCountCounsellor
+        unreadCountStudent: senderType === 'Operator' ? newUnreadCount : 0, 
+        unreadCountCounsellor: senderType === 'Student' ? newUnreadCount : 0
       });
 
       this.notifyGlobalListeners({
@@ -170,12 +216,12 @@ class WebsiteChatService {
           counsellorId: chat.counsellorId,
           messageContent: content,
           senderType,
-          unreadCountCounsellor: chat.unreadCountCounsellor
+          unreadCountCounsellor: senderType === 'Student' ? newUnreadCount : 0
       });
 
       return message;
     } catch (error) {
-      await t.rollback();
+      console.error('addMessage Error:', error);
       throw error;
     }
   }
@@ -232,64 +278,118 @@ class WebsiteChatService {
 
 
   static async getChatsForOperator(operatorId, role) {
-      try {
-          let whereClause = {};
+    try {
+        const normalizedRole = role ? role.charAt(0).toUpperCase() + role.slice(1).toLowerCase() : '';
+        const isSupervisor = ['Supervisor', 'Admin', 'Analyser'].includes(normalizedRole);
 
-          const normalizedRole = role ? role.charAt(0).toUpperCase() + role.slice(1).toLowerCase() : '';
+        let whereClause = {};
+        if (!isSupervisor) {
+            whereClause = { counsellorId: operatorId };
+        }
+        
+        const dbChats = await WebsiteChat.findAll({
+            where: whereClause,
+            include: [{ model: Counsellor, required: false }],
+                      order: [['lastMessageAt', 'DESC']],
+             limit: 100
+        });
 
-          if (['Supervisor', 'Admin', 'Analyser'].includes(normalizedRole)) {
-               whereClause = {}; 
-          } else {
-               whereClause = { counsellorId: operatorId };
-          }
+        if (dbChats.length === 0) return [];
 
-          const allChats = await WebsiteChat.findAll({
-              where: whereClause,
-              order: [['lastMessageAt', 'DESC']],
-              limit: 500
-          });
-          
-          const studentMap = new Map();
-          
-          allChats.forEach(chat => {
-              if (!chat.studentId) return;
-              
-              const existing = studentMap.get(chat.studentId);
-              
-              if (!existing) {
-                  studentMap.set(chat.studentId, chat);
-              } else {
-                
-                  const isExistingActive = existing.status === 'ACTIVE';
-                  const isNewActive = chat.status === 'ACTIVE';
-                  
-                  if (isNewActive && !isExistingActive) {
-                      studentMap.set(chat.studentId, chat);
-                  } else if (isNewActive === isExistingActive) {
-                      if (new Date(chat.lastMessageAt) > new Date(existing.lastMessageAt)) {
-                          studentMap.set(chat.studentId, chat);
-                      }
-                  }
-              }
-          });
-          
-          return Array.from(studentMap.values()).sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
+        const pipeline = redis.pipeline();
+        dbChats.forEach(chat => {
+            const keys = this.getKeys(chat.id);
+            pipeline.hgetall(keys.unread);
+            pipeline.hgetall(keys.lastMsg);
+        });
 
-      } catch (error) {
-          console.error('Error fetching dashboard chats:', error);
-          return [];
-      }
-  }
+        const results = await pipeline.exec();
+
+        const enrichedChats = dbChats.map((chat, index) => {
+            const chatJSON = chat.toJSON();
+            const unreadRes = results[index * 2];
+            const msgRes = results[index * 2 + 1];
+
+            const unreadData = (unreadRes && unreadRes[0] === null) ? unreadRes[1] : {};
+            const msgData = (msgRes && msgRes[0] === null) ? msgRes[1] : {};
+
+            const redisUnreadStudent = parseInt(unreadData.student || 0);
+            const redisUnreadCounsellor = parseInt(unreadData.counsellor || 0);
+
+            const lastMessageAt = msgData.createdAt ? new Date(msgData.createdAt) : chatJSON.lastMessageAt;
+            const lastMessage = msgData.content || chatJSON.lastMessage;
+            const senderName = msgData.senderName || chatJSON.senderName; // Ensure senderName is updated
+
+            return {
+                ...chatJSON,
+                unreadCountStudent: redisUnreadStudent,
+                unreadCountCounsellor: redisUnreadCounsellor,
+                lastMessageAt: lastMessageAt,
+                lastMessageAtDate: new Date(lastMessageAt), 
+                lastMessage: lastMessage,
+                senderName: senderName
+            };
+        });
+
+        const studentMap = new Map();
+        enrichedChats.forEach(chat => {
+            if (!chat.studentId) return;
+            const existing = studentMap.get(chat.studentId);
+            
+            if (!existing) {
+                studentMap.set(chat.studentId, chat);
+            } else {
+                 if (chat.lastMessageAtDate > existing.lastMessageAtDate) {
+                    studentMap.set(chat.studentId, chat);
+                }
+            }
+        });
+        
+        const finalChats = Array.from(studentMap.values()).sort((a, b) => b.lastMessageAtDate - a.lastMessageAtDate);
+
+        return finalChats;
+
+    } catch (error) {
+        console.error('Error fetching dashboard chats:', error);
+        return [];
+    }
+}
 
 
-  static notifySupervisors(event, data) {
+ static notifySupervisors(event, data) {
+    console.log(`Notifying supervisors of event: ${event}`,global.io? 'Socket.io available':'Socket.io not available');
     if (global.io) {
       global.io.of('/website-chat').to('supervisors').emit(event, data);
+
+      if(event==='chat_created' || event==='chat_assigned')
+      {
+    global.io.to('all_supervisors').emit('global_chat_notification', {
+        eventType: event,
+        ...data
+      });
+      }
+      
     }
   }
+
+
     static notifyCounsellors(event, id, data) {
     if (global.io) {
       global.io.of('/website-chat').to(id).emit(event, data);
+      if(event=='chat_closed')
+      {
+
+      
+      global.io.to('all_supervisors').emit('global_chat_notification', {
+        event,
+        data: {
+            ...data,
+            type: 'website_chat',
+            title: 'Chat Assigned',
+            message: `New chat assigned with ${data.studentName || 'Student'}`
+        }
+      });
+    }
     }
   }
   static notifyGlobalListeners(data) {
@@ -302,7 +402,6 @@ class WebsiteChatService {
                   forRole: 'supervisor'
               });
 
-              // Notify Assigned Counsellor
               if (data.counsellorId) {
                  ns.to(data.counsellorId).emit('global_message_notification', {
                      ...data,
@@ -314,13 +413,11 @@ class WebsiteChatService {
   }
   static async publishToStream(event, data) {
       try {
-         
-          await redis.xadd('website_chat:stream', '*', 
+          await redis.xadd(STREAM_KEY, 'MAXLEN', '~', 1000, '*', 
               'event', event,
               'data', JSON.stringify(data)
           );
       } catch (err) {
-
           console.error('Redis Stream Publish Error:', err);
       }
   }
@@ -339,11 +436,29 @@ class WebsiteChatService {
               updatedAt: new Date()
           });
 
+          const keys = this.getKeys(chatId);
+          const timelines = this.getTimelineKeys(chat.counsellorId);
+          
+          const pipeline = redis.pipeline();
+          
+          pipeline.zrem(timelines.global, chatId);
+          if (chat.counsellorId) {
+            pipeline.zrem(timelines.counsellor, chatId);
+          }
+          pipeline.del(keys.unread, keys.lastMsg, keys.meta);
+          
+          await pipeline.exec();
+
           await this.publishToStream('CHAT_CLOSED', { chatId, closedBy });
           
           if (global.io) {
                global.io.of('/website-chat').to(chatId).emit('chat_closed', { closedBy, chatId,name:chat.studentName  });
-          }
+            //    if (chat.counsellorId) {
+            //        this.notifyCounsellors('chat_closed', chat.counsellorId, { closedBy, chatId, name: chat.studentName });
+            //    }
+            //    this.notifySupervisors('chat_closed', { closedBy, chatId, name: chat.studentName });
+        
+            }
           
           return { success: true };
       } catch (error) {
@@ -356,29 +471,41 @@ class WebsiteChatService {
   static async getUnreadCount(operatorId, role) {
       try {
           const normalizedRole = role ? role.toLowerCase() : '';
-          console.log(`Getting unread count for Role: ${normalizedRole}, ID: ${operatorId}`);
-
-          let whereClause = {
-              status: {
-                  [Op.or]: ['ACTIVE', 'CLOSED_BY_STUDENT', 'CLOSED_BY_COUNSELLOR', 'AUTO_CLOSED']
-              }
-          };
+          
+          let timelineKey = null;
+          let targetField = 'counsellor'; 
 
           if (normalizedRole === 'counsellor' || normalizedRole === 'agent') {
-              whereClause[Op.and] = [
-                  { counsellorId: operatorId },
-                  { unreadCountCounsellor: { [Op.gt]: 0 } }
-              ];
-              return await WebsiteChat.count({ where: whereClause });
+              timelineKey = `regular:timeline:counsellor:${operatorId}`;
           } else if (['supervisor', 'admin', 'analyser', 'superadmin'].includes(normalizedRole)) {
-              whereClause.unreadCountCounsellor = { [Op.gt]: 0 };
-              return await WebsiteChat.count({ where: whereClause });
+              timelineKey = 'regular:timeline:global';
+          } else {
+              return 0;
           }
+
+          const chatIds = await redis.zrange(timelineKey, 0, -1);
+
+          if (!chatIds || chatIds.length === 0) {
+              return 0;
+          }
+
+          const pipeline = redis.pipeline();
+          chatIds.forEach(id => {
+              pipeline.hget(`chat:${id}:unread`, targetField);
+          });
+
+          const results = await pipeline.exec();
           
-          return 0;
+          let totalUnread = 0;
+          results.forEach(res => {
+              const val = res && res[1] ? parseInt(res[1]) : 0;
+              if (!isNaN(val)) totalUnread += val;
+          });
+
+          return totalUnread;
       } catch (error) {
-          console.error('Error getting unread count:', error);
-          throw error;
+          console.error('Error getting exact unread count from Redis:', error);
+          return 0;
       }
   }
 

@@ -35,6 +35,7 @@ const allowedOrigins = [
   "https://lms-api-test.degreefyd.com",
   "https://apply.degreefyd.com/lp/engineering-colleges-in-punjab",
   "https://apply.degreefyd.com/lp/colleges-in-punjab",
+  "https://onlinesikhsa.com/"
 ];
 
 app.use(

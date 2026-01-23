@@ -43,6 +43,11 @@ const WebsiteChat = sequelize.define('WebsiteChat', {
     defaultValue: DataTypes.NOW,
     field: 'last_message_at'
   },
+   lastMessage: {
+    type: String,
+    allowNull: true,
+    field: 'last_message'
+  },
   unreadCountStudent: {
     type: DataTypes.INTEGER,
     defaultValue: 0,

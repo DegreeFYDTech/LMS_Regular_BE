@@ -230,7 +230,7 @@ export const updateStudentStatus = async (req, res) => {
       };
       console.log(payload);
       const response = await axios.post(
-        "http://localhost:3031/v1/student/create",
+        "http://localhost:3001/v1/student/create",
         payload,
       );
       console.log(response.data);

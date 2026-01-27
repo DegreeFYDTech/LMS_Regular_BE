@@ -440,7 +440,7 @@ export const unifiedSearch = async (req, res) => {
       limit: req.body.limit || 100,
       studentId: req.body.student_id || req.body.studentId
     };
-
+   console.log('Unified Search - Remapped Body:', JSON.stringify(remappedBody, null, 2));
     const {
       totalFees = {},
       duration = {},
@@ -542,6 +542,7 @@ export const unifiedSearch = async (req, res) => {
     const limitVal = parseInt(limit);
 
     // Build query with optional CourseStatus join
+    console.log('Unified Search - Where Clause:', JSON.stringify(where, null, 2));
     const queryOptions = {
       where,
       offset,

@@ -623,6 +623,17 @@ function processMangalayatanApiResponse(apiResponse, collegeName) {
       ? "Do not Proceed"
       : "Failed due to Technical Issues";
 }
+function CgcApiResponse(apiResponse, collegeName) {
+ 
+  if (!apiResponse?.data) return "Failed due to Technical Issues";
+
+  const responseData = apiResponse.data;
+  const {status,message} = responseData.status;
+  if(status=='Fail') return "Failed due to Technical Issues" ;
+  return message !== "Email/Mobile already registered"
+    ? "Proceed"
+      : "Failed due to Technical Issues";
+}
 
 function processLPUOnlineApiResponse(apiResponse, collegeName) {
   console.log(`📊 Processing LPU Online response:`, {
@@ -2068,7 +2079,128 @@ async function handleMangalayatanOnline(
     throw error;
   }
 }
+async function CgcLandran(
+  collegeName,
+  userResponse,
+  studentId,
+  sendType,
+  studentEmail,
+  studentPhone,
+  isPrimary,courseId
+) {
 
+  const courseHeaderValue = await findHeaderValue(collegeName,courseId);
+
+  // if (!courseHeaderValue?.values) {
+  //   throw new Error("Course header values not found");
+  // }
+
+  const defaultValues ={
+    "name": `${userResponse.student_name || ""} ${""}`.trim(),
+    "email": !isPrimary && studentEmail
+        ? studentEmail
+        : userResponse.student_email || "",
+    "college_id":"270",
+    "mobile": !isPrimary && studentPhone
+        ? studentPhone
+        : userResponse.student_phone || "",
+    "source":"nuvora",
+    "state": "Punjab",
+    "city": "Mohali",
+    "course": "B.Tech-CSE",
+    "secret_key": "b30c9bcd9fb18a82e41a505fae8490b2"
+}
+  const values = courseHeaderValue?.values || defaultValues;
+  const baseApiUrl = values?.API_URL || "https://api.nopaperforms.com/dataporting/270/nuvora";
+
+  if (!baseApiUrl) {
+    throw new Error("API URL not found in the course header values");
+  }
+
+  const cgcPayload = {};
+
+  // for (const [key, value] of Object.entries(values)) {
+  //   if (key === "API_URL") continue;
+
+  //   let finalValue;
+
+  //   if (typeof value === "string" && value.startsWith("student.")) {
+  //     const userKey = value.replace("student.", "");
+  //     const mapping = {
+  //       phone_number: "student_phone",
+  //       preferred_state: "preferredState",
+  //       name: "student_name",
+  //       email: "student_email",
+  //       preferred_city: "preferred_city",
+  //     };
+  //     const actualKey = mapping[userKey] || userKey;
+
+  //     let userValue = userResponse[actualKey];
+
+  //     if (Array.isArray(userValue)) {
+  //       userValue = userValue.length > 0 ? userValue[0] : "";
+  //     }
+
+  //     if (!isPrimary) {
+  //       if (actualKey === "student_email" && studentEmail) {
+  //         userValue = studentEmail;
+  //       } else if (actualKey === "student_phone" && studentPhone) {
+  //         userValue = studentPhone;
+  //       }
+  //     }
+
+  //     if (actualKey === "preferredState") {
+  //       finalValue = userValue && userValue.trim() !== "" ? userValue : "";
+  //     } else if (actualKey === "preferredCity") {
+  //       finalValue = userValue && userValue.trim() !== "" ? userValue : "";
+  //     } else if (actualKey === "phoneNumber" && userValue) {
+  //       finalValue = `+91-${userValue}`;
+  //     } else {
+  //       finalValue = userValue || "";
+  //     }
+  //   } else {
+  //     finalValue = value;
+  //   }
+
+  //   cgcPayload[key] = finalValue;
+  // }
+
+  const headers = {
+    "Content-Type": "application/json",
+  };
+
+  try {
+    const apiResponse = await axios.post(baseApiUrl, defaultValues, {
+      headers,
+      timeout: 15000,
+    });
+
+    const statusResult = CgcApiResponse(
+      apiResponse,
+      collegeName,
+    );
+
+    if (studentId) {
+      await updateStudentShortlistStatus(
+        studentId,
+        collegeName,
+        statusResult,
+        defaultValues,
+        apiResponse.data,
+        headers,
+        sendType,
+        studentEmail || userResponse.student_email,
+        studentPhone || userResponse.student_phone,
+        isPrimary,
+      );
+    }
+
+    return statusResult;
+  } catch (error) {
+    console.error(`❌ Mangalayatan API error:`, error.message);
+    throw error;
+  }
+}
 export const sentStatustoCollege = async (req, res) => {
   console.log("\n" + "=".repeat(60));
   console.log(`🚀 START: Sending status to college`);
@@ -2271,7 +2403,24 @@ export const sentStatustoCollege = async (req, res) => {
         studentPhone,
         isPrimary,courseId
       );
-    } else {
+    } 
+   else if (
+  collegeName.toLowerCase() === 'chandigarh group of colleges, landran (cgg)' ||
+  collegeName.toLowerCase().includes('cgc')
+) {
+  statusResult = await CgcLandran(
+    collegeName,
+    userResponse,
+    studentId,
+    sendType,
+    studentEmail,
+    studentPhone,
+    isPrimary,
+    courseId
+  );
+}
+
+    else {
       console.log(`🔄 Routing to Standard University handler`);
       statusResult = await processStandardUniversity(
         req,

@@ -1501,7 +1501,7 @@ export const insertUniversityCourses = async (req, res) => {
 
 const ALLOWED_COLLEGES = [
   'chandigarh university, mohali',
-  'chandigarh group of colleges, landran (cgg)',
+  'chandigarh group of colleges, landran (cgc)',
   'lovely professional university'
 ];
 
@@ -1520,7 +1520,7 @@ const CSE_SPECIALIZATION_MAP = {
     'cs',
     'computer engineering'
   ],
-  'chandigarh group of colleges, landran (cgg)': [
+  'chandigarh group of colleges, landran (cgc)': [
     'computer science',
     'computer science engineering',
     'cse',
@@ -1528,9 +1528,11 @@ const CSE_SPECIALIZATION_MAP = {
     'computer engineering'
   ],
   'lovely professional university': [
-    'cse - ai and data engineering',
-    'ai and data engineering',
-    'Artificial Intelligence (AI) and Machine Learning (ML)'
+    'computer science',
+    'computer science engineering',
+    'cse',
+    'cs',
+    'computer engineering'
   ]
 };
 

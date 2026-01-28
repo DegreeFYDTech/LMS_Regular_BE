@@ -2405,7 +2405,7 @@ export const sentStatustoCollege = async (req, res) => {
       );
     } 
    else if (
-  collegeName.toLowerCase() === 'chandigarh group of colleges, landran (cgg)' ||
+  collegeName.toLowerCase() === 'chandigarh group of colleges, landran (cgc)' ||
   collegeName.toLowerCase().includes('cgc')
 ) {
   statusResult = await CgcLandran(

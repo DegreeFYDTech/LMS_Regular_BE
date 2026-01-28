@@ -548,7 +548,7 @@ static isBusinessHours() {
   );
 
   const hours = istTime.getHours();
-  return hours >= 9 && hours < 24;
+  return hours >= 9 && hours < 20;
 }
 
 

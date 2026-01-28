@@ -3,46 +3,58 @@ import { Student, UniversityCourse } from "../models/index.js";
 import { createCollegeApiSentStatus } from "./collegeApiSentStatus.controller.js";
 import CourseHeaderValue from "../models/university_header_values.js";
 import { Op, fn, col, where } from "sequelize";
-
-async function findHeaderValue(collegeName, courseId) {
-
+import {getEligibleCourseIds} from './getEligibleCourseIds.js'
+async function findHeaderValue(collegeName, courseId, studentId) {
   try {
-    const whereCondition = {
-      [Op.and]: [
-        where(fn("LOWER", col("university_name")), {
-          [Op.eq]: collegeName.toLowerCase(),
-        }),
-      ],
-    };
+    const andConditions = [
+      where(fn("LOWER", col("university_name")), {
+        [Op.eq]: collegeName.toLowerCase(),
+      }),
+    ];
 
     if (courseId !== null && courseId !== undefined) {
-      whereCondition[Op.and].push({
-        course_id: courseId,
+      andConditions.push({ course_id: courseId });
+    } 
+    else {
+      if (!studentId) {
+        throw new Error("studentId is required when courseId is not provided");
+      }
+
+      const courseIds = await getEligibleCourseIds(studentId, collegeName);
+
+      if (!courseIds.length) {
+        throw new Error("No eligible courses found for header values");
+      }
+
+      andConditions.push({
+        course_id: {
+          [Op.in]: courseIds,
+        },
       });
     }
 
     const courseHeaderValue = await CourseHeaderValue.findOne({
-      where: whereCondition,
-      order: [["created_at", "ASC"]],
+      where: {
+        [Op.and]: andConditions,
+      },
+      order: [["created_at", "DESC"]], 
     });
 
-    console.log("hello,", courseHeaderValue);
-
     if (!courseHeaderValue || !courseHeaderValue.values) {
-      console.error(`❌ Course header values not found for: ${collegeName}`);
       throw new Error("Course header values not found");
     }
 
-    console.log(`✅ Found header values for: ${collegeName}`);
     return courseHeaderValue;
+
   } catch (error) {
     console.error(
-      `❌ Error fetching course header values for ${collegeName}:`,
+      ` Error fetching course header values for ${collegeName}:`,
       error
     );
     throw error;
   }
 }
+
 
 
 async function updateStudentShortlistStatus(
@@ -624,15 +636,27 @@ function processMangalayatanApiResponse(apiResponse, collegeName) {
       : "Failed due to Technical Issues";
 }
 function CgcApiResponse(apiResponse, collegeName) {
- 
-  if (!apiResponse?.data) return "Failed due to Technical Issues";
+  if (!apiResponse?.data) {
+    return "Failed due to Technical Issues";
+  }
 
   const responseData = apiResponse.data;
-  const {status,message} = responseData.status;
-  if(status=='Fail') return "Failed due to Technical Issues" ;
-  return message !== "Email/Mobile already registered"
-    ? "Proceed"
-      : "Failed due to Technical Issues";
+
+  const status = responseData.status;
+  const message = responseData.message;
+
+  if (status === "Fail") {
+    return "Failed due to Technical Issues";
+  }
+
+  if (
+    message === "Duplicate" ||
+    message === "Email/Mobile already registered"
+  ) {
+    return "Do not Proceed";
+  }
+
+  return "Proceed";
 }
 
 function processLPUOnlineApiResponse(apiResponse, collegeName) {
@@ -759,7 +783,7 @@ async function processStandardUniversity(
     studentPhone: studentPhone || "Using primary",
   });
 
-  const courseHeaderValue = await findHeaderValue(collegeName,courseId);
+  const courseHeaderValue = await findHeaderValue(collegeName,courseId,studentId);
   let transformedData = {};
   let apiUrl = null;
   let apiKey = null;
@@ -901,7 +925,7 @@ async function handleShooliniOnline(
     studentPhone,
   });
 
-  const courseHeaderValue = await findHeaderValue(collegeName,courseId);
+  const courseHeaderValue = await findHeaderValue(collegeName,courseId,studentId);
 
   if (!courseHeaderValue?.values) {
     throw new Error("Course header values not found");
@@ -1080,7 +1104,7 @@ async function handleJaypeeNoPaperForms(
     isPrimary,
   });
 
-  const courseHeaderValue = await findHeaderValue(collegeName,courseId);
+  const courseHeaderValue = await findHeaderValue(collegeName,courseId,studentId);
 
   if (!courseHeaderValue?.values) {
     throw new Error("Course header values not found");
@@ -1262,7 +1286,7 @@ async function handleSpecialUniversity(
     { Attribute: "mx_City", Value: "West Delhi" },
   ];
 
-  const courseHeaderValue = await findHeaderValue(collegeName,courseId);
+  const courseHeaderValue = await findHeaderValue(collegeName,courseId,studentId);
   const apiUrl =
     courseHeaderValue?.values?.API_URL ||
     courseHeaderValue?.values?.["api-url"];
@@ -1372,7 +1396,7 @@ async function handleManipalOnline(
     { Attribute: "mx_Enquired_University", Value: "MUJ" },
   ];
 
-  const courseHeaderValue = await findHeaderValue(collegeName,courseId);
+  const courseHeaderValue = await findHeaderValue(collegeName,courseId,studentId);
   const apiUrl =
     courseHeaderValue?.values?.API_URL ||
     courseHeaderValue?.values?.["api-url"];
@@ -1474,7 +1498,7 @@ async function handleVivekanandGlobal(
     { Attribute: "Source", Value: "Nuvora" },
   ];
 
-  const courseHeaderValue = await findHeaderValue(collegeName,courseId);
+  const courseHeaderValue = await findHeaderValue(collegeName,courseId,studentId);
   const apiUrl =
     courseHeaderValue?.values?.API_URL ||
     courseHeaderValue?.values?.["api-url"];
@@ -1562,7 +1586,7 @@ async function handleLPUOnline(
     field_new_specialization: "BBA",
   };
 
-  const courseHeaderValue = await findHeaderValue(collegeName,courseId);
+  const courseHeaderValue = await findHeaderValue(collegeName,courseId,studentId);
   const apiUrl =
     courseHeaderValue?.values?.API_URL ||
     courseHeaderValue?.values?.["api-url"];
@@ -1633,7 +1657,7 @@ async function handleGLAOnline(
 ) {
   console.log(`🎯 Handling GLA Online: ${collegeName}`, { isPrimary });
 
-  const courseHeaderValue = await findHeaderValue(collegeName,courseId);
+  const courseHeaderValue = await findHeaderValue(collegeName,courseId,studentId);
   const baseApiUrl =
     courseHeaderValue?.values?.API_URL ||
     courseHeaderValue?.values?.["api-url"];
@@ -1740,7 +1764,7 @@ async function handleGalgotiasOnline(
 ) {
   console.log(`🎯 Handling Galgotias Online: ${collegeName}`, { isPrimary });
 
-  const courseHeaderValue = await findHeaderValue(collegeName,courseId);
+  const courseHeaderValue = await findHeaderValue(collegeName,courseId,studentId);
 
   if (!courseHeaderValue?.values) {
     throw new Error("Course header values not found");
@@ -1862,7 +1886,7 @@ async function handleAmityOnline(
 ) {
   console.log(`🎯 Handling Amity Online: ${collegeName}`, { isPrimary });
 
-  const courseHeaderValue = await findHeaderValue(collegeName,courseId);
+  const courseHeaderValue = await findHeaderValue(collegeName,courseId,studentId);
 
   if (!courseHeaderValue?.values) {
     throw new Error("Course header values not found");
@@ -1975,7 +1999,7 @@ async function handleMangalayatanOnline(
 ) {
   console.log(`🎯 Handling Mangalayatan Online: ${collegeName}`, { isPrimary });
 
-  const courseHeaderValue = await findHeaderValue(collegeName,courseId);
+  const courseHeaderValue = await findHeaderValue(collegeName,courseId,studentId);
 
   if (!courseHeaderValue?.values) {
     throw new Error("Course header values not found");
@@ -2089,7 +2113,7 @@ async function CgcLandran(
   isPrimary,courseId
 ) {
 
-  const courseHeaderValue = await findHeaderValue(collegeName,courseId);
+  const courseHeaderValue = await findHeaderValue(collegeName,courseId,studentId);
 
   // if (!courseHeaderValue?.values) {
   //   throw new Error("Course header values not found");

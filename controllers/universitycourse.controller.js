@@ -1543,90 +1543,99 @@ export const getCourseById = async (req, res) => {
     if (!university_name) {
       return res.status(400).json({
         success: false,
-        message: 'University name is required'
+        message: "University name is required"
       });
     }
 
-    const decodedUniversity = decodeURIComponent(university_name).trim();
-    const normalizedUniversity = decodedUniversity.toLowerCase();
+    const course = await findActiveCourseByCollege(university_name);
 
-    const isAllowedCollege = ALLOWED_COLLEGES.includes(normalizedUniversity);
-    const collegeSpecializations =
-      CSE_SPECIALIZATION_MAP[normalizedUniversity] || [];
-    let course = null;
-
- 
-    if (isAllowedCollege) {
-      course = await UniversityCourse.findOne({
-        where: {
-          university_name: {
-            [Op.iLike]: decodedUniversity
-          },
-          degree_name: {
-            [Op.or]: ENGINEERING_DEGREES.map(d => ({
-              [Op.iLike]: `%${d}%`
-            }))
-          },
-          specialization: {
-            [Op.or]: collegeSpecializations.map(s => ({
-              [Op.iLike]: `%${s}%`
-            }))
-          },
-          status: {
-            [Op.iLike]: 'active'
-          }
-        },
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        message: `No course found for ${decodeURIComponent(university_name)}`
       });
-
-      if (!course) {
-        course = await UniversityCourse.findOne({
-        where: {
-          university_name: {
-            [Op.iLike]: decodedUniversity
-          },
-          status: {
-            [Op.iLike]: 'active'
-          }
-        },
-        order: [['created_at', 'ASC']]
-      });
-      }
-
-    } 
-      else {
-      course = await UniversityCourse.findOne({
-        where: {
-          university_name: {
-            [Op.iLike]: decodedUniversity
-          },
-          status: {
-            [Op.iLike]: 'active'
-          }
-        },
-        order: [['created_at', 'ASC']]
-      });
-
-      if (!course) {
-        return res.status(404).json({
-          success: false,
-          message: `No course found for ${decodedUniversity}`
-        });
-      }
     }
-
 
     return res.status(200).json({
       success: true,
-      message: 'Course found',
+      message: "Course found",
       response: course
     });
 
   } catch (error) {
-
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch course',
+      message: "Failed to fetch course",
       error: error.message
     });
   }
 };
+
+
+export async function findActiveCourseByCollege(collegeName) {
+  if (!collegeName) {
+    throw new Error("College name is required");
+  }
+
+  const decodedUniversity = decodeURIComponent(collegeName).trim();
+  const normalizedUniversity = decodedUniversity.toLowerCase();
+
+  const isAllowedCollege = ALLOWED_COLLEGES.includes(normalizedUniversity);
+  const collegeSpecializations =
+    CSE_SPECIALIZATION_MAP[normalizedUniversity] || [];
+
+  let course = null;
+
+  if (isAllowedCollege) {
+    course = await UniversityCourse.findOne({
+      where: {
+        university_name: {
+          [Op.iLike]: decodedUniversity
+        },
+        degree_name: {
+          [Op.or]: ENGINEERING_DEGREES.map(d => ({
+            [Op.iLike]: `%${d}%`
+          }))
+        },
+        specialization: {
+          [Op.or]: collegeSpecializations.map(s => ({
+            [Op.iLike]: `%${s}%`
+          }))
+        },
+        status: {
+          [Op.iLike]: "active"
+        }
+      }
+    });
+
+    if (!course) {
+      course = await UniversityCourse.findOne({
+        where: {
+          university_name: {
+            [Op.iLike]: decodedUniversity
+          },
+          status: {
+            [Op.iLike]: "active"
+          }
+        },
+        order: [["created_at", "ASC"]]
+      });
+    }
+  }
+
+  else {
+    course = await UniversityCourse.findOne({
+      where: {
+        university_name: {
+          [Op.iLike]: decodedUniversity
+        },
+        status: {
+          [Op.iLike]: "active"
+        }
+      },
+      order: [["created_at", "ASC"]]
+    });
+  }
+
+  return course; 
+}

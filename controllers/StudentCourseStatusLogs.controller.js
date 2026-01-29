@@ -1,5 +1,5 @@
 import axios from 'axios';
-import {UniversityCourse,CourseStatusHistory,CourseStatus, Student} from '../models/index.js';
+import { UniversityCourse, CourseStatusHistory, CourseStatus, Student } from '../models/index.js';
 import { assignedtoL3byruleSet } from './leadassignmentl3.controller.js';
 
 export const createStatusLog = async (req, res) => {
@@ -14,7 +14,7 @@ export const createStatusLog = async (req, res) => {
       lastAdmissionDate,
       depositAmount = 0,
     } = req.body;
-      const { courseId } = req.params;
+    const { courseId } = req.params;
     const userId = req.user?.counsellorId || req.user?.supervisorId || null;
 
     const courseDetails = await UniversityCourse.findOne({
@@ -37,22 +37,23 @@ export const createStatusLog = async (req, res) => {
       notes: notes,
       timestamp: new Date()
     });
-     if (status == "Form Submitted – Portal Pending" || status == "Form Submitted – Completed") {
-      const l3data=await axios.post('http://localhost:3031/v1/leadassignmentl3/assign',{ 
-            studentId, 
-            collegeName: courseDetails.university_name, 
-            Course: courseDetails.course_name, 
-            Degree: courseDetails.degree_name, 
-            Specialization: courseDetails.specialization, 
-            level: courseDetails.level, 
-            source: courseDetails.level, 
-            stream: courseDetails.stream 
-          }) 
-       await Student.update({first_form_filled_date:new Date()},{where:{student_id:studentId,first_form_filled_date:null}})   
-  }
-   
-    
-    res.status(201).json({ 
+    console.log("status", status)
+    if (status == "Form Submitted – Portal Pending" || status == "Form Submitted – Completed" || status == "Walkin Completed" || status == "Exam Interview Pending" || status == "Offer Letter/Results Pending" || status == "Offer Letter/Results Released") {
+      const l3data = await axios.post('http://localhost:3031/v1/leadassignmentl3/assign', {
+        studentId,
+        collegeName: courseDetails.university_name,
+        Course: courseDetails.course_name,
+        Degree: courseDetails.degree_name,
+        Specialization: courseDetails.specialization,
+        level: courseDetails.level,
+        source: courseDetails.level,
+        stream: courseDetails.stream
+      })
+      await Student.update({ first_form_filled_date: new Date() }, { where: { student_id: studentId, first_form_filled_date: null } })
+    }
+
+
+    res.status(201).json({
       message: 'Status log created successfully',
       logId: log.status_history_id
     });

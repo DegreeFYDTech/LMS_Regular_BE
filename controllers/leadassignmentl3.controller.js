@@ -1,17 +1,25 @@
 import sendMail from '../config/SendLmsEmail.js';
-import {CourseStatusHistory,Student,Counsellor,LeadAssignmentRuleL3} from '../models/index.js';
+import { CourseStatusHistory, Student, Counsellor, LeadAssignmentRuleL3 } from '../models/index.js';
 
 import { Op } from 'sequelize';
 
-const DUMMY_AGENT_ID = "CNS-A322569E";
+const DUMMY_AGENT_ID = "CNS-119C84E3";
 const DUMMY_AGENT_NAME = "DummyDegreeFyd";
 
-const processArrayField = (field) => {
+const processArrayField = (field, key = 'name') => {
     if (!field) return [];
     if (Array.isArray(field)) {
-        return field.filter(item => item && item.trim()).map(item => item.trim());
+        return field.map(item => {
+            if (!item) return null;
+            if (typeof item === 'string') return item.trim();
+            if (typeof item === 'object') {
+                return (item[key] || item.name || item._id || '').toString().trim();
+            }
+            return item.toString().trim();
+        }).filter(item => item && item !== '');
     }
-    return field.trim() ? [field.trim()] : [];
+    if (typeof field === 'string') return field.trim() ? [field.trim()] : [];
+    return [];
 };
 
 const validateL3Agents = async (assignedAgents) => {
@@ -24,7 +32,7 @@ const validateL3Agents = async (assignedAgents) => {
     return agents.length === assignedAgents.length;
 };
 
-const sendAssignmentEmail = async (studentId,data) => {
+const sendAssignmentEmail = async (studentId, data) => {
     try {
         const student = await Student.findByPk(studentId, {
             include: [{
@@ -36,17 +44,17 @@ const sendAssignmentEmail = async (studentId,data) => {
 
         if (!student) return;
 
-        const courses = await CourseStatusHistory.findOne({ 
-            where: { student_id: student.student_id } 
+        const courses = await CourseStatusHistory.findOne({
+            where: { student_id: student.student_id }
         });
-        console.log('data',data)
+        console.log('data', data)
         const emailData = {
             id: student.student_id,
             name: student.student_name,
             email: student.student_email,
             phone: student.student_phone,
             timestamp: new Date(),
-            asigned_college: data?.collegeName || 'N/A', 
+            asigned_college: data?.collegeName || 'N/A',
             asigned_course: data?.Course || 'N/A',
             agent_name: student.assignedCounsellorL3?.counsellor_name,
             agent_email: student.assignedCounsellorL3?.counsellor_email
@@ -56,8 +64,8 @@ const sendAssignmentEmail = async (studentId,data) => {
             'Sid@degreefyd.com',
             'Deepak@degreefyd.com',
             'Guruvinder.singh@degreefyd.com',
-             student.assignedCounsellorL3?.counsellor_email,
-            
+            student.assignedCounsellorL3?.counsellor_email,
+
         ].filter(Boolean);
 
         await sendMail(emailData, recipients);
@@ -127,23 +135,46 @@ export const createRuleSet = async (req, res) => {
         const {
             college,
             universityName,
+            university_name,
             course,
+            course_conditions,
             source,
             assignedCounsellor,
+            assigned_counsellor_ids,
             isActive,
+            is_active,
             priority,
             custom_rule_name
         } = req.body;
 
+        // Normalize inputs
+        const finalUniversityName = university_name || universityName;
+        const finalCourse = course_conditions || course;
+        const finalAssignedCounsellor = assigned_counsellor_ids || assignedCounsellor;
+        const finalIsActive = is_active !== undefined ? is_active : (isActive !== undefined ? isActive : true);
+
+        // Process fields
+        const processedUniversityName = processArrayField(finalUniversityName);
+        const processedSource = processArrayField(source);
+        const processedAssignedCounsellors = processArrayField(finalAssignedCounsellor, '_id');
+
+        const processedCourseConditions = {
+            stream: processArrayField(finalCourse?.stream),
+            degree: processArrayField(finalCourse?.degree),
+            specialization: processArrayField(finalCourse?.specialization),
+            level: processArrayField(finalCourse?.level),
+            courseName: processArrayField(finalCourse?.courseName)
+        };
+
         // Validate required fields
-        if (!assignedCounsellor || assignedCounsellor.length === 0) {
+        if (!processedAssignedCounsellors || processedAssignedCounsellors.length === 0) {
             return res.status(400).json({
                 message: 'At least one assigned counsellor is required'
             });
         }
 
         // Verify all assigned counsellors exist and are L3 counsellors
-        const isValidAgents = await validateL3Agents(assignedCounsellor);
+        const isValidAgents = await validateL3Agents(processedAssignedCounsellors);
         if (!isValidAgents) {
             return res.status(400).json({
                 message: 'One or more assigned counsellors are invalid or not L3 counsellors'
@@ -157,17 +188,11 @@ export const createRuleSet = async (req, res) => {
         const newRuleSet = await LeadAssignmentRuleL3.create({
             name: ruleName,
             college: college?.trim() || '',
-            university_name: processArrayField(universityName),
-            course_conditions: {
-                stream: processArrayField(course?.stream),
-                degree: processArrayField(course?.degree),
-                specialization: processArrayField(course?.specialization),
-                level: processArrayField(course?.level),
-                courseName: processArrayField(course?.courseName)
-            },
-            source: processArrayField(source),
-            assigned_counsellor_ids: assignedCounsellor,
-            is_active: isActive !== undefined ? isActive : true,
+            university_name: processedUniversityName,
+            course_conditions: processedCourseConditions,
+            source: processedSource,
+            assigned_counsellor_ids: processedAssignedCounsellors,
+            is_active: finalIsActive,
             priority: priority || 0,
             round_robin_index: 0,
             custom_rule_name: custom_rule_name || ''
@@ -204,18 +229,51 @@ export const updateRuleSet = async (req, res) => {
     try {
         const { id } = req.params;
         const updateData = req.body;
-      console.log('Update Data:', updateData);
+        console.log('Update Data:', updateData);
         // If assignedCounsellor are being updated, verify they exist and are L3
-        if (updateData.assignedCounsellor) {
-            const isValidAgents = await validateL3Agents(updateData.assignedCounsellor);
+        if (updateData.assignedCounsellor || updateData.assigned_counsellor_ids) {
+            const rawAgents = updateData.assigned_counsellor_ids || updateData.assignedCounsellor;
+            const processedAgents = processArrayField(rawAgents, '_id');
+
+            const isValidAgents = await validateL3Agents(processedAgents);
             if (!isValidAgents) {
                 return res.status(400).json({
                     message: 'One or more assigned counsellors are invalid or not L3 counsellors'
                 });
             }
-            if(updateData?.custom_rule_name) updateData.custom_rule_name = updateData.custom_rule_name;
-            updateData.assigned_counsellor_ids = updateData.assignedCounsellor;
+            updateData.assigned_counsellor_ids = processedAgents;
             delete updateData.assignedCounsellor;
+        }
+
+        // Normalize other possible fields if sent in snake_case
+        if (updateData.university_name) {
+            updateData.university_name = processArrayField(updateData.university_name);
+        } else if (updateData.universityName) {
+            updateData.university_name = processArrayField(updateData.universityName);
+            delete updateData.universityName;
+        }
+
+        if (updateData.course_conditions || updateData.course) {
+            const courseData = updateData.course_conditions || updateData.course;
+            updateData.course_conditions = {
+                stream: processArrayField(courseData?.stream),
+                degree: processArrayField(courseData?.degree),
+                specialization: processArrayField(courseData?.specialization),
+                level: processArrayField(courseData?.level),
+                courseName: processArrayField(courseData?.courseName)
+            };
+            delete updateData.course;
+        }
+
+        if (updateData.source) {
+            updateData.source = processArrayField(updateData.source);
+        }
+
+        if (updateData.is_active !== undefined) {
+            // Already set, but ensuring it's used correctly
+        } else if (updateData.isActive !== undefined) {
+            updateData.is_active = updateData.isActive;
+            delete updateData.isActive;
         }
 
         const [updatedRowsCount] = await LeadAssignmentRuleL3.update(
@@ -301,7 +359,7 @@ export const toggleRuleSetStatus = async (req, res) => {
 };
 
 export const assignedtoL3byruleSet = async (req, res) => {
-   
+
     try {
         const {
             studentId,
@@ -314,18 +372,17 @@ export const assignedtoL3byruleSet = async (req, res) => {
             stream
         } = req.body;
 
-        console.log(req.body,'req.body')
+        console.log(req.body, 'req.body')
         if (!studentId) {
             return res.status(400).json({ message: "studentId is required" });
         }
 
-        // Check if student already has L3 counsellor assigned
         const studentDetails = await Student.findByPk(studentId);
         if (studentDetails?.assigned_counsellor_l3_id) {
             const counsellor = await Counsellor.findOne({
                 where: { counsellor_id: studentDetails.assigned_counsellor_l3_id }
             });
-            
+
             return res.status(200).json({
                 message: "Student already has L3 counsellor assigned",
                 assigned_counsellor: studentDetails.assigned_counsellor_l3_id,
@@ -333,10 +390,10 @@ export const assignedtoL3byruleSet = async (req, res) => {
             });
         }
 
-        // Find all active rulesets
-        const allRulesets = await LeadAssignmentRuleL3.findAll({ 
-            where: { is_active: true } 
+        const allRulesets = await LeadAssignmentRuleL3.findAll({
+            where: { is_active: true }
         });
+        console.log('allRulesets', allRulesets)
         if (!allRulesets || allRulesets.length === 0) {
             return res.status(404).json({ message: "No active ruleset found" });
         }
@@ -344,36 +401,77 @@ export const assignedtoL3byruleSet = async (req, res) => {
         // Filter by mandatory conditions (collegeName and source)
         const filteredRulesets = allRulesets.filter(ruleset => {
             // University Name Match
-            const universityMatch = !collegeName || !ruleset.university_name?.length ||
-                ruleset.university_name.some(uni =>
-                    uni.toLowerCase().trim() === collegeName.toLowerCase().trim()
-                );
+            // A ruleset matches if:
+            // 1. No collegeName is provided in request (unlikely)
+            // 2. The ruleset has no university names defined (matches everything)
+            // 3. Any of the university names in the ruleset match the collegeName (partial match)
+
+            const universityMatch = !collegeName || !ruleset.university_name || ruleset.university_name.length === 0 ||
+                ruleset.university_name.some(uni => {
+                    if (!uni) return false;
+                    const normalizedUni = uni.toLowerCase().trim();
+                    const normalizedCollege = collegeName.toLowerCase().trim();
+                    return normalizedUni === normalizedCollege ||
+                        normalizedUni.includes(normalizedCollege) ||
+                        normalizedCollege.includes(normalizedUni);
+                });
 
             // Source Match
             const sourceMatch = !source || !ruleset.source?.length ||
                 ruleset.source.includes(source);
-            console.log('universityMatch',collegeName,universityMatch,sourceMatch)
+
+            console.log(`Matching Ruleset "${ruleset.name}" (ID: ${ruleset.l3_assignment_rulesets_id}):`, {
+                collegeName,
+                rulesetUniversities: ruleset.university_name,
+                universityMatch,
+                sourceMatch,
+                finalResult: universityMatch && sourceMatch
+            });
+
             return universityMatch && sourceMatch;
         });
         if (filteredRulesets.length === 0) {
             // Assign dummy counsellor when no ruleset matches
+            // First, try to find a valid L3 agent for fallback
+            let fallbackAgentId = DUMMY_AGENT_ID;
+            let fallbackAgentName = DUMMY_AGENT_NAME;
+
+            const dummyAgent = await Counsellor.findOne({
+                where: { counsellor_id: DUMMY_AGENT_ID }
+            });
+
+            if (!dummyAgent) {
+                // If dummy doesn't exist, pick the first available L3 agent
+                const anyL3Agent = await Counsellor.findOne({ where: { role: 'l3' } });
+                if (anyL3Agent) {
+                    fallbackAgentId = anyL3Agent.counsellor_id;
+                    fallbackAgentName = anyL3Agent.counsellor_name;
+                } else {
+                    console.error('No L3 agents found in the system for fallback assignment');
+                    return res.status(404).json({ message: "No active rulesets and no L3 agents found for fallback" });
+                }
+            }
+
             const updateData = {
-                assigned_counsellor_l3_id: DUMMY_AGENT_ID,
+                assigned_counsellor_l3_id: fallbackAgentId,
                 assigned_l3_date: new Date(),
             };
-            console.log('updateData',updateData)
-            await Student.update(updateData, { 
-                where: { student_id: studentId } 
+            console.log('Fallback Assignment updateData', updateData)
+
+            await Student.update(updateData, {
+                where: { student_id: studentId }
             });
-            
-            sendAssignmentEmail(studentId,{ collegeName,
-            Course});
+
+            sendAssignmentEmail(studentId, {
+                collegeName,
+                Course
+            });
 
             return res.status(200).json({
-                message: "No matching ruleset found, assigned dummy L3 counsellor",
+                message: "No matching ruleset found, assigned fallback L3 counsellor",
                 student_id: studentId,
-                assigned_counsellor_l3: DUMMY_AGENT_ID,
-                counsellor_name_l3: DUMMY_AGENT_NAME,
+                assigned_counsellor_l3: fallbackAgentId,
+                counsellor_name_l3: fallbackAgentName,
                 assignment_method: "dummy_fallback",
                 reason: "No ruleset found matching collegeName and source criteria"
             });
@@ -518,17 +616,19 @@ export const assignedtoL3byruleSet = async (req, res) => {
             assigned_counsellor_l3_id: counsellorDetails.counsellor_id,
             assigned_l3_date: new Date(),
         };
-        console.log(updateData,'updated_data')
-        await Student.update(updateData, { 
-            where: { student_id: studentId } 
+        console.log(updateData, 'updated_data')
+        await Student.update(updateData, {
+            where: { student_id: studentId }
         });
 
         const responseMessage = hasAnyCourseMatch
             ? "L3 counsellor assigned successfully"
             : "L3 counsellor assigned based on college name match (no course criteria matched)";
 
-        sendAssignmentEmail(studentId,{ collegeName,
-            Course});
+        sendAssignmentEmail(studentId, {
+            collegeName,
+            Course
+        });
 
         res.status(200).json({
             message: responseMessage,

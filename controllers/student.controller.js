@@ -209,10 +209,12 @@ export const updateStudentStatus = async (req, res) => {
     };
 
     const newRemark = await createRemark(remarkData);
+    console.log("New remark created:", leadStatus, leadSubStatus, remarkData);
     if (
       (leadStatus === "NotInterested" || leadStatus === "Not Interested") &&
       leadSubStatus === "Only_Online course"
     ) {
+      console.log("Only_Online course");
       const studentDetails = await Student.findByPk(studentId);
       const studentleadActivityDetails = await StudentLeadActivity.findOne({
         where: { student_id: studentId },
@@ -257,7 +259,7 @@ export const updateStudentStatus = async (req, res) => {
         },
       );
     }
-   
+
     const updatedstudents = updatedStudent[1][0];
     const updatedStudentData = {
       ...updatedstudents.get({ plain: true }),
@@ -1188,10 +1190,10 @@ export const addLeadDirect = async (req, res) => {
         ...lead.toJSON(),
         referenceStudent: referenceStudent
           ? {
-              student_id: referenceStudent.student_id,
-              student_name: referenceStudent.student_name,
-              student_email: referenceStudent.student_email,
-            }
+            student_id: referenceStudent.student_id,
+            student_name: referenceStudent.student_name,
+            student_email: referenceStudent.student_email,
+          }
           : null,
       },
     });

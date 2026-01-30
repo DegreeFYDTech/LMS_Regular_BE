@@ -209,9 +209,9 @@ export const updateStudentStatus = async (req, res) => {
     };
 
     const newRemark = await createRemark(remarkData);
-    console.log("New remark created:", leadStatus, leadSubStatus, remarkData);
+    // console.log("New remark created:", leadStatus, leadSubStatus, remarkData);
     if (
-      (leadStatus === "NotInterested" || leadStatus === "Not Interested") &&
+      leadStatus === "NotInterested" &&
       leadSubStatus === "Only_Online course"
     ) {
       console.log("Only_Online course");
@@ -232,7 +232,7 @@ export const updateStudentStatus = async (req, res) => {
       };
       console.log(payload);
       const response = await axios.post(
-        "http://localhost:3001/v1/student/create",
+        "https://lms-api-test.degreefyd.com/v1/student/create",
         payload,
       );
       console.log(response.data);
@@ -1190,10 +1190,10 @@ export const addLeadDirect = async (req, res) => {
         ...lead.toJSON(),
         referenceStudent: referenceStudent
           ? {
-            student_id: referenceStudent.student_id,
-            student_name: referenceStudent.student_name,
-            student_email: referenceStudent.student_email,
-          }
+              student_id: referenceStudent.student_id,
+              student_name: referenceStudent.student_name,
+              student_email: referenceStudent.student_email,
+            }
           : null,
       },
     });

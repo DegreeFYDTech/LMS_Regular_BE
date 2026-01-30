@@ -239,10 +239,12 @@ async function getStudentDataForRequest(
     console.log(
       `📞 Using secondary contact details: ${studentEmail}, ${studentPhone}`,
     );
+    const user = await Student.findByPk(studentId);
+    console.log(user)
     return {
       student_email: studentEmail,
       student_phone: studentPhone,
-      student_name: "Parent/Guardian",
+      student_name: user ? user.student_name : "Harsh",
     };
   }
 
@@ -1296,9 +1298,7 @@ async function handleSpecialUniversity(
     { Attribute: "mx_Course2", Value: "Btech" },
     {
       Attribute: "mx_State",
-      Value: collegeName.includes("Chandigarh University")
-        ? "Punjab"
-        : "Delhi",
+      Value: collegeName.includes("Chandigarh University") ? "Punjab" : "Delhi",
     },
     {
       Attribute: "mx_City",

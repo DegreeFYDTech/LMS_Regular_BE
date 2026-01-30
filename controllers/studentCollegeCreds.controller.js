@@ -15,6 +15,7 @@ export const createStudentCollegeCreds = async (req, res) => {
       counsellorId,
       counsellorName
     } = req.body;
+    console.log("hello")
     if (!studentId || !courseId || !collegeName) {
       return res.status(400).json({ message: 'studentId, courseId, and collegeName are required' });
     }

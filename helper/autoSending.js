@@ -84,18 +84,18 @@ const normalizeConditions = (conditions) => {
 
 export async function autoSending(students_data = []) {
   try {
-    console.log('autoSending called with data type:', typeof students_data);
+    // console.log('autoSending called with data type:', typeof students_data);
 
     // Handle both single object and array inputs
     let studentsArray;
     if (Array.isArray(students_data)) {
       studentsArray = students_data;
-      console.log(`Processing ${studentsArray.length} students as array`);
+      // console.log(`Processing ${studentsArray.length} students as array`);
     } else if (students_data && typeof students_data === 'object') {
       // Check if it looks like a student object
       if (students_data.student_id || students_data.id || students_data.student_email || students_data.student_phone) {
         studentsArray = [students_data];
-        console.log('Processing single student object');
+        // console.log('Processing single student object');
       } else {
         console.log('Invalid student object structure:', students_data);
         studentsArray = [];
@@ -119,14 +119,14 @@ export async function autoSending(students_data = []) {
       };
     }
 
-    console.log(`Processing ${studentsArray.length} student(s)`);
+    // console.log(`Processing ${studentsArray.length} student(s)`);
 
     const rules = await ReconAssignmentRule.findAll({
       where: { is_active: true },
       order: [['priority', 'DESC']]
     });
 
-    console.log(`Found ${rules.length} active rules`);
+    // console.log(`Found ${rules.length} active rules`);
 
     let stats = {
       totalStudents: studentsArray.length,
@@ -138,7 +138,7 @@ export async function autoSending(students_data = []) {
     for (const studentData of studentsArray) {
       try {
         const studentId = studentData.student_id || studentData.id || 'Unknown';
-        console.log(`Processing student: ${studentId}`);
+        // console.log(`Processing student: ${studentId}`);
 
         let matchedRule = null;
 
@@ -225,7 +225,7 @@ export async function autoSending(students_data = []) {
         }
 
         if (allMatchingRules.length === 0) {
-          console.log(`No matching rules found for student ${studentId}, skipping...`);
+          // console.log(`No matching rules found for student ${studentId}, skipping...`);
           stats.skippedStudents++;
           continue;
         }
@@ -234,12 +234,12 @@ export async function autoSending(students_data = []) {
 
         allMatchingRules.sort((a, b) => b.score - a.score);
 
-        console.log(`Found ${allMatchingRules.length} matching rules for student ${studentId}`);
-        console.log('Top rules:', allMatchingRules.slice(0, 3).map(r => ({
-          rule: r.matchDetails.ruleName,
-          score: r.score,
-          matchedFields: r.matchDetails.matchedFields.map(f => f.field)
-        })));
+        // console.log(`Found ${allMatchingRules.length} matching rules for student ${studentId}`);
+        // console.log('Top rules:', allMatchingRules.slice(0, 3).map(r => ({
+        //   rule: r.matchDetails.ruleName,
+        //   score: r.score,
+        //   matchedFields: r.matchDetails.matchedFields.map(f => f.field)
+        // })));
 
         matchedRule = allMatchingRules[0].rule;
 
@@ -251,8 +251,8 @@ export async function autoSending(students_data = []) {
           continue;
         }
 
-        console.log(`Rule "${matchedRule.custom_rule_name}" has ${assignedUniversities.length} assigned universities`);
-        console.log('Universities:', assignedUniversities);
+        // console.log(`Rule "${matchedRule.custom_rule_name}" has ${assignedUniversities.length} assigned universities`);
+        // console.log('Universities:', assignedUniversities);
 
         await ReconAssignmentRule.update(
           {
@@ -266,7 +266,7 @@ export async function autoSending(students_data = []) {
 
         for (const college of assignedUniversities) {
           try {
-            console.log(`Sending student ${studentId} to college: ${college}`);
+            // console.log(`Sending student ${studentId} to college: ${college}`);
 
             // Use route parameter method (as per your route definition)
             const encodedCollege = encodeURIComponent(college);

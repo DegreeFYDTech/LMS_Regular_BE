@@ -74,15 +74,17 @@ export const createStudent = async (req, res) => {
     const errors = [];
     for (const leadData of leads) {
       const result = await processStudentLead(leadData);
+
       const studentWithUTM = {
         ...result.student.dataValues,
-        utmCampaign: result.leadActivity?.utmCampaign || leadData.utmCampaign,
+        utmCampaign: result.leadActivity.dataValues.utm_campaign || result.student?.utmCampaign, // Make sure this is included
         first_source_url:
-          result.leadActivity?.first_source_url || leadData.SourceUrl,
-        source: result.leadActivity?.source || leadData.source,
+          result.student?.first_source_url || leadData.SourceUrl,
+        source: result.student?.source || leadData.source,
       };
 
       console.log("Sending to autoSending with data:", studentWithUTM);
+      // return
       await autoSending(studentWithUTM);
     }
 
@@ -1033,8 +1035,15 @@ export const bulkReassignLeads = async (req, res) => {
 
 export const addLeadDirect = async (req, res) => {
   try {
-    const { name, email, phoneNumber, source, counselloridFe, referenceFrom } =
-      req.body;
+    const {
+      name,
+      email,
+      phoneNumber,
+      source,
+      counselloridFe,
+      referenceFrom,
+      preferred_degree,
+    } = req.body;
 
     if (!name || !email || !phoneNumber || !source) {
       return res.status(400).json({
@@ -1160,6 +1169,7 @@ export const addLeadDirect = async (req, res) => {
       student_phone: phoneNumber,
       assigned_counsellor_id: counsellorId,
       source,
+      preferred_degree: preferred_degree || [],
     });
 
     await StudentLeadActivity.create({

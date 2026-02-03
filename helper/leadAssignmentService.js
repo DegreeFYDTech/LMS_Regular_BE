@@ -625,7 +625,7 @@ export const processStudentLead = async (leadData) => {
       "",
     is_transfer: leadData.is_transfer || false,
   };
-  console.log(mappedLeadData);
+  // console.log(mappedLeadData);
   const assignmentResult = await assignLeadHelper(mappedLeadData);
   if (!assignmentResult.success) {
     return {

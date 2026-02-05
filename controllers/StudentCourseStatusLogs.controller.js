@@ -314,26 +314,20 @@ const getCounsellorPivotReport = async (
   level,
   courseWhereClause,
 ) => {
-  // Build counsellor where clause
-  const counsellorWhereClause = {};
-  if (level === "l2" || level === "l3") {
-    counsellorWhereClause.role = { [Op.iLike]: `%${level}%` };
-  }
+  const counsellorIdField = level === "l2" 
+    ? "assigned_counsellor_id" 
+    : "assigned_counsellor_l3_id";
 
-  // First, get the latest status for each student-course combination
   const subqueryWhere = {};
 
-  // Add date filter based on CourseStatusHistory created_at
- if (startDate || endDate) {
+  if (startDate || endDate) {
     subqueryWhere.created_at = {};
     if (startDate) {
-      // Start from beginning of start date
       const startDateObj = new Date(startDate);
       startDateObj.setHours(0, 0, 0, 0);
       subqueryWhere.created_at[Op.gte] = startDateObj;
     }
     if (endDate) {
-      // End at beginning of next day (include full end date)
       const endDateObj = new Date(endDate);
       endDateObj.setDate(endDateObj.getDate() + 1);
       endDateObj.setHours(0, 0, 0, 0);
@@ -366,8 +360,7 @@ const getCounsellorPivotReport = async (
     };
   }
 
-  // Get counsellor-wise counts from latest records
-  const counsellorData = await CourseStatusHistory.findAll({
+  const latestRecords = await CourseStatusHistory.findAll({
     where: {
       [Op.or]: subquery.map((item) => ({
         student_id: item.student_id,
@@ -383,76 +376,139 @@ const getCounsellorPivotReport = async (
         where: courseWhereClause,
         attributes: [],
       },
-      {
-        model: Counsellor,
-        as: "counsellor",
-        required: true,
-        where: counsellorWhereClause,
-        attributes: ["counsellor_name"],
-      },
     ],
     attributes: [
-      [Sequelize.col("counsellor.counsellor_name"), "counsellor"],
-      [Sequelize.col("course_status"), "status"],
-      [Sequelize.fn("COUNT", Sequelize.col("*")), "count"],
+      "student_id",
+      "course_id",
+      "course_status",
     ],
-    group: [
-      Sequelize.col("counsellor.counsellor_name"),
-      Sequelize.col("course_status"),
-    ],
-    order: [[Sequelize.col("counsellor.counsellor_name"), "ASC"]],
     raw: true,
   });
 
-  // Get all unique statuses
-  const statuses = [
-    ...new Set(counsellorData.map((item) => item.status).filter(Boolean)),
-  ];
+  // Get ALL students, including those without assigned counsellors
+  const studentIds = [...new Set(latestRecords.map(r => r.student_id))];
+  
+  const students = await Student.findAll({
+    where: {
+      student_id: studentIds
+    },
+    attributes: ["student_id", counsellorIdField],
+    raw: true,
+  });
 
-  // Process pivot data
-  const pivotData = {};
-  const counsellorTotals = {};
+  const studentCounsellorMap = {};
+  const unassignedStudents = [];
+  
+  students.forEach(student => {
+    const counsellorId = student[counsellorIdField];
+    if (counsellorId && counsellorId.trim() !== '') {
+      studentCounsellorMap[student.student_id] = counsellorId;
+    } else {
+      studentCounsellorMap[student.student_id] = null;
+      unassignedStudents.push(student.student_id);
+    }
+  });
+
+  // Log unassigned students for debugging
+  if (unassignedStudents.length > 0) {
+    console.log(`${level.toUpperCase()} Unassigned Students:`, unassignedStudents);
+  }
+
+  const counsellorCounts = {};
   const statusTotals = {};
+  const uniqueCombinations = new Set();
 
-  statuses.forEach((status) => {
-    statusTotals[status] = 0;
-  });
+  latestRecords.forEach(record => {
+    const counsellorId = studentCounsellorMap[record.student_id];
+    const status = record.course_status;
 
-  counsellorData.forEach((item) => {
-    const counsellor = item.counsellor;
-    const status = item.status;
-    const count = parseInt(item.count) || 0;
+    // Use "Unassigned" for students without counsellor
+    const displayCounsellorId = counsellorId || "unassigned";
 
-    if (!pivotData[counsellor]) {
-      pivotData[counsellor] = {
-        counsellor: counsellor,
+    const combinationKey = `${displayCounsellorId}_${record.student_id}_${record.course_id}`;
+    
+    if (uniqueCombinations.has(combinationKey)) {
+      return;
+    }
+    uniqueCombinations.add(combinationKey);
+
+    if (!counsellorCounts[displayCounsellorId]) {
+      counsellorCounts[displayCounsellorId] = {
+        counsellorId: displayCounsellorId,
         total: 0,
+        statuses: {}
       };
-      counsellorTotals[counsellor] = 0;
-
-      statuses.forEach((status) => {
-        pivotData[counsellor][status] = 0;
-      });
     }
 
-    if (status && pivotData[counsellor].hasOwnProperty(status)) {
-      pivotData[counsellor][status] = count;
-      pivotData[counsellor].total += count;
-      counsellorTotals[counsellor] += count;
-      statusTotals[status] = (statusTotals[status] || 0) + count;
+    if (!counsellorCounts[displayCounsellorId].statuses[status]) {
+      counsellorCounts[displayCounsellorId].statuses[status] = 0;
     }
+
+    counsellorCounts[displayCounsellorId].statuses[status]++;
+    counsellorCounts[displayCounsellorId].total++;
+
+    if (!statusTotals[status]) {
+      statusTotals[status] = 0;
+    }
+    statusTotals[status]++;
   });
 
-  const grandTotal = Object.values(counsellorTotals).reduce(
-    (sum, total) => sum + total,
-    0,
-  );
+  const counsellorIds = Object.keys(counsellorCounts);
+  
+  // Get counsellor names for assigned counsellors
+  const assignedCounsellorIds = counsellorIds.filter(id => id !== "unassigned");
+  const counsellorNameMap = {};
+  
+  if (assignedCounsellorIds.length > 0) {
+    const counsellors = await Counsellor.findAll({
+      where: {
+        counsellor_id: assignedCounsellorIds,
+      },
+      attributes: ["counsellor_id", "counsellor_name"],
+      raw: true,
+    });
+
+    counsellors.forEach(counsellor => {
+      counsellorNameMap[counsellor.counsellor_id] = counsellor.counsellor_name;
+    });
+  }
+
+  const allStatuses = Object.keys(statusTotals);
+  
+  const rows = Object.values(counsellorCounts).map(item => {
+    let counsellorName;
+    if (item.counsellorId === "unassigned") {
+      counsellorName = "Unassigned";
+    } else {
+      counsellorName = counsellorNameMap[item.counsellorId] || `Unknown (${item.counsellorId})`;
+    }
+
+    const row = {
+      counsellor: counsellorName,
+      total: item.total
+    };
+
+    allStatuses.forEach(status => {
+      row[status] = item.statuses[status] || 0;
+    });
+
+    return row;
+  });
+
+  rows.sort((a, b) => {
+    // Put "Unassigned" at the end
+    if (a.counsellor === "Unassigned") return 1;
+    if (b.counsellor === "Unassigned") return -1;
+    return a.counsellor.localeCompare(b.counsellor);
+  });
+
+  const grandTotal = rows.reduce((sum, row) => sum + row.total, 0);
 
   return {
     view: `${level}-pivot`,
-    rows: Object.values(pivotData),
-    columns: ["counsellor", ...statuses, "total"],
-    statuses: statuses,
+    rows: rows,
+    columns: ["counsellor", ...allStatuses, "total"],
+    statuses: allStatuses,
     level: level,
     totals: {
       statusTotals,

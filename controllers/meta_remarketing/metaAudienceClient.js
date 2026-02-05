@@ -1,9 +1,10 @@
 import axios from "axios";
 import crypto from "crypto";
+import { MetaConfig } from "../../config/meta.js";
+import { response } from "express";
 
 const AD_ACCOUNT_ID = process.env.META_AD_ACCOUNT_ID;
 const ACCESS_TOKEN = process.env.META_GROUP_ACCESS_TOKEN;
-const GRAPH_VERSION = "v19.0";
 
 
 const hash = (value) =>
@@ -37,7 +38,7 @@ export const createCustomAudience = async (name) => {
   try {
     const safeName = sanitizeAudienceName(name);
 
-    const endpoint = `https://graph.facebook.com/${GRAPH_VERSION}/act_${AD_ACCOUNT_ID}/customaudiences`;
+    const endpoint = `${MetaConfig.GRAPH_API}/act_${AD_ACCOUNT_ID}/customaudiences`;
 
     const res = await axios.post(endpoint, {
       name: name,
@@ -56,7 +57,7 @@ export const createCustomAudience = async (name) => {
 
 export const addUserToAudience = async ({ audienceId, lead }) => {
   try {
-    const endpoint = `https://graph.facebook.com/${GRAPH_VERSION}/${audienceId}/users`;
+    const endpoint = `${MetaConfig.GRAPH_API}/${audienceId}/users`;
 
     const normalizedLead = normalizeLeadForMeta(lead);
 
@@ -71,12 +72,12 @@ export const addUserToAudience = async ({ audienceId, lead }) => {
       schema: ["EMAIL", "PHONE"],
       data: [[hashedEmail, hashedPhone]]
     };
-
+    
     const res = await axios.post(endpoint, {
       payload,
       access_token: ACCESS_TOKEN
     });
-
+    console.log('resposne data',res.data)
     return res.data;
   } catch (error) {
     

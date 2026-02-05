@@ -3,6 +3,7 @@ import MetaAdsToken from '../../models/ads/meta-token.js';
 import MetaAdsLead from '../../models/ads/meta.js';
 import sendMail from '../../config/MetaEmail.js';
 import {mapAnswersByKeyword} from '../../utils/keywords.js'
+import { getMetaUrl } from '../../config/meta.js';
 export const Webhook = (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -124,7 +125,7 @@ async function fetchLeadDataWithCampaign(id) {
     if (!tokenData) throw new Error('No page token found in DB');
     const accessToken = tokenData.page_access_token;
 
-    const leadUrl = `https://graph.facebook.com/v19.0/${id}?fields=ad_id,ad_name,field_data,created_time&access_token=${accessToken}`;
+    const leadUrl = getMetaUrl(`${id}?fields=ad_id,ad_name,field_data,created_time&access_token=${accessToken}`);
     const leadResponse = await axios.get(leadUrl);
     const leadData = leadResponse.data;
     const adId = leadData.ad_id;
@@ -134,7 +135,7 @@ async function fetchLeadDataWithCampaign(id) {
       return { lead: leadData, campaign: null };
     }
 
-    const adUrl = `https://graph.facebook.com/v19.0/${adId}?fields=campaign_id&access_token=${accessToken}`;
+    const adUrl = getMetaUrl(`${adId}?fields=campaign_id&access_token=${accessToken}`);
     const adResponse = await axios.get(adUrl);
     const campaignId = adResponse.data.campaign_id;
 
@@ -143,7 +144,7 @@ async function fetchLeadDataWithCampaign(id) {
       return { lead: leadData, campaign: null };
     }
 
-    const campaignUrl = `https://graph.facebook.com/v19.0/${campaignId}?fields=name,status,buying_type&access_token=${accessToken}`;
+    const campaignUrl = getMetaUrl(`${campaignId}?fields=name,status,buying_type&access_token=${accessToken}`);
     const campaignResponse = await axios.get(campaignUrl);
     const campaignData = campaignResponse.data;
 

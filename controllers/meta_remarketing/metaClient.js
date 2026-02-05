@@ -1,6 +1,7 @@
 import axios from "axios";
 import crypto from "crypto";
 import MetaEventLog from "../../models/MetaEventLog.js";
+import { MetaConfig } from "../../config/meta.js";
 
 
 const hash = (v) =>
@@ -24,7 +25,7 @@ export const sendMetaEventOnce = async ({
 const PIXEL_ID = source=='Facebook' ? process.env.META_PIXEL_ID : process.env.UA_META_PIXEL_ID;
 const TOKEN = source=='Facebook' ? process.env.META_PIXEL_TOKEN : process.env.UA_META_PIXEL_TOKEN;
 
-const ENDPOINT = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events`;
+const ENDPOINT = `${MetaConfig.GRAPH_API}/${PIXEL_ID}/events`;
 
   try {
     await MetaEventLog.create({

@@ -12,6 +12,7 @@ import {
   sequelize,
   Supervisor,
   AnalyserUser,
+  Message,
 } from "../models/index.js";
 import {
   processStudentLead,
@@ -77,7 +78,9 @@ export const createStudent = async (req, res) => {
 
       const studentWithUTM = {
         ...result.student.dataValues,
-        utmCampaign: result.leadActivity.dataValues.utm_campaign || result.student?.utmCampaign, // Make sure this is included
+        utmCampaign:
+          result.leadActivity.dataValues.utm_campaign ||
+          result.student?.utmCampaign, // Make sure this is included
         first_source_url:
           result.student?.first_source_url || leadData.SourceUrl,
         source: result.student?.source || leadData.source,
@@ -107,7 +110,12 @@ export const createStudent = async (req, res) => {
     });
   }
 };
-
+const COUNTRY_CODE = "91";
+const ensureCountryCode = (phoneNumber) => {
+  return phoneNumber?.startsWith(COUNTRY_CODE)
+    ? phoneNumber
+    : `${COUNTRY_CODE}${phoneNumber}`;
+};
 export const updateStudentStatus = async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -221,6 +229,28 @@ export const updateStudentStatus = async (req, res) => {
       const studentleadActivityDetails = await StudentLeadActivity.findOne({
         where: { student_id: studentId },
       });
+      const studentPhoneWithCountryCode = ensureCountryCode(
+        studentDetails.dataValues.student_phone,
+      );
+      const messages = await Message.findAll({
+        where: {
+          [Op.or]: [
+            { sender: studentPhoneWithCountryCode },
+            { receiver: studentPhoneWithCountryCode },
+          ],
+        },
+        order: [["timestamp", "ASC"]],
+      });
+      const formattedMessages = messages.map((msg) => ({
+        message_id: msg.message_id,
+        message: msg.message,
+        message_type: msg.message_type,
+        sender: msg.sender,
+        receiver: msg.receiver,
+        direction: msg.direction,
+        timestamp: msg.timestamp,
+        is_read: msg.is_read,
+      }));
       const payload = {
         name: studentDetails.dataValues.student_name,
         email: studentDetails.dataValues.student_email,
@@ -231,6 +261,7 @@ export const updateStudentStatus = async (req, res) => {
         utm_campaign: studentleadActivityDetails.dataValues.utm_campaign,
         utm_campaign_id: studentleadActivityDetails.dataValues.utm_campaign_id,
         student_comment: studentleadActivityDetails.dataValues.student_comment,
+        whatsapp_messages: formattedMessages,
       };
       console.log(payload);
       const response = await axios.post(

@@ -4,6 +4,8 @@ import {
   Student,
   StudentLeadActivity,
   StudentRemark,
+  Chat,
+  Message,
 } from "../models/index.js";
 import { createLeadLog } from "../controllers/Lead_logs.controller.js";
 import { DATE, Op } from "sequelize";
@@ -373,6 +375,196 @@ export const assignLeadHelper = async (leadData) => {
     };
   }
 };
+const COUNTRY_CODE = "91";
+const ensureCountryCode = (phoneNumber) => {
+  return phoneNumber?.startsWith(COUNTRY_CODE)
+    ? phoneNumber
+    : `${COUNTRY_CODE}${phoneNumber}`;
+};
+export const createChatAndMessagesFromLead = async (studentPhone, leadData) => {
+  try {
+    // Get the student's phone with country code
+    const studentPhoneWithCountryCode = ensureCountryCode(studentPhone);
+
+    // Get WhatsApp messages from lead data
+    const whatsappMessages =
+      leadData.whatsapp_messages || leadData.whatsappMessages || [];
+    console.log(whatsappMessages);
+    if (whatsappMessages.length === 0) {
+      return {
+        success: false,
+        message: "No WhatsApp messages found in lead data",
+        chatId: null,
+        messagesImported: 0,
+      };
+    }
+
+    // Find business number from messages
+    // Business number will be the one that's NOT the student's number
+    let businessNumber = null;
+
+    // Try to find business number from messages
+    for (const msg of whatsappMessages) {
+      if (msg.sender && msg.sender !== studentPhoneWithCountryCode) {
+        businessNumber = msg.sender;
+        break;
+      }
+      if (msg.receiver && msg.receiver !== studentPhoneWithCountryCode) {
+        businessNumber = msg.receiver;
+        break;
+      }
+    }
+
+    // If still no business number found, use default FROM_NUMBER
+    if (!businessNumber) {
+      businessNumber = FROM_NUMBER; // From your config
+      console.log(`Using default business number: ${businessNumber}`);
+    }
+
+    console.log(`Detected business number: ${businessNumber}`);
+    console.log(`Student number: ${studentPhoneWithCountryCode}`);
+
+    // Check if chat already exists
+    const existingChat = await Chat.findOne({
+      where: {
+        participants: {
+          [Op.contains]: [studentPhoneWithCountryCode, businessNumber],
+        },
+      },
+    });
+
+    let chat;
+
+    if (existingChat) {
+      chat = existingChat;
+      console.log(`Chat already exists for student ${studentPhone}`);
+    } else {
+      // Create new chat
+      chat = await Chat.create({
+        participants: [studentPhoneWithCountryCode, businessNumber],
+        initiated_by: studentPhoneWithCountryCode,
+        is_locked: false,
+        created_at: new Date(),
+      });
+      console.log(
+        `Created new chat for student ${studentPhone}, chat_id: ${chat.chat_id}`,
+      );
+    }
+
+    // Import messages
+    let importedCount = 0;
+    let latestTimestamp = null;
+
+    for (const msgData of whatsappMessages) {
+      try {
+        // Determine sender and receiver
+        let sender, receiver, direction;
+
+        if (msgData.sender && msgData.receiver) {
+          // If message has explicit sender/receiver
+          sender = msgData.sender;
+          receiver = msgData.receiver;
+          direction = sender === businessNumber ? "sent" : "received";
+        } else if (msgData.direction) {
+          // If message has direction field
+          direction = msgData.direction;
+          if (direction === "sent") {
+            sender = businessNumber;
+            receiver = studentPhoneWithCountryCode;
+          } else {
+            sender = studentPhoneWithCountryCode;
+            receiver = businessNumber;
+          }
+        } else {
+          // Default: assume message from student
+          sender = studentPhoneWithCountryCode;
+          receiver = businessNumber;
+          direction = "received";
+        }
+
+        // Parse timestamp
+        let timestamp;
+        if (msgData.timestamp) {
+          timestamp = new Date(msgData.timestamp);
+        } else if (msgData.created_at) {
+          timestamp = new Date(msgData.created_at);
+        } else {
+          timestamp = new Date(); // Current time as fallback
+        }
+
+        // Check if message already exists (by message_id or content/timestamp)
+        const existingMessage = await Message.findOne({
+          where: {
+            chat_id: chat.chat_id,
+            [Op.or]: [
+              { message_id: msgData.message_id },
+              {
+                [Op.and]: [
+                  { message: msgData.message || msgData.text || "" },
+                  { timestamp: timestamp },
+                ],
+              },
+            ],
+          },
+        });
+
+        if (!existingMessage) {
+          await Message.create({
+            chat_id: chat.chat_id,
+            message_id: msgData.message_id || uuidv4(),
+            message: msgData.message || msgData.text || "",
+            message_type: msgData.message_type || "text",
+            sender: sender,
+            receiver: receiver,
+            direction: direction,
+            timestamp: timestamp,
+            is_read: msgData.is_read || false,
+            read_at: msgData.read_at ? new Date(msgData.read_at) : null,
+          });
+
+          importedCount++;
+
+          // Track latest timestamp
+          if (!latestTimestamp || timestamp > latestTimestamp) {
+            latestTimestamp = timestamp;
+          }
+        } else {
+          console.log(
+            `Message already exists, skipping: ${msgData.message?.substring(0, 50)}...`,
+          );
+        }
+      } catch (msgError) {
+        console.error(`Error importing message:`, msgError);
+      }
+    }
+
+    // Update chat's last message time
+    if (latestTimestamp) {
+      await chat.update({
+        last_message_time: latestTimestamp,
+      });
+    }
+
+    console.log(
+      `Successfully imported ${importedCount}/${whatsappMessages.length} messages for student ${studentPhone}`,
+    );
+
+    return {
+      success: true,
+      chatId: chat.chat_id,
+      messagesImported: importedCount,
+      totalMessages: whatsappMessages.length,
+      chatCreated: !existingChat,
+      businessNumber: businessNumber,
+    };
+  } catch (error) {
+    console.error("Error creating chat/messages from lead:", error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+};
 export const ProceessLeads = async (leads) => {};
 export const processStudentLead = async (leadData) => {
   if (
@@ -623,9 +815,17 @@ export const processStudentLead = async (leadData) => {
       leadData.Degree ||
       leadData.DEGREE ||
       "",
-    is_transfer: leadData.is_transfer || false,
+    is_transfered: leadData.is_transfered || false,
   };
-  // console.log(mappedLeadData);
+  const messages =
+    leadData.whatsapp_messages || leadData.whatsappMessages || [];
+  const chatResult = await createChatAndMessagesFromLead(
+    mappedLeadData.phoneNumber,
+    {
+      ...mappedLeadData,
+      whatsapp_messages: messages,
+    },
+  );
   const assignmentResult = await assignLeadHelper(mappedLeadData);
   if (!assignmentResult.success) {
     return {
@@ -735,6 +935,7 @@ export const processStudentLead = async (leadData) => {
       work_experience: mappedLeadData.work_experience,
       student_age: Number(mappedLeadData.student_age || 0),
       objective: mappedLeadData.objective,
+      is_transfered: mappedLeadData.is_transfered || false,
     };
 
     student = await Student.create(newStudentData);

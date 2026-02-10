@@ -3,6 +3,7 @@ import MetaAdsToken from '../../models/ads/meta-token.js';
 import MetaAdsLead from '../../models/ads/meta.js';
 import sendMail from '../../config/MetaEmail.js';
 import {mapAnswersByKeyword} from '../../utils/keywords.js'
+import { getMetaUrl } from '../../config/meta.js';
 export const Webhook = (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -124,7 +125,7 @@ async function fetchLeadDataWithCampaign(id) {
     if (!tokenData) throw new Error('No page token found in DB');
     const accessToken = tokenData.page_access_token;
 
-    const leadUrl = `https://graph.facebook.com/v19.0/${id}?fields=ad_id,ad_name,field_data,created_time&access_token=${accessToken}`;
+    const leadUrl = getMetaUrl(`${id}?fields=ad_id,ad_name,field_data,created_time&access_token=${accessToken}`);
     const leadResponse = await axios.get(leadUrl);
     const leadData = leadResponse.data;
     const adId = leadData.ad_id;
@@ -134,7 +135,7 @@ async function fetchLeadDataWithCampaign(id) {
       return { lead: leadData, campaign: null };
     }
 
-    const adUrl = `https://graph.facebook.com/v19.0/${adId}?fields=campaign_id&access_token=${accessToken}`;
+    const adUrl = getMetaUrl(`${adId}?fields=campaign_id&access_token=${accessToken}`);
     const adResponse = await axios.get(adUrl);
     const campaignId = adResponse.data.campaign_id;
 
@@ -143,7 +144,7 @@ async function fetchLeadDataWithCampaign(id) {
       return { lead: leadData, campaign: null };
     }
 
-    const campaignUrl = `https://graph.facebook.com/v19.0/${campaignId}?fields=name,status,buying_type&access_token=${accessToken}`;
+    const campaignUrl = getMetaUrl(`${campaignId}?fields=name,status,buying_type&access_token=${accessToken}`);
     const campaignResponse = await axios.get(campaignUrl);
     const campaignData = campaignResponse.data;
 
@@ -175,36 +176,14 @@ function extractAdditionalFields(fieldDataArray) {
 
 
 export const Manual = async (req, res) => {
-  const ids = [1928450754646775, 1262950458673098];
+  const ids = [1597479848113379, 1509615670268300];
   try {
     const response = [];
 
     for (const form_id of ids) {
-      const lead = await MetaAdsLead.findOne({ where: { form_id } });
+      const leadData=await fetchLeadDataWithCampaign(form_id)
 
-      if (!lead) {
-        response.push(`Lead with form_id ${form_id} not found`);
-        continue;
-      }
-
-      await axios.post('http://localhost:3031/v1/student/create', {
-        name: lead.full_name || '',
-        phone_number: lead.phone_number?.length >= 13
-          ? lead.phone_number.slice(3)
-          : lead.phone_number || '',
-        email: lead.email || '',
-        preferred_city: lead.city || '',
-        source: 'FaceBook',
-        form_name: lead.form_id,
-        sourceUrl: lead.source_url || '',
-        utm_campaign: lead.campaign_name || '',
-        utm_campaign_id: lead.form_id,
-        student_comment: formatToQuestionAnswerArray(lead.additional_fields || {}),
-        mode: 'Online',
-      });
-
-      console.log(`Lead ${form_id} posted successfully`);
-      response.push(`Lead ${form_id} posted successfully`);
+      response.push(leadData);
     }
 
     return res.status(200).json({

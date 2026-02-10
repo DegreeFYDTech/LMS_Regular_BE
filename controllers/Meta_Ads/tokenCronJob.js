@@ -2,6 +2,7 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import Token from '../../models/ads/meta-token.js';
 import Lead from '../../models/ads/meta.js';
+import { getMetaUrl } from '../../config/meta.js';
 
 dotenv.config();
 
@@ -17,7 +18,7 @@ async function refreshPageToken() {
 
     const longLivedUserToken = tokenData.long_lived_user_token;
 
-    const response = await axios.get(`https://graph.facebook.com/v17.0/${PAGE_ID}`, {
+    const response = await axios.get(getMetaUrl(`${PAGE_ID}`), {
       params: {
         fields: 'access_token',
         access_token: longLivedUserToken
@@ -48,7 +49,7 @@ export async function checkToken() {
   const pageAccessToken = tokenDoc.page_access_token;
 
   try {
-    const response = await axios.get(`https://graph.facebook.com/v19.0/me?access_token=${pageAccessToken}`);
+    const response = await axios.get(getMetaUrl(`me?access_token=${pageAccessToken}`));
     console.log('✅ Token is valid:', response.data);
   } catch (err) {
     console.error('❌ Token failed:', err.response?.data?.error || err.message);
@@ -66,13 +67,13 @@ export async function getUserLeads() {
     }
 
     const pageAccessToken = tokenDoc.page_access_token;
-    const url = `https://graph.facebook.com/v19.0/${tokenDoc.page_id}/leadgen_forms?access_token=${pageAccessToken}`;
+    const url = getMetaUrl(`${tokenDoc.page_id}/leadgen_forms?access_token=${pageAccessToken}`);
     const response = await axios.get(url);
     const leadForms = response.data.data;
 
     if (leadForms && leadForms.length > 0) {
       for (let form of leadForms) {
-        let leadsUrl = `https://graph.facebook.com/v19.0/1310281557399068/leads?access_token=${pageAccessToken}`;
+        let leadsUrl = getMetaUrl(`1310281557399068/leads?access_token=${pageAccessToken}`);
 
         while (leadsUrl) {
           const leadsResponse = await axios.get(leadsUrl);
@@ -111,12 +112,12 @@ export async function getUserLeads() {
             const adId = lead.ad_id;
             if (adId) {
               try {
-                const adDetailsRes = await axios.get(`https://graph.facebook.com/v19.0/${adId}?fields=campaign_id&access_token=${pageAccessToken}`);
+                const adDetailsRes = await axios.get(getMetaUrl(`${adId}?fields=campaign_id&access_token=${pageAccessToken}`));
                 const campaignId = adDetailsRes.data.campaign_id;
                 leadData.campaign_id = campaignId;
 
                 if (campaignId) {
-                  const campaignRes = await axios.get(`https://graph.facebook.com/v19.0/${campaignId}?fields=name&access_token=${pageAccessToken}`);
+                  const campaignRes = await axios.get(getMetaUrl(`${campaignId}?fields=name&access_token=${pageAccessToken}`));
                   leadData.campaign_name = campaignRes.data.name;
                 }
               } catch (error) {

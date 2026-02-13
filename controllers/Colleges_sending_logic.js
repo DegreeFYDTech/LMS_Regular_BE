@@ -994,11 +994,30 @@ async function handleShooliniOnline(
           phone_number: "student_phone",
           name: "student_name",
           email: "student_email",
+          preferred_state: "preferredState", // added mapping for state
+          preferred_city: "preferred_city", // optional, if you want city too
         };
         const actualKey = mapping[userKey] || userKey;
-        finalValue = userResponse[actualKey] || "";
-      } else {
-        finalValue = value;
+        let userValue = userResponse[actualKey];
+
+        // handle array values like in primary
+        if (Array.isArray(userValue)) {
+          userValue = userValue.length > 0 ? userValue[0] : "";
+        }
+
+        // handle defaults for state/city
+        if (actualKey === "preferredState") {
+          finalValue = userValue?.trim() ? userValue : "Himachal Pradesh";
+        } else if (actualKey === "preferredCity") {
+          finalValue =
+            userValue?.trim() &&
+            !userValue.toLowerCase().includes("himachal") &&
+            !userValue.toLowerCase().includes("pradesh")
+              ? userValue
+              : "Solan";
+        } else {
+          finalValue = userValue || "";
+        }
       }
     } else {
       if (typeof value === "string" && value.startsWith("student.")) {
@@ -1961,7 +1980,9 @@ async function handleAmityOnline(
   sendType,
   studentEmail,
   studentPhone,
-  isPrimary,courseId,isPartnerPortal
+  isPrimary,
+  courseId,
+  isPartnerPortal,
 ) {
   console.log(`🎯 Handling Amity Online: ${collegeName}`, { isPrimary });
 

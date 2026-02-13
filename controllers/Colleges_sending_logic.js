@@ -955,7 +955,7 @@ async function handleShooliniOnline(
 
   const values = courseHeaderValue.values;
   const baseApiUrl = values.API_URL;
-  const accessKey = "u%24rd53cce72e496bc20ac70147b0b1e78b9";
+  const accessKey = "u$rd53cce72e496bc20ac70147b0b1e78b9"; 
   const secretKey = values.secretKey;
   const leadUpdateBehavior = values.LeadUpdateBehavior;
 
@@ -983,55 +983,54 @@ async function handleShooliniOnline(
 
     let finalValue;
 
-   if (!isPrimary) {
-  if (key === "EmailAddress" && studentEmail) {
-    finalValue = studentEmail;
-  } else if (key === "Phone" && studentPhone) {
-    finalValue = studentPhone;
-  } else if (typeof value === "string" && value.startsWith("student.")) {
-    const userKey = value.replace("student.", "");
-    const mapping = {
-      phone_number: "student_phone",
-      name: "student_name",
-      email: "student_email",
-      preferred_state: "preferredState", 
-      preferred_city: "preferred_city",  
-      program: "selectedProgram"         
-    };
-    const actualKey = mapping[userKey] || userKey;
-    let userValue = userResponse[actualKey];
+    if (!isPrimary) {
+      if (key === "EmailAddress" && studentEmail) {
+        finalValue = studentEmail;
+      } else if (key === "Phone" && studentPhone) {
+        finalValue = studentPhone;
+      } else if (typeof value === "string" && value.startsWith("student.")) {
+        const userKey = value.replace("student.", "");
+        const mapping = {
+          phone_number: "student_phone",
+          name: "student_name",
+          email: "student_email",
+          preferred_state: "preferredState",
+          preferred_city: "preferred_city",
+          program: "selectedProgram",
+        };
+        const actualKey = mapping[userKey] || userKey;
+        let userValue = userResponse[actualKey];
 
-    if (Array.isArray(userValue)) {
-      userValue = userValue.length > 0 ? userValue[0] : "";
-    }
+        if (Array.isArray(userValue)) {
+          userValue = userValue.length > 0 ? userValue[0] : "";
+        }
 
-    if (actualKey === "preferredState") {
-      finalValue = userValue?.trim() ? userValue : "Himachal Pradesh";
-    } else if (actualKey === "preferredCity") {
-      finalValue =
-        userValue?.trim() &&
-        !userValue.toLowerCase().includes("himachal") &&
-        !userValue.toLowerCase().includes("pradesh")
-          ? userValue
-          : "Solan";
-    } else if (actualKey === "program") {
-      finalValue = userValue?.trim() || "Default Program";
+        if (actualKey === "preferredState") {
+          finalValue = userValue?.trim() ? userValue : "Himachal Pradesh";
+        } else if (actualKey === "preferredCity") {
+          finalValue =
+            userValue?.trim() &&
+            !userValue.toLowerCase().includes("himachal") &&
+            !userValue.toLowerCase().includes("pradesh")
+              ? userValue
+              : "Solan";
+        } else if (actualKey === "program") {
+          finalValue = userValue?.trim() || "Default Program";
+        } else {
+          finalValue = userValue || "";
+        }
+      } else {
+        if (key === "mx_Present_State") {
+          finalValue = value?.trim() || "Himachal Pradesh";
+        } else if (key === "mx_Present_City") {
+          finalValue = value?.trim() || "Solan";
+        } else if (key === "mx_Select_Program") {
+          finalValue = value?.trim() || "Default Program";
+        } else {
+          finalValue = value;
+        }
+      }
     } else {
-      finalValue = userValue || "";
-    }
-  } else {
-    if (key === "mx_Present_State") {
-      finalValue = value?.trim() || "Himachal Pradesh";
-    } else if (key === "mx_Present_City") {
-      finalValue = value?.trim() || "Solan";
-    } else if (key === "mx_Select_Program") {
-      finalValue = value?.trim() || "Default Program";
-    } else {
-      finalValue = value;
-    }
-  }
-}
-else {
       if (typeof value === "string" && value.startsWith("student.")) {
         const userKey = value.replace("student.", "");
         const mapping = {

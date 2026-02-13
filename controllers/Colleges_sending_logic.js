@@ -983,43 +983,56 @@ async function handleShooliniOnline(
 
     let finalValue;
 
-    if (!isPrimary) {
-      if (key === "EmailAddress" && studentEmail) {
-        finalValue = studentEmail;
-      } else if (key === "Phone" && studentPhone) {
-        finalValue = studentPhone;
-      } else if (typeof value === "string" && value.startsWith("student.")) {
-        const userKey = value.replace("student.", "");
-        const mapping = {
-          phone_number: "student_phone",
-          name: "student_name",
-          email: "student_email",
-          preferred_state: "preferredState", // added mapping for state
-          preferred_city: "preferred_city", // optional, if you want city too
-        };
-        const actualKey = mapping[userKey] || userKey;
-        let userValue = userResponse[actualKey];
+   if (!isPrimary) {
+  if (key === "EmailAddress" && studentEmail) {
+    finalValue = studentEmail;
+  } else if (key === "Phone" && studentPhone) {
+    finalValue = studentPhone;
+  } else if (typeof value === "string" && value.startsWith("student.")) {
+    const userKey = value.replace("student.", "");
+    const mapping = {
+      phone_number: "student_phone",
+      name: "student_name",
+      email: "student_email",
+      preferred_state: "preferredState", // state mapping
+      preferred_city: "preferred_city",  // city mapping
+      program: "selectedProgram"         // program/course mapping
+    };
+    const actualKey = mapping[userKey] || userKey;
+    let userValue = userResponse[actualKey];
 
-        // handle array values like in primary
-        if (Array.isArray(userValue)) {
-          userValue = userValue.length > 0 ? userValue[0] : "";
-        }
+    if (Array.isArray(userValue)) {
+      userValue = userValue.length > 0 ? userValue[0] : "";
+    }
 
-        // handle defaults for state/city
-        if (actualKey === "preferredState") {
-          finalValue = userValue?.trim() ? userValue : "Himachal Pradesh";
-        } else if (actualKey === "preferredCity") {
-          finalValue =
-            userValue?.trim() &&
-            !userValue.toLowerCase().includes("himachal") &&
-            !userValue.toLowerCase().includes("pradesh")
-              ? userValue
-              : "Solan";
-        } else {
-          finalValue = userValue || "";
-        }
-      }
+    if (actualKey === "preferredState") {
+      finalValue = userValue?.trim() ? userValue : "Himachal Pradesh";
+    } else if (actualKey === "preferredCity") {
+      finalValue =
+        userValue?.trim() &&
+        !userValue.toLowerCase().includes("himachal") &&
+        !userValue.toLowerCase().includes("pradesh")
+          ? userValue
+          : "Solan";
+    } else if (actualKey === "program") {
+      finalValue = userValue?.trim() || "Default Program";
     } else {
+      finalValue = userValue || "";
+    }
+  } else {
+    // Direct mapping for payload attributes like mx_Present_state, mx_Select_Program
+    if (key === "mx_Present_state") {
+      finalValue = value?.trim() || "Himachal Pradesh";
+    } else if (key === "mx_Present_City") {
+      finalValue = value?.trim() || "Solan";
+    } else if (key === "mx_Select_Program") {
+      finalValue = value?.trim() || "Default Program";
+    } else {
+      finalValue = value;
+    }
+  }
+}
+else {
       if (typeof value === "string" && value.startsWith("student.")) {
         const userKey = value.replace("student.", "");
         const mapping = {

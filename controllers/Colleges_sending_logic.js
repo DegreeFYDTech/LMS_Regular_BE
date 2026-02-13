@@ -1021,7 +1021,7 @@ async function handleShooliniOnline(
     }
   } else {
     // Direct mapping for payload attributes like mx_Present_state, mx_Select_Program
-    if (key === "mx_Present_state") {
+    if (key === "mx_Present_State") {
       finalValue = value?.trim() || "Himachal Pradesh";
     } else if (key === "mx_Present_City") {
       finalValue = value?.trim() || "Solan";

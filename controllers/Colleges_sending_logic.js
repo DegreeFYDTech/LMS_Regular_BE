@@ -1950,7 +1950,7 @@ async function handleGalgotiasOnline(
     email:
       !isPrimary && studentEmail ? studentEmail : userResponse.student_email,
   });
-
+console.log(apiUrl,headers,transformedPayload,"harsh")
   try {
     const apiResponse = await axios({
       method: "POST",

@@ -955,7 +955,7 @@ async function handleShooliniOnline(
 
   const values = courseHeaderValue.values;
   const baseApiUrl = values.API_URL;
-  const accessKey = values.accessKey;
+  const accessKey = "u%24rd53cce72e496bc20ac70147b0b1e78b9";
   const secretKey = values.secretKey;
   const leadUpdateBehavior = values.LeadUpdateBehavior;
 
@@ -994,9 +994,9 @@ async function handleShooliniOnline(
       phone_number: "student_phone",
       name: "student_name",
       email: "student_email",
-      preferred_state: "preferredState", // state mapping
-      preferred_city: "preferred_city",  // city mapping
-      program: "selectedProgram"         // program/course mapping
+      preferred_state: "preferredState", 
+      preferred_city: "preferred_city",  
+      program: "selectedProgram"         
     };
     const actualKey = mapping[userKey] || userKey;
     let userValue = userResponse[actualKey];
@@ -1020,7 +1020,6 @@ async function handleShooliniOnline(
       finalValue = userValue || "";
     }
   } else {
-    // Direct mapping for payload attributes like mx_Present_state, mx_Select_Program
     if (key === "mx_Present_State") {
       finalValue = value?.trim() || "Himachal Pradesh";
     } else if (key === "mx_Present_City") {

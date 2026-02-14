@@ -13,6 +13,7 @@ import {
   Supervisor,
   AnalyserUser,
   Message,
+  Payment,
 } from "../models/index.js";
 import {
   processStudentLead,
@@ -547,6 +548,12 @@ export const getStudentById = async (req, res) => {
               required: false,
             },
           ],
+        },
+        {
+          model: Payment,
+          as: "payments",
+          required: false,
+          order: [['created_at', 'DESC']]
         },
       ],
     });
@@ -1231,10 +1238,10 @@ export const addLeadDirect = async (req, res) => {
         ...lead.toJSON(),
         referenceStudent: referenceStudent
           ? {
-              student_id: referenceStudent.student_id,
-              student_name: referenceStudent.student_name,
-              student_email: referenceStudent.student_email,
-            }
+            student_id: referenceStudent.student_id,
+            student_name: referenceStudent.student_name,
+            student_email: referenceStudent.student_email,
+          }
           : null,
       },
     });

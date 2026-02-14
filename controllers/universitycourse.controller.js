@@ -159,6 +159,20 @@ export const getAllCourses = async (req, res) => {
 
     const where = {};
 
+    // ====== Hardcoded Regular Universities List
+    const regularUniversities = [
+      "Amity University Bangalore",
+      "Amity University Gurugram",
+      "Amity University Gwalior",
+      "Amity University Jaipur",
+      "Amity University Lucknow",
+      "Amity University Mumbai",
+      "Amity University Raipur",
+      "Chandigarh Group of Colleges, Landran (CGC)",
+      "Chandigarh University, Mohali",
+      "Lovely Professional University"
+    ];
+
     // ====== Filters - EXACT DB field names
     if (universityName) {
       const namesArray = universityName.split(',').map(name => name.trim());
@@ -172,19 +186,32 @@ export const getAllCourses = async (req, res) => {
     if (specialization) where.specialization = { [Op.iLike]: `%${specialization}%` };
     if (level) where.level = { [Op.iLike]: `%${level}%` };
     if (durationType) where.duration_type = { [Op.iLike]: `%${durationType}%` };
-    if (studyMode) where.study_mode = { [Op.iLike]: `%${studyMode}%` };
     
-    // 👇 ADD STREAM FILTER (was missing)
+    // 👇 STUDY MODE FILTER - Hardcoded logic
+    if (studyMode) {
+      if (studyMode.toLowerCase() === "regular") {
+        // Only return courses from regular universities list
+        where.university_name = {
+          ...where.university_name,
+          [Op.in]: regularUniversities
+        };
+      } else if (studyMode.toLowerCase() === "online") {
+        // Return all courses NOT in regular universities list
+        where.university_name = {
+          ...where.university_name,
+          [Op.notIn]: regularUniversities
+        };
+      }
+    }
+    
     if (stream) {
       where.stream = { [Op.iLike]: `%${stream}%` };
     }
     
-    // 👇 ADD CITY FILTER
     if (city) {
       where.university_city = { [Op.iLike]: `%${city}%` };
     }
     
-    // 👇 ADD STATE FILTER
     if (state) {
       where.university_state = { [Op.iLike]: `%${state}%` };
     }
@@ -265,6 +292,15 @@ export const getAllCourses = async (req, res) => {
 
     const totalPages = Math.ceil(count / limitNum);
 
+    // Calculate counts based on hardcoded logic
+    const regularCount = coursesWithMappingFlag.filter(course => 
+      regularUniversities.includes(course.university_name)
+    ).length;
+    
+    const onlineCount_filtered = coursesWithMappingFlag.filter(course => 
+      !regularUniversities.includes(course.university_name)
+    ).length;
+
     res.status(200).json({
       success: true,
       data: coursesWithMappingFlag, // ✅ EXACT DB fields + hasApiMapping
@@ -277,11 +313,11 @@ export const getAllCourses = async (req, res) => {
         hasPrevPage: pageNum > 1,
       },
       statistics: {
-        total: totalCoursesCountFinal,        // ALL courses
+        total: totalCoursesCountFinal,
         active: activeCount,
         inactive: inactiveCount,
-        online: onlineCount,
-        offline: offlineCount,
+        online: onlineCount_filtered,     // Universities NOT in regular list
+        offline: regularCount,             // Universities IN regular list
         coursesWithApiMapping: coursesWithApiMappingCount,
         coursesWithoutApiMapping: coursesWithoutApiMappingCount,
         apiMappingPercentage: totalCoursesCountFinal > 0

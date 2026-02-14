@@ -151,6 +151,8 @@ export const getAllCourses = async (req, res) => {
       level,
       durationType,
       studyMode,
+      city,           // 👈 ADD THIS
+      state,          // 👈 ADD THIS
       status
     } = req.query;
 
@@ -170,6 +172,16 @@ export const getAllCourses = async (req, res) => {
     if (level) where.level = { [Op.iLike]: `%${level}%` };
     if (durationType) where.duration_type = { [Op.iLike]: `%${durationType}%` };
     if (studyMode) where.study_mode = { [Op.iLike]: `%${studyMode}%` };
+    
+    // 👇 ADD CITY FILTER
+    if (city) {
+      where.university_city = { [Op.iLike]: `%${city}%` };
+    }
+    
+    // 👇 ADD STATE FILTER
+    if (state) {
+      where.university_state = { [Op.iLike]: `%${state}%` };
+    }
 
     // ====== Status - SHOW ALL BY DEFAULT (Active + Inactive)
     if (status && status.toLowerCase() !== "all") {

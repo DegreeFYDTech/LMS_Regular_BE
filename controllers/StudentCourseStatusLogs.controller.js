@@ -256,7 +256,6 @@ const getCollegesPivotReport = async (
     ...new Set(collegeData.map((item) => item.status).filter(Boolean)),
   ];
 
-  // Process pivot data
   const pivotData = {};
   const collegeTotals = {};
   const statusTotals = {};

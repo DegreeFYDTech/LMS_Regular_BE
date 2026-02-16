@@ -176,7 +176,7 @@ export const getPaymentReports = async (req, res) => {
                 as: 'student', // Specify the alias used in the association
                 required: role === 'counsellor' || role === 'Counsellor',
                 where: studentWhere,
-                attributes: ['student_id', 'student_name', 'student_email', 'assigned_counsellor_id']
+                attributes: ['student_id', 'student_name','student_phone', 'student_email', 'assigned_counsellor_id']
             }],
             order: [['created_at', 'DESC']]
         });

@@ -205,7 +205,7 @@ export const updateStudentStatus = async (req, res) => {
         timestamp: new Date(),
       });
       const updated = await CourseStatus.update(
-        { latest_course_status: collegeCourseStatus },
+        { latest_course_status: collegeCourseStatus, created_by: counsellorId },
         { where: { course_id: selectedCourse, student_id: studentId } },
       );
     } else {

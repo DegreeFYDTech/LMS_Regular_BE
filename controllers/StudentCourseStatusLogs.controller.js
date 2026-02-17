@@ -80,7 +80,7 @@ export const createStatusLog = async (req, res) => {
       logId: log.status_history_id,
     });
     const updated = await CourseStatus.update(
-      { latest_course_status: status },
+      { latest_course_status: status, created_by: userId },
       { where: { course_id: courseId, student_id: studentId } },
     );
   } catch (error) {
@@ -313,9 +313,8 @@ const getCounsellorPivotReport = async (
   level,
   courseWhereClause,
 ) => {
-  const counsellorIdField = level === "l2" 
-    ? "assigned_counsellor_id" 
-    : "assigned_counsellor_l3_id";
+  const counsellorIdField =
+    level === "l2" ? "assigned_counsellor_id" : "assigned_counsellor_l3_id";
 
   const subqueryWhere = {};
 
@@ -376,20 +375,16 @@ const getCounsellorPivotReport = async (
         attributes: [],
       },
     ],
-    attributes: [
-      "student_id",
-      "course_id",
-      "course_status",
-    ],
+    attributes: ["student_id", "course_id", "course_status"],
     raw: true,
   });
 
   // Get ALL students, including those without assigned counsellors
-  const studentIds = [...new Set(latestRecords.map(r => r.student_id))];
-  
+  const studentIds = [...new Set(latestRecords.map((r) => r.student_id))];
+
   const students = await Student.findAll({
     where: {
-      student_id: studentIds
+      student_id: studentIds,
     },
     attributes: ["student_id", counsellorIdField],
     raw: true,
@@ -397,10 +392,10 @@ const getCounsellorPivotReport = async (
 
   const studentCounsellorMap = {};
   const unassignedStudents = [];
-  
-  students.forEach(student => {
+
+  students.forEach((student) => {
     const counsellorId = student[counsellorIdField];
-    if (counsellorId && counsellorId.trim() !== '') {
+    if (counsellorId && counsellorId.trim() !== "") {
       studentCounsellorMap[student.student_id] = counsellorId;
     } else {
       studentCounsellorMap[student.student_id] = null;
@@ -410,14 +405,17 @@ const getCounsellorPivotReport = async (
 
   // Log unassigned students for debugging
   if (unassignedStudents.length > 0) {
-    console.log(`${level.toUpperCase()} Unassigned Students:`, unassignedStudents);
+    console.log(
+      `${level.toUpperCase()} Unassigned Students:`,
+      unassignedStudents,
+    );
   }
 
   const counsellorCounts = {};
   const statusTotals = {};
   const uniqueCombinations = new Set();
 
-  latestRecords.forEach(record => {
+  latestRecords.forEach((record) => {
     const counsellorId = studentCounsellorMap[record.student_id];
     const status = record.course_status;
 
@@ -425,7 +423,7 @@ const getCounsellorPivotReport = async (
     const displayCounsellorId = counsellorId || "unassigned";
 
     const combinationKey = `${displayCounsellorId}_${record.student_id}_${record.course_id}`;
-    
+
     if (uniqueCombinations.has(combinationKey)) {
       return;
     }
@@ -435,7 +433,7 @@ const getCounsellorPivotReport = async (
       counsellorCounts[displayCounsellorId] = {
         counsellorId: displayCounsellorId,
         total: 0,
-        statuses: {}
+        statuses: {},
       };
     }
 
@@ -453,11 +451,13 @@ const getCounsellorPivotReport = async (
   });
 
   const counsellorIds = Object.keys(counsellorCounts);
-  
+
   // Get counsellor names for assigned counsellors
-  const assignedCounsellorIds = counsellorIds.filter(id => id !== "unassigned");
+  const assignedCounsellorIds = counsellorIds.filter(
+    (id) => id !== "unassigned",
+  );
   const counsellorNameMap = {};
-  
+
   if (assignedCounsellorIds.length > 0) {
     const counsellors = await Counsellor.findAll({
       where: {
@@ -467,27 +467,29 @@ const getCounsellorPivotReport = async (
       raw: true,
     });
 
-    counsellors.forEach(counsellor => {
+    counsellors.forEach((counsellor) => {
       counsellorNameMap[counsellor.counsellor_id] = counsellor.counsellor_name;
     });
   }
 
   const allStatuses = Object.keys(statusTotals);
-  
-  const rows = Object.values(counsellorCounts).map(item => {
+
+  const rows = Object.values(counsellorCounts).map((item) => {
     let counsellorName;
     if (item.counsellorId === "unassigned") {
       counsellorName = "Unassigned";
     } else {
-      counsellorName = counsellorNameMap[item.counsellorId] || `Unknown (${item.counsellorId})`;
+      counsellorName =
+        counsellorNameMap[item.counsellorId] ||
+        `Unknown (${item.counsellorId})`;
     }
 
     const row = {
       counsellor: counsellorName,
-      total: item.total
+      total: item.total,
     };
 
-    allStatuses.forEach(status => {
+    allStatuses.forEach((status) => {
       row[status] = item.statuses[status] || 0;
     });
 

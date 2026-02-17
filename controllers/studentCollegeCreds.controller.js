@@ -59,7 +59,6 @@ export const createStudentCollegeCreds = async (req, res) => {
       }
     }
 
-    // Chandigarh University validation
     if (college.includes("chandigarh")) {
       if (!/^\d{10}$/.test(userName)) {
         return res.status(400).json({

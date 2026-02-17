@@ -73,19 +73,19 @@ export const updatePaymentStatus = async (req, res) => {
           created_at: new Date(),
         });
         console.log("   Student remark created:", response.toJSON());
-        const l3data = await axios.post(
-          "http://localhost:3031/v1/leadassignmentl3/assign",
-          {
-            studentId: payment.student_id,
-            collegeName: payment.college_name,
-            Course: payment.course_name,
-            Degree: payment.degree_name || "N/A",
-            Specialization: payment.specialization || "N/A",
-            level: payment.level || "N/A",
-            source: payment.source || "N/A",
-            stream: payment.stream || "N/A",
-          },
-        );
+        // const l3data = await axios.post(
+        //   "http://localhost:3031/v1/leadassignmentl3/assign",
+        //   {
+        //     studentId: payment.student_id,
+        //     collegeName: payment.college_name,
+        //     Course: payment.course_name,
+        //     Degree: payment.degree_name || "N/A",
+        //     Specialization: payment.specialization || "N/A",
+        //     level: payment.level || "N/A",
+        //     source: payment.source || "N/A",
+        //     stream: payment.stream || "N/A",
+        //   },
+        // );
         console.log("   Lead assignment response:", l3data.data);
       } else {
         const response = await StudentRemark.create({

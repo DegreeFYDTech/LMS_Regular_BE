@@ -76,7 +76,7 @@ export const updatePaymentStatus = async (req, res) => {
         const l3data = await axios.post(
           "http://localhost:3031/v1/leadassignmentl3/assign",
           {
-            student_id: payment.student_id,
+            studentId: payment.student_id,
             collegeName: payment.college_name,
             Course: payment.course_name,
             Degree: payment.degree_name || "N/A",

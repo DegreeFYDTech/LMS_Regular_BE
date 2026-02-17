@@ -56,8 +56,12 @@ export const updatePaymentStatus = async (req, res) => {
       status: status,
       updated_at: new Date(),
     });
+    console.log(`Payment status updated to ${status} for payment ID: ${id}`);
+    console.log(payment)
     if (status === "COMPLETED") {
+        console.log("   Payment completed, processing student remark and lead assignment...");
       if (payment.payment_for === "application") {
+        console.log("   Payment is for application, creating student remark and assigning lead...");
         const response = await StudentRemark.create({
           student_id: payment.student_id,
           lead_status: "Application",
@@ -68,6 +72,7 @@ export const updatePaymentStatus = async (req, res) => {
           fees: payment.final_amount,
           created_at: new Date(),
         });
+        console.log("   Student remark created:", response.toJSON());
         const l3data = await axios.post(
           "http://localhost:3031/v1/leadassignmentl3/assign",
           {
@@ -81,6 +86,7 @@ export const updatePaymentStatus = async (req, res) => {
             stream: payment.stream || "N/A",
           },
         );
+        console.log("   Lead assignment response:", l3data.data);
       } else {
         const response = await StudentRemark.create({
           student_id: payment.student_id,
@@ -92,6 +98,7 @@ export const updatePaymentStatus = async (req, res) => {
           fees: payment.final_amount,
           created_at: new Date(),
         });
+        console.log("   Student remark created for admission payment:", response.toJSON());
       }
     }
     res.status(200).json(payment);

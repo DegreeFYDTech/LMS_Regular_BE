@@ -14,6 +14,7 @@ import {
   AnalyserUser,
   Message,
   Payment,
+  CourseStatusHistory,
 } from "../models/index.js";
 import {
   processStudentLead,
@@ -134,6 +135,8 @@ export const updateStudentStatus = async (req, res) => {
       callbackTime,
       enrolledDocumentUrl,
       feesAmount,
+      selectedCourse,
+      collegeCourseStatus,
     } = req.body;
     const student = await Student.findOne({
       where: { student_id: studentId },
@@ -189,6 +192,22 @@ export const updateStudentStatus = async (req, res) => {
           student.is_connected_yet_l3 || callingStatus === "Connected",
         is_reactivity: false,
       };
+      const log = await CourseStatusHistory.create({
+        student_id: studentId,
+        course_id: selectedCourse,
+        counsellor_id: counsellorId,
+        course_status: collegeCourseStatus,
+        deposit_amount: 0,
+        currency: "INR",
+        exam_interview_date: null,
+        last_admission_date: null,
+        notes: "L3 Status BY Remark Handling",
+        timestamp: new Date(),
+      });
+      const updated = await CourseStatus.update(
+        { latest_course_status: collegeCourseStatus },
+        { where: { course_id: selectedCourse, student_id: studentId } },
+      );
     } else {
       return res.status(403).json({ message: "Unauthorized role" });
     }
@@ -553,7 +572,7 @@ export const getStudentById = async (req, res) => {
           model: Payment,
           as: "payments",
           required: false,
-          order: [['created_at', 'DESC']]
+          order: [["created_at", "DESC"]],
         },
       ],
     });
@@ -1238,10 +1257,10 @@ export const addLeadDirect = async (req, res) => {
         ...lead.toJSON(),
         referenceStudent: referenceStudent
           ? {
-            student_id: referenceStudent.student_id,
-            student_name: referenceStudent.student_name,
-            student_email: referenceStudent.student_email,
-          }
+              student_id: referenceStudent.student_id,
+              student_name: referenceStudent.student_name,
+              student_email: referenceStudent.student_email,
+            }
           : null,
       },
     });

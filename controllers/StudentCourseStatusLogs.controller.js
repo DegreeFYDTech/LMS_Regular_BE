@@ -74,15 +74,14 @@ export const createStatusLog = async (req, res) => {
         { where: { student_id: studentId, first_form_filled_date: null } },
       );
     }
-
-    res.status(201).json({
-      message: "Status log created successfully",
-      logId: log.status_history_id,
-    });
     const updated = await CourseStatus.update(
       { latest_course_status: status, created_by: userId },
       { where: { course_id: courseId, student_id: studentId } },
     );
+    res.status(201).json({
+      message: "Status log created successfully",
+      logId: log.status_history_id,
+    });
   } catch (error) {
     console.error("Error creating status log:", error.message);
     return res.status(500).json({

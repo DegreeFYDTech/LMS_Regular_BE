@@ -17,7 +17,7 @@ const Student = sequelize.define(
     parents_number: DataTypes.STRING,
     whatsapp: DataTypes.STRING,
     assigned_counsellor_id: DataTypes.STRING,
-    assigned_counsellor_l3_id: DataTypes.STRING,
+    assigned_counsellor_l3_id: DataTypes.ARRAY(DataTypes.TEXT),
     highest_degree: DataTypes.STRING,
     completion_year: DataTypes.STRING,
     current_profession: DataTypes.STRING,

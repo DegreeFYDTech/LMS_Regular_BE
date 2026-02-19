@@ -448,10 +448,14 @@ export const getStudentById = async (req, res) => {
         student_id: id,
         [Op.or]: [
           { assigned_counsellor_id: counsellorId },
-          { assigned_counsellor_l3_id: counsellorId },
+          {
+            assigned_counsellor_l3_id: {
+              [Op.contains]: [counsellorId],
+            },
+          },
         ],
       };
-    } else if (counsellorRole === "Analyser") {
+    } else if (counsellorRole === "Analyser" || counsellorRole === "analyser") {
       const analyser = await AnalyserUser.findByPk(counsellorId);
 
       if (!analyser) {
@@ -498,6 +502,7 @@ export const getStudentById = async (req, res) => {
         {
           model: StudentRemark,
           as: "student_remarks",
+          separate: true, // Add this to handle ordering properly
           order: [["created_at", "DESC"]],
           required: false,
           ...includeRemarksCondition,
@@ -505,13 +510,13 @@ export const getStudentById = async (req, res) => {
             {
               model: Counsellor,
               as: "counsellor",
-              attributes: ["counsellor_name"],
+              attributes: ["counsellor_id", "counsellor_name"],
               required: false,
             },
             {
               model: Supervisor,
               as: "supervisor",
-              attributes: ["supervisor_name"],
+              attributes: ["supervisor_id", "supervisor_name"],
               required: false,
             },
           ],
@@ -519,6 +524,7 @@ export const getStudentById = async (req, res) => {
         {
           model: StudentLeadActivity,
           as: "lead_activities",
+          separate: true, // Add this to handle ordering properly
           order: [["created_at", "DESC"]],
           required: false,
         },
@@ -543,6 +549,8 @@ export const getStudentById = async (req, res) => {
             "role",
           ],
           required: false,
+          // Fix 1: Use correct table alias and proper array containment with casting
+          on: sequelize.literal(`"students"."assigned_counsellor_l3_id" @> ARRAY["assignedCounsellorL3"."counsellor_id"]::TEXT[]`)
         },
         {
           model: StudentCollegeCred,
@@ -571,14 +579,15 @@ export const getStudentById = async (req, res) => {
         {
           model: Payment,
           as: "payments",
-          required: false,
+          separate: true, // Add this to handle ordering properly
           order: [["created_at", "DESC"]],
+          required: false,
         },
       ],
     });
 
     if (!student) {
-      if (counsellorRole === "Analyser") {
+      if (counsellorRole === "Analyser" || counsellorRole === "analyser") {
         const analyser = await AnalyserUser.findByPk(counsellorId);
         const allowedSources = analyser?.sources || ["facebook", "fb"];
 
@@ -592,6 +601,7 @@ export const getStudentById = async (req, res) => {
     let studentData = student.toJSON ? student.toJSON() : student;
 
     if (counsellorRole.toLowerCase() === "analyser") {
+      // Mask student name
       if (studentData.student_name) {
         const name = studentData.student_name.trim();
         if (name.length > 1) {
@@ -604,6 +614,7 @@ export const getStudentById = async (req, res) => {
         }
       }
 
+      // Mask student phone
       if (studentData.student_phone) {
         const phone = studentData.student_phone.toString();
         if (phone.length > 4) {
@@ -613,6 +624,7 @@ export const getStudentById = async (req, res) => {
         }
       }
 
+      // Mask parents number
       if (studentData.parents_number) {
         const parentsPhone = studentData.parents_number.toString();
         if (parentsPhone.length > 4) {
@@ -622,6 +634,7 @@ export const getStudentById = async (req, res) => {
         }
       }
 
+      // Mask whatsapp
       if (studentData.whatsapp) {
         const whatsapp = studentData.whatsapp.toString();
         if (whatsapp.length > 4) {
@@ -631,6 +644,7 @@ export const getStudentById = async (req, res) => {
         }
       }
 
+      // Mask primary email
       if (studentData.student_email) {
         const email = studentData.student_email;
         const atIndex = email.indexOf("@");
@@ -642,6 +656,7 @@ export const getStudentById = async (req, res) => {
         }
       }
 
+      // Mask secondary email
       if (studentData.student_secondary_email) {
         const secEmail = studentData.student_secondary_email;
         const atIndex = secEmail.indexOf("@");
@@ -653,6 +668,7 @@ export const getStudentById = async (req, res) => {
         }
       }
 
+      // Mask lead activities data
       if (
         studentData.lead_activities &&
         studentData.lead_activities.length > 0
@@ -736,7 +752,6 @@ export const getStudentById = async (req, res) => {
       .json({ message: "Server error", error: error.message });
   }
 };
-
 export const updateStudentDetails = async (req, res) => {
   try {
     const { studentId } = req.params;

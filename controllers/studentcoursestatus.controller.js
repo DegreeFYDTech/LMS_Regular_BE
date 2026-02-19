@@ -278,9 +278,7 @@ export const getShortlistedColleges = async (req, res) => {
       is_shortlisted: true
     };
 
-    if (role !== 'Supervisor') {
-      whereClause.created_by = null;
-    }
+  
 
     const shortlistedStatuses = await CourseStatus.findAll({
       where: whereClause,

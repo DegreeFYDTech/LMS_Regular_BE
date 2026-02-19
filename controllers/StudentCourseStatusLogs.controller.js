@@ -30,7 +30,10 @@ export const createStatusLog = async (req, res) => {
     if (!courseDetails) {
       return res.status(404).json({ message: "Course not found" });
     }
-
+    const updated = await CourseStatus.update(
+      { latest_course_status: status, created_by: userId },
+      { where: { course_id: courseId, student_id: studentId } },
+    );
     const log = await CourseStatusHistory.create({
       student_id: studentId,
       course_id: courseId,
@@ -45,7 +48,6 @@ export const createStatusLog = async (req, res) => {
         ? new Date(lastAdmissionDate)
         : null,
       notes: notes,
-      timestamp: new Date(),
     });
     console.log("status", status);
     if (
@@ -79,10 +81,6 @@ export const createStatusLog = async (req, res) => {
       message: "Status log created successfully",
       logId: log.status_history_id,
     });
-    const updated = await CourseStatus.update(
-      { latest_course_status: status, created_by: userId },
-      { where: { course_id: courseId, student_id: studentId } },
-    );
   } catch (error) {
     console.error("Error creating status log:", error.message);
     return res.status(500).json({

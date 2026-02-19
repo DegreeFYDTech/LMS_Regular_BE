@@ -359,6 +359,7 @@ export const toggleRuleSetStatus = async (req, res) => {
 };
 
 export const assignedtoL3byruleSet = async (req, res) => {
+
     try {
         const {
             studentId,
@@ -377,33 +378,21 @@ export const assignedtoL3byruleSet = async (req, res) => {
         }
 
         const studentDetails = await Student.findByPk(studentId);
-        
-        // Check if student already has L3 counsellors assigned
-        if (studentDetails?.assigned_counsellor_l3_id && 
-            Array.isArray(studentDetails.assigned_counsellor_l3_id) && 
-            studentDetails.assigned_counsellor_l3_id.length > 0) {
-            
-            // Get all assigned counsellors' details
-            const counsellors = await Counsellor.findAll({
-                where: { 
-                    counsellor_id: studentDetails.assigned_counsellor_l3_id 
-                }
+        if (studentDetails?.assigned_counsellor_l3_id) {
+            const counsellor = await Counsellor.findOne({
+                where: { counsellor_id: studentDetails.assigned_counsellor_l3_id }
             });
 
             return res.status(200).json({
-                message: "Student already has L3 counsellors assigned",
-                assigned_counsellors: studentDetails.assigned_counsellor_l3_id,
-                counsellors: counsellors.map(c => ({
-                    id: c.counsellor_id,
-                    name: c.counsellor_name
-                }))
+                message: "Student already has L3 counsellor assigned",
+                assigned_counsellor: studentDetails.assigned_counsellor_l3_id,
+                counsellor_name: ''
             });
         }
 
         const allRulesets = await LeadAssignmentRuleL3.findAll({
             where: { is_active: true }
         });
-        
         console.log('allRulesets', allRulesets)
         if (!allRulesets || allRulesets.length === 0) {
             return res.status(404).json({ message: "No active ruleset found" });
@@ -411,6 +400,12 @@ export const assignedtoL3byruleSet = async (req, res) => {
 
         // Filter by mandatory conditions (collegeName and source)
         const filteredRulesets = allRulesets.filter(ruleset => {
+            // University Name Match
+            // A ruleset matches if:
+            // 1. No collegeName is provided in request (unlikely)
+            // 2. The ruleset has no university names defined (matches everything)
+            // 3. Any of the university names in the ruleset match the collegeName (partial match)
+
             const universityMatch = !collegeName || !ruleset.university_name || ruleset.university_name.length === 0 ||
                 ruleset.university_name.some(uni => {
                     if (!uni) return false;
@@ -435,7 +430,6 @@ export const assignedtoL3byruleSet = async (req, res) => {
 
             return universityMatch && sourceMatch;
         });
-
         if (filteredRulesets.length === 0) {
             // Assign dummy counsellor when no ruleset matches
             // First, try to find a valid L3 agent for fallback
@@ -459,7 +453,7 @@ export const assignedtoL3byruleSet = async (req, res) => {
             }
 
             const updateData = {
-                assigned_counsellor_l3_id: [fallbackAgentId], // Store as array
+                assigned_counsellor_l3_id: fallbackAgentId,
                 assigned_l3_date: new Date(),
             };
             console.log('Fallback Assignment updateData', updateData)
@@ -476,8 +470,8 @@ export const assignedtoL3byruleSet = async (req, res) => {
             return res.status(200).json({
                 message: "No matching ruleset found, assigned fallback L3 counsellor",
                 student_id: studentId,
-                assigned_counsellors_l3: [fallbackAgentId],
-                counsellors_l3: [{ id: fallbackAgentId, name: fallbackAgentName }],
+                assigned_counsellor_l3: fallbackAgentId,
+                counsellor_name_l3: fallbackAgentName,
                 assignment_method: "dummy_fallback",
                 reason: "No ruleset found matching collegeName and source criteria"
             });
@@ -581,29 +575,22 @@ export const assignedtoL3byruleSet = async (req, res) => {
             return res.status(404).json({ message: "No counsellors assigned to the selected ruleset" });
         }
 
-        let selectedCounsellors = [];
+        let selectedCounsellorId;
         let assignmentMethod;
         let currentRoundRobinIndex = 0;
 
-        // You can choose to assign multiple counsellors or just one
-        // Option 1: Assign all counsellors from the ruleset
-        selectedCounsellors = assignedCounsellors;
-        assignmentMethod = "bulk-assignment";
-
-        // Option 2: If you still want round-robin for single assignment, uncomment below
-        /*
         if (assignedCounsellors.length === 1) {
-            selectedCounsellors = assignedCounsellors;
+            selectedCounsellorId = assignedCounsellors[0];
             assignmentMethod = "direct";
         } else {
-            // Use round-robin assignment for single counsellor
+            // Use round-robin assignment
             currentRoundRobinIndex = selectedRuleset.round_robin_index || 0;
 
             if (currentRoundRobinIndex >= assignedCounsellors.length) {
                 currentRoundRobinIndex = 0;
             }
 
-            selectedCounsellors = [assignedCounsellors[currentRoundRobinIndex]];
+            selectedCounsellorId = assignedCounsellors[currentRoundRobinIndex];
             assignmentMethod = "round-robin";
 
             // Update round-robin index
@@ -613,34 +600,30 @@ export const assignedtoL3byruleSet = async (req, res) => {
                 { where: { l3_assignment_rulesets_id: selectedRuleset.l3_assignment_rulesets_id } }
             );
         }
-        */
 
-        // Find counsellor details using counsellor_ids
-        let counsellorDetailsList = await Counsellor.findAll({
-            where: { 
-                counsellor_id: selectedCounsellors 
-            }
+        // Find counsellor details using counsellor_id
+        let counsellorDetails = await Counsellor.findOne({
+            where: { counsellor_id: selectedCounsellorId }
         });
 
-        if (!counsellorDetailsList || counsellorDetailsList.length === 0) {
-            return res.status(404).json({ message: "Selected counsellors not found" });
+        if (!counsellorDetails) {
+            return res.status(404).json({ message: "Selected counsellor not found" });
         }
 
-        // Update student with assignment (store as array)
+        // Update student with assignment
         const updateData = {
-            assigned_counsellor_l3_id: selectedCounsellors,
+
+            assigned_counsellor_l3_id: counsellorDetails.counsellor_id,
             assigned_l3_date: new Date(),
         };
-        
         console.log(updateData, 'updated_data')
-        
         await Student.update(updateData, {
             where: { student_id: studentId }
         });
 
         const responseMessage = hasAnyCourseMatch
-            ? "L3 counsellors assigned successfully"
-            : "L3 counsellors assigned based on college name match (no course criteria matched)";
+            ? "L3 counsellor assigned successfully"
+            : "L3 counsellor assigned based on college name match (no course criteria matched)";
 
         sendAssignmentEmail(studentId, {
             collegeName,
@@ -650,11 +633,8 @@ export const assignedtoL3byruleSet = async (req, res) => {
         res.status(200).json({
             message: responseMessage,
             student_id: studentId,
-            assigned_counsellors_l3: selectedCounsellors,
-            counsellors_l3: counsellorDetailsList.map(c => ({
-                id: c.counsellor_id,
-                name: c.counsellor_name
-            })),
+            assigned_counsellor_l3: counsellorDetails.counsellor_id,
+            counsellor_name_l3: counsellorDetails.counsellor_name,
             assignment_method: assignmentMethod,
             course_fields_matched: hasAnyCourseMatch,
             matched_ruleset: {
@@ -662,7 +642,12 @@ export const assignedtoL3byruleSet = async (req, res) => {
                 name: selectedRuleset.name,
                 matched_at_level: matchedAt,
                 priority: selectedRuleset.priority || 0
-            }
+            },
+            round_robin_info: assignmentMethod === "round-robin" ? {
+                used_index: currentRoundRobinIndex,
+                total_counsellors: assignedCounsellors.length,
+                next_index: (currentRoundRobinIndex + 1) % assignedCounsellors.length
+            } : null
         });
 
     } catch (error) {

@@ -30,11 +30,8 @@ export const createStatusLog = async (req, res) => {
     if (!courseDetails) {
       return res.status(404).json({ message: "Course not found" });
     }
-    const updated = await CourseStatus.update(
-      { latest_course_status: status, created_by: userId },
-      { where: { course_id: courseId, student_id: studentId } },
-    );
-    const log = await CourseStatusHistory.create({
+
+    const journeyEntry = await CourseStatusJourney.create({
       student_id: studentId,
       course_id: courseId,
       counsellor_id: userId,
@@ -49,7 +46,9 @@ export const createStatusLog = async (req, res) => {
         : null,
       notes: notes,
     });
-    console.log("status", status);
+
+    console.log("Journey entry created:", journeyEntry.status_history_id);
+
     if (
       status == "Form Submitted – Portal Pending" ||
       status == "Form Submitted – Completed" ||
@@ -58,28 +57,39 @@ export const createStatusLog = async (req, res) => {
       status == "Offer Letter/Results Pending" ||
       status == "Offer Letter/Results Released"
     ) {
-      const l3data = await axios.post(
-        "http://localhost:3031/v1/leadassignmentl3/assign",
-        {
-          studentId,
-          collegeName: courseDetails.university_name,
-          Course: courseDetails.course_name,
-          Degree: courseDetails.degree_name,
-          Specialization: courseDetails.specialization,
-          level: courseDetails.level,
-          source: courseDetails.level,
-          stream: courseDetails.stream,
-        },
-      );
-      await Student.update(
-        { first_form_filled_date: new Date() },
-        { where: { student_id: studentId, first_form_filled_date: null } },
-      );
+      try {
+        const l3data = await axios.post(
+          "http://localhost:3031/v1/leadassignmentl3/assign",
+          {
+            studentId,
+            collegeName: courseDetails.university_name,
+            Course: courseDetails.course_name,
+            Degree: courseDetails.degree_name,
+            Specialization: courseDetails.specialization,
+            level: courseDetails.level,
+            source: courseDetails.level,
+            stream: courseDetails.stream,
+          },
+        );
+
+        if (l3data.data.assigned_l3_counsellor_id) {
+          await journeyEntry.update({
+            assigned_l3_counsellor_id: l3data.data.assigned_l3_counsellor_id,
+          });
+        }
+      } catch (l3Error) {
+        console.error("L3 assignment error:", l3Error.message);
+      }
     }
+
+    await Student.update(
+      { first_form_filled_date: new Date() },
+      { where: { student_id: studentId, first_form_filled_date: null } },
+    );
 
     res.status(201).json({
       message: "Status log created successfully",
-      logId: log.status_history_id,
+      logId: journeyEntry.status_history_id,
     });
   } catch (error) {
     console.error("Error creating status log:", error.message);

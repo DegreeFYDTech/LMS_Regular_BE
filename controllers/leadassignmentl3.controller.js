@@ -426,36 +426,11 @@ export const assignedtoL3byruleSet = async (req, res) => {
       JSON.stringify(studentDetails, null, 2),
     );
 
-    // Get current assigned counsellors (may be empty array, null, or undefined)
-    const currentAssignedL3 = studentDetails?.assigned_counsellor_l3_id || [];
-
-    // Log existing assignments but continue with ruleset logic
-    if (currentAssignedL3.length > 0) {
-      console.log(
-        `Student already has L3 counsellors assigned:`,
-        currentAssignedL3,
-      );
-
-      // Get existing counsellors details for logging
-      const existingCounsellors = await Counsellor.findAll({
-        where: {
-          counsellor_id: {
-            [Op.in]: currentAssignedL3,
-          },
-        },
-      });
-      console.log(
-        "Existing counsellors details:",
-        JSON.stringify(existingCounsellors, null, 2),
-      );
-    }
-
     console.log("Fetching all active L3 rulesets...");
     const allRulesets = await LeadAssignmentRuleL3.findAll({
       where: { is_active: true },
     });
     console.log(`Found ${allRulesets?.length || 0} active rulesets`);
-    console.log("Rulesets retrieved:", JSON.stringify(allRulesets, null, 2));
 
     if (!allRulesets || allRulesets.length === 0) {
       console.log(
@@ -522,14 +497,6 @@ export const assignedtoL3byruleSet = async (req, res) => {
     console.log(
       `\nFiltering complete. Found ${filteredRulesets.length} matching rulesets`,
     );
-    console.log(
-      "Matching rulesets:",
-      filteredRulesets.map((r) => ({
-        id: r.l3_assignment_rulesets_id,
-        name: r.name,
-        priority: r.priority,
-      })),
-    );
 
     if (filteredRulesets.length === 0) {
       console.log(
@@ -543,10 +510,6 @@ export const assignedtoL3byruleSet = async (req, res) => {
       const dummyAgent = await Counsellor.findOne({
         where: { counsellor_id: DUMMY_AGENT_ID },
       });
-      console.log(
-        "Dummy agent check result:",
-        dummyAgent ? "Found" : "Not found",
-      );
 
       if (!dummyAgent) {
         console.log("Dummy agent not found, searching for any L3 agent");
@@ -565,42 +528,14 @@ export const assignedtoL3byruleSet = async (req, res) => {
         }
       }
 
-      // Check if fallback agent is already assigned
-      if (currentAssignedL3.includes(fallbackAgentId)) {
-        console.log("Fallback agent already assigned to student");
-        return res.status(200).json({
-          message: "Fallback agent already assigned to student",
-          student_id: studentId,
-          assigned_counsellor_l3: fallbackAgentId,
-          counsellor_name_l3: fallbackAgentName,
-          all_assigned_counsellors: currentAssignedL3,
-          already_assigned: true,
-          assignment_method: "fallback_duplicate",
-        });
-      }
-
-      const fallbackCounsellorDetails = {
-        counsellor_id: fallbackAgentId,
-        counsellor_name: fallbackAgentName,
-        counsellor_email: dummyAgent?.counsellor_email || null,
-      };
-
-      const updateData = {
-        assigned_counsellor_l3_id: [...currentAssignedL3, fallbackAgentId],
-        assigned_l3_date: new Date(),
-      };
-      console.log(
-        "Fallback Assignment updateData:",
-        JSON.stringify(updateData, null, 2),
-      );
-
-      console.log(
-        `Updating student ${studentId} with fallback L3 counsellor: ${fallbackAgentId}`,
-      );
-      await Student.update(updateData, {
-        where: { student_id: studentId },
+      // Create journey entry for fallback assignment
+      const journeyEntry = await CourseStatusJourney.create({
+        student_id: studentId,
+        course_id: null, // Will be updated later when course is selected
+        assigned_l3_counsellor_id: fallbackAgentId,
+        course_status: "L3 Assigned - Fallback",
+        notes: "Fallback L3 assignment (no ruleset matched)",
       });
-      console.log("Student update completed");
 
       console.log("Triggering assignment email...");
       await sendAssignmentEmail(
@@ -614,18 +549,17 @@ export const assignedtoL3byruleSet = async (req, res) => {
           stream,
           assignmentType: "fallback",
         },
-        dummyAgent?.counsellor_email || anyL3Agent?.counsellor_email || "", // counselloremail
-        fallbackAgentName, // counsellorname
+        dummyAgent?.counsellor_email || anyL3Agent?.counsellor_email || "",
+        fallbackAgentName,
       );
-      console.log("Email trigger completed");
 
       console.log("=== L3 Assignment Process Completed (Fallback) ===");
       return res.status(200).json({
         message: "No matching ruleset found, assigned fallback L3 counsellor",
         student_id: studentId,
-        assigned_counsellor_l3: fallbackAgentId,
+        assigned_l3_counsellor_id: fallbackAgentId,
         counsellor_name_l3: fallbackAgentName,
-        all_assigned_counsellors: [...currentAssignedL3, fallbackAgentId],
+        journey_id: journeyEntry.status_history_id,
         assignment_method: "dummy_fallback",
         reason: "No ruleset found matching collegeName and source criteria",
       });
@@ -690,8 +624,6 @@ export const assignedtoL3byruleSet = async (req, res) => {
 
     console.log("\n=== Starting hierarchy-based matching ===");
 
-    // Check if any course field matches
-    console.log("Checking for any course field matches across all rulesets...");
     const hasAnyCourseMatch = filteredRulesets.some((ruleset) =>
       hierarchyChecks.some((hierarchyLevel) => hierarchyLevel.check(ruleset)),
     );
@@ -740,50 +672,23 @@ export const assignedtoL3byruleSet = async (req, res) => {
         }
       }
 
-      // If multiple rulesets remain, select based on priority
       if (!selectedRuleset && currentFilteredRulesets.length > 0) {
         console.log(
           "Multiple rulesets remain after hierarchy check - sorting by priority",
         );
-        console.log(
-          "Current rulesets before sorting:",
-          currentFilteredRulesets.map((r) => ({
-            name: r.name,
-            priority: r.priority,
-          })),
-        );
-
         currentFilteredRulesets.sort(
           (a, b) => (b.priority || 0) - (a.priority || 0),
         );
         selectedRuleset = currentFilteredRulesets[0];
         matchedAt = "priority-based";
-
-        console.log("Selected ruleset based on priority:", {
-          name: selectedRuleset.name,
-          priority: selectedRuleset.priority,
-        });
       }
     } else {
       console.log(
         "No course matches found - assigning from college-matched ruleset based on priority",
       );
-      console.log(
-        "Filtered rulesets before sorting:",
-        filteredRulesets.map((r) => ({
-          name: r.name,
-          priority: r.priority,
-        })),
-      );
-
       filteredRulesets.sort((a, b) => (b.priority || 0) - (a.priority || 0));
       selectedRuleset = filteredRulesets[0];
       matchedAt = "college-name-only";
-
-      console.log("Selected ruleset based on college name only:", {
-        name: selectedRuleset.name,
-        priority: selectedRuleset.priority,
-      });
     }
 
     if (!selectedRuleset) {
@@ -867,53 +772,22 @@ export const assignedtoL3byruleSet = async (req, res) => {
       return res.status(404).json({ message: "Selected counsellor not found" });
     }
 
-    // Check if this counsellor is already assigned (prevent duplicates)
-    if (currentAssignedL3.includes(counsellorDetails.counsellor_id)) {
-      console.log(
-        "Counsellor already assigned to student - skipping duplicate assignment",
-      );
-      return res.status(200).json({
-        message: "Counsellor already assigned to student",
-        student_id: studentId,
-        assigned_counsellor_l3: counsellorDetails.counsellor_id,
-        counsellor_name_l3: counsellorDetails.counsellor_name,
-        all_assigned_counsellors: currentAssignedL3,
-        already_assigned: true,
-        assignment_method: assignmentMethod,
-        matched_ruleset: {
-          id: selectedRuleset.l3_assignment_rulesets_id,
-          name: selectedRuleset.name,
-          matched_at_level: matchedAt,
-          priority: selectedRuleset.priority || 0,
-        },
-      });
-    }
-
-    // Add new counsellor to the array
-    const updatedAssignedL3 = [
-      ...currentAssignedL3,
-      counsellorDetails.counsellor_id,
-    ];
-    const updateData = {
-      assigned_counsellor_l3_id: updatedAssignedL3,
-      assigned_l3_date: new Date(),
-    };
-    console.log(
-      "Updating student with assignment data:",
-      JSON.stringify(updateData, null, 2),
-    );
-
-    await Student.update(updateData, {
-      where: { student_id: studentId },
+    // Create journey entry for the assignment
+    const journeyEntry = await CourseStatusJourney.create({
+      student_id: studentId,
+      course_id: null, // Will be updated later when course is selected
+      assigned_l3_counsellor_id: counsellorDetails.counsellor_id,
+      course_status: "L3 Assigned",
+      notes: `Assigned via ruleset: ${selectedRuleset.name} (${matchedAt})`,
     });
-    console.log("Student update completed successfully");
+
+    console.log("Journey entry created:", journeyEntry.status_history_id);
 
     const responseMessage = hasAnyCourseMatch
       ? "L3 counsellor assigned successfully"
       : "L3 counsellor assigned based on college name match (no course criteria matched)";
 
     console.log("Triggering assignment email...");
-    // Pass the full counsellorDetails object to the email function
     await sendAssignmentEmail(
       studentId,
       {
@@ -928,18 +802,17 @@ export const assignedtoL3byruleSet = async (req, res) => {
           : "college_only_match",
         matchedAt,
       },
-      counsellorDetails.counsellor_email, // counselloremail
-      counsellorDetails.counsellor_name, // counsellorname
+      counsellorDetails.counsellor_email,
+      counsellorDetails.counsellor_name,
     );
     console.log("Email trigger completed");
 
     console.log("\n=== L3 Assignment Process Completed Successfully ===");
     console.log("Assignment summary:", {
       studentId,
-      assigned_counsellor: counsellorDetails.counsellor_id,
+      assigned_l3_counsellor_id: counsellorDetails.counsellor_id,
       counsellor_name: counsellorDetails.counsellor_name,
-      previous_assigned_counsellors: currentAssignedL3,
-      all_assigned_counsellors: updatedAssignedL3,
+      journey_id: journeyEntry.status_history_id,
       assignment_method: assignmentMethod,
       hasAnyCourseMatch,
       matched_ruleset: selectedRuleset.name,
@@ -948,10 +821,9 @@ export const assignedtoL3byruleSet = async (req, res) => {
     res.status(200).json({
       message: responseMessage,
       student_id: studentId,
-      assigned_counsellor_l3: counsellorDetails.counsellor_id,
+      assigned_l3_counsellor_id: counsellorDetails.counsellor_id,
       counsellor_name_l3: counsellorDetails.counsellor_name,
-      previous_assigned_counsellors: currentAssignedL3,
-      all_assigned_counsellors: updatedAssignedL3,
+      journey_id: journeyEntry.status_history_id,
       assignment_method: assignmentMethod,
       course_fields_matched: hasAnyCourseMatch,
       matched_ruleset: {

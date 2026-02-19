@@ -541,16 +541,19 @@ export const getStudents = async (req, res) => {
         console.error('Error fetching analyser data:', error);
       }
     }
-    console.log(analyserData)
+    
     // Pass analyser data to filter helper
     const filters = mapFiltersForGetStudentsHelper(req.query, role, analyserData);
+    
+    // IMPORTANT: Add the user role to filters explicitly
+    filters.userrole = role;
     
     let data;
     if (filters.wishlist) {
       data = await getWhishListStudentHelper(filters);
     } else {
       // Pass the req object as second parameter
-      data = await getStudentsRawSQL(filters, req,false);
+      data = await getStudentsRawSQL(filters, req, false);
     }
 
     // Add analyser filter info to response

@@ -446,14 +446,7 @@ export const getStudentById = async (req, res) => {
     if (counsellorRole === "l2") {
       whereConditions = {
         student_id: id,
-        [Op.or]: [
-          { assigned_counsellor_id: counsellorId },
-          {
-            assigned_counsellor_l3_id: {
-              [Op.contains]: [counsellorId],
-            },
-          },
-        ],
+        assigned_counsellor_id: counsellorId
       };
     } else if (counsellorRole === "Analyser" || counsellorRole === "analyser") {
       const analyser = await AnalyserUser.findByPk(counsellorId);
@@ -502,7 +495,7 @@ export const getStudentById = async (req, res) => {
         {
           model: StudentRemark,
           as: "student_remarks",
-          separate: true, // Add this to handle ordering properly
+          separate: true,
           order: [["created_at", "DESC"]],
           required: false,
           ...includeRemarksCondition,
@@ -524,7 +517,7 @@ export const getStudentById = async (req, res) => {
         {
           model: StudentLeadActivity,
           as: "lead_activities",
-          separate: true, // Add this to handle ordering properly
+          separate: true,
           order: [["created_at", "DESC"]],
           required: false,
         },
@@ -538,19 +531,6 @@ export const getStudentById = async (req, res) => {
             "role",
           ],
           required: false,
-        },
-        {
-          model: Counsellor,
-          as: "assignedCounsellorL3",
-          attributes: [
-            "counsellor_id",
-            "counsellor_name",
-            "counsellor_email",
-            "role",
-          ],
-          required: false,
-          // Fix 1: Use correct table alias and proper array containment with casting
-          on: sequelize.literal(`"students"."assigned_counsellor_l3_id" @> ARRAY["assignedCounsellorL3"."counsellor_id"]::TEXT[]`)
         },
         {
           model: StudentCollegeCred,
@@ -579,7 +559,7 @@ export const getStudentById = async (req, res) => {
         {
           model: Payment,
           as: "payments",
-          separate: true, // Add this to handle ordering properly
+          separate: true,
           order: [["created_at", "DESC"]],
           required: false,
         },
@@ -599,6 +579,45 @@ export const getStudentById = async (req, res) => {
     }
 
     let studentData = student.toJSON ? student.toJSON() : student;
+
+    // Fetch L3 journey data for this student - FIXED ALIASES
+    const l3Journeys = await CourseStatusHistory.findAll({
+      where: { student_id: id },
+      order: [["created_at", "DESC"]],
+      include: [
+        {
+          model: Counsellor,
+          as: "counsellor", // Correct alias from error message
+          attributes: ["counsellor_id", "counsellor_name", "counsellor_email", "role"],
+          required: false,
+        },
+        {
+          model: UniversityCourse,
+          as: "university_course", // Correct alias from error message (not "course")
+          attributes: ["course_id", "course_name", "university_name", "degree_name", "stream", "level"],
+          required: false,
+        }
+      ]
+    });
+
+    // Add L3 journeys to student data
+    studentData.l3_journeys = l3Journeys || [];
+
+    // Add a summary of assigned L3 counsellors (distinct)
+    const assignedL3Counsellors = {};
+    l3Journeys.forEach(journey => {
+      if (journey.assigned_l3_counsellor_id && !assignedL3Counsellors[journey.assigned_l3_counsellor_id]) {
+        assignedL3Counsellors[journey.assigned_l3_counsellor_id] = {
+          counsellor_id: journey.assigned_l3_counsellor_id,
+          counsellor_name: journey.counsellor?.counsellor_name || 'Unknown',
+          counsellor_email: journey.counsellor?.counsellor_email || '',
+          role: 'l3',
+          first_assigned: journey.created_at
+        };
+      }
+    });
+    
+    studentData.assigned_l3_counsellors = Object.values(assignedL3Counsellors);
 
     if (counsellorRole.toLowerCase() === "analyser") {
       // Mask student name
@@ -731,6 +750,16 @@ export const getStudentById = async (req, res) => {
             return activity;
           },
         );
+      }
+
+      // Mask L3 journey data if needed
+      if (studentData.l3_journeys && studentData.l3_journeys.length > 0) {
+        studentData.l3_journeys = studentData.l3_journeys.map(journey => {
+          if (journey.counsellor) {
+            // Keep counsellor info visible as it's just names
+          }
+          return journey;
+        });
       }
 
       studentData.data_masked = true;

@@ -199,7 +199,7 @@ export const updateStudentStatus = async (req, res) => {
         },
         order: [["created_at", "DESC"]],
       });
-      console.log(journeylogs, "journeylogs");
+      console.log(journeylogs.dataValues, "journeylogs");
       const log = await CourseStatusJourney.create({
         student_id: studentId,
         course_id: selectedCourse,
@@ -210,7 +210,7 @@ export const updateStudentStatus = async (req, res) => {
         exam_interview_date: null,
         last_admission_date: null,
         assigned_l3_counsellor_id:
-          journeylogs?.assigned_l3_counsellor_id || null,
+          journeylogs?.dataValues.assigned_l3_counsellor_id || null,
         notes: "L3 Status BY Remark Handling",
         timestamp: new Date(),
       });

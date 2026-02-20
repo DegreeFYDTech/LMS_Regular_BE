@@ -1172,6 +1172,7 @@ export const bulkReassignLeads = async (req, res) => {
   try {
     const supervisorId = req?.user?.id;
     const { data, level } = req.body.data;
+    
     if (!data || !Array.isArray(data) || data.length === 0) {
       console.log("Invalid data format:", data);
       return res.status(400).json({
@@ -1191,6 +1192,7 @@ export const bulkReassignLeads = async (req, res) => {
         message: "Invalid level. Expected L2 or L3.",
       });
     }
+    
     const toLowerCaseLevel = level?.toLowerCase();
     const results = [];
     const errors = [];
@@ -1227,36 +1229,82 @@ export const bulkReassignLeads = async (req, res) => {
           continue;
         }
 
+        // For L3, check if courseId is provided
+        if (level?.toLowerCase() === "l3" && !reassignmentData.courseId) {
+          errors.push({
+            index: i + 1,
+            data: reassignmentData,
+            error: `CourseId is required for L3 reassignment`,
+          });
+          continue;
+        }
+
         // Get old agent for logs
         const oldAgentId = student[counsellorField];
         const oldAgent = oldAgentId
           ? await Counsellor.findOne({ where: { counsellor_id: oldAgentId } })
           : null;
 
-        // Update student assignment (L2 or L3 depending on level)
-        const [_, [updatedStudent]] = await Student.update(
-          { [counsellorField]: newAgent.counsellor_id },
-          {
-            where: { student_id: reassignmentData.studentId },
-            returning: true,
-          },
-        );
+        if (level?.toLowerCase() === "l2") {
+          // L2 - Update student table directly
+          const [_, [updatedStudent]] = await Student.update(
+            { [counsellorField]: newAgent.counsellor_id },
+            {
+              where: { student_id: reassignmentData.studentId },
+              returning: true,
+            },
+          );
 
-        // Create log
-        try {
-          await LeadAssignmentLogs.create({
-            assigned_counsellor_id: newAgent.counsellor_id,
-            student_id: reassignmentData.studentId,
-            assigned_by: supervisorId || "",
-            reference_from: `bulk students re assignment by Supervisor (${level})`,
-          });
-        } catch (err) {
-          console.error("❌ Failed to create LeadAssignmentLog:", err);
+          // Create log for L2
+          try {
+            await LeadAssignmentLogs.create({
+              assigned_counsellor_id: newAgent.counsellor_id,
+              student_id: reassignmentData.studentId,
+              assigned_by: supervisorId || "",
+              reference_from: `bulk students re assignment by Supervisor (${level})`,
+            });
+          } catch (err) {
+            console.error("❌ Failed to create LeadAssignmentLog:", err);
+          }
+
+        } else {
+          // L3 - Update only journey entries with matching courseId
+          const [updatedCount] = await CourseStatusJourney.update(
+            { assigned_l3_counsellor_id: newAgent.counsellor_id },
+            {
+              where: {
+                student_id: reassignmentData.studentId,
+                course_id: reassignmentData.courseId
+              }
+            }
+          );
+
+          if (updatedCount === 0) {
+            errors.push({
+              index: i + 1,
+              data: reassignmentData,
+              error: `No journey entry found for student ${reassignmentData.studentId} with courseId ${reassignmentData.courseId}`,
+            });
+            continue;
+          }
+
+          // Create log for L3
+          try {
+            await LeadAssignmentLogs.create({
+              assigned_counsellor_id: newAgent.counsellor_id,
+              student_id: reassignmentData.studentId,
+              assigned_by: supervisorId || "",
+              reference_from: `bulk L3 journey reassignment by Supervisor (courseId: ${reassignmentData.courseId})`,
+            });
+          } catch (err) {
+            console.error("❌ Failed to create LeadAssignmentLog:", err);
+          }
         }
 
         results.push({
           index: i + 1,
           student_id: reassignmentData.studentId,
+          ...(level?.toLowerCase() === "l3" && { course_id: reassignmentData.courseId }),
           old_agent: oldAgent ? oldAgent.counsellor_name : "None",
           new_agent: newAgent.counsellor_name,
           data: reassignmentData,
@@ -1274,7 +1322,9 @@ export const bulkReassignLeads = async (req, res) => {
     // Final response
     const responsePayload = {
       success: true,
-      message: `Processed ${data.length} reassignments for ${level}`,
+      message: `Processed ${data.length} reassignments for ${level}${
+        level?.toLowerCase() === "l3" ? " (journey entries only)" : ""
+      }`,
       results: {
         reassigned: results.length,
         errors: errors.length,

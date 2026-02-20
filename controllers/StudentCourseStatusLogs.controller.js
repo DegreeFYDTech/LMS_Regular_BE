@@ -7,6 +7,7 @@ import {
   Counsellor,
 } from "../models/index.js";
 import { Op, Sequelize } from "sequelize";
+import CourseStatusJourney from "../models/course_status_jounreny.js";
 
 export const createStatusLog = async (req, res) => {
   try {
@@ -30,7 +31,7 @@ export const createStatusLog = async (req, res) => {
     if (!courseDetails) {
       return res.status(404).json({ message: "Course not found" });
     }
-
+    console.log("hello");
     const journeyEntry = await CourseStatusJourney.create({
       student_id: studentId,
       course_id: courseId,
@@ -46,7 +47,10 @@ export const createStatusLog = async (req, res) => {
         : null,
       notes: notes,
     });
-
+    const updated = await CourseStatus.update(
+      { latest_course_status: status },
+      { where: { course_id: courseId, student_id: studentId } },
+    );
     console.log("Journey entry created:", journeyEntry.status_history_id);
 
     if (

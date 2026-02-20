@@ -278,8 +278,6 @@ export const getShortlistedColleges = async (req, res) => {
       is_shortlisted: true
     };
 
-  
-
     const shortlistedStatuses = await CourseStatus.findAll({
       where: whereClause,
       include: [
@@ -295,22 +293,6 @@ export const getShortlistedColleges = async (req, res) => {
               attributes: ['id'],
               limit: 1,
               on: {
-
-                col1: sequelize.where(
-                  sequelize.col('courses_details.university_name'),
-                  '=',
-                  sequelize.col('courses_details->university_api.university_name')
-                )
-              }
-            },
-            {
-              model: UniversitiesAPIHeaderValues,
-              required: false,
-              as: 'university_api',
-              attributes: ['id'],
-              limit: 1,
-              on: {
-
                 col1: sequelize.where(
                   sequelize.col('courses_details.university_name'),
                   '=',
@@ -322,9 +304,90 @@ export const getShortlistedColleges = async (req, res) => {
         }
       ],
     });
+
     const sendStatus = await StudentCollegeApiSentStatus.findAll({
       where: { student_id: studentId },
       attributes: ['api_sent_status', 'college_name']
+    });
+
+    // Get all course_ids from shortlisted statuses
+    const courseIds = shortlistedStatuses.map(status => status.course_id).filter(id => id);
+    
+    let journeyRecords = [];
+    let counsellorsMap = {};
+    let l3CounsellorsMap = {};
+    
+    if (courseIds.length > 0) {
+      // Fetch journey records for these course ids
+      journeyRecords = await CourseStatusJourney.findAll({
+        where: {
+          student_id: studentId,
+          course_id: { [Op.in]: courseIds }
+        },
+        attributes: ['status_history_id', 'course_id', 'counsellor_id', 'assigned_l3_counsellor_id', 'created_at', 'course_status'],
+        order: [['created_at', 'DESC']]
+      });
+
+      // Get unique counsellor ids (L2 counsellors who created the record)
+      const counsellorIds = [...new Set(journeyRecords.map(record => record.counsellor_id).filter(id => id))];
+      
+      if (counsellorIds.length > 0) {
+        const counsellors = await Counsellor.findAll({
+          where: {
+            counsellor_id: { [Op.in]: counsellorIds }
+          },
+          attributes: ['counsellor_id', 'counsellor_name', 'counsellor_email', 'role']
+        });
+        
+        counsellors.forEach(counsellor => {
+          counsellorsMap[counsellor.counsellor_id] = counsellor.toJSON();
+        });
+      }
+
+      // Get unique L3 counsellor ids from assigned_l3_counsellor_id
+      const l3CounsellorIds = [...new Set(journeyRecords.map(record => record.assigned_l3_counsellor_id).filter(id => id))];
+      
+      if (l3CounsellorIds.length > 0) {
+        const l3Counsellors = await Counsellor.findAll({
+          where: {
+            counsellor_id: { [Op.in]: l3CounsellorIds }
+          },
+          attributes: ['counsellor_id', 'counsellor_name', 'counsellor_email', 'role']
+        });
+        
+        l3Counsellors.forEach(counsellor => {
+          l3CounsellorsMap[counsellor.counsellor_id] = counsellor.toJSON();
+        });
+      }
+    }
+
+    // Create a map of the latest journey record for each course_id
+    const journeyMap = {};
+    journeyRecords.forEach(record => {
+      const recordJson = record.toJSON();
+      // Only keep the first (most recent) record for each course_id
+      if (!journeyMap[recordJson.course_id]) {
+        const counsellorInfo = counsellorsMap[recordJson.counsellor_id] || {};
+        const l3CounsellorInfo = l3CounsellorsMap[recordJson.assigned_l3_counsellor_id] || {};
+        
+        journeyMap[recordJson.course_id] = {
+          assigned_by: {
+            id: recordJson.counsellor_id,
+            name: counsellorInfo.counsellor_name || 'Unknown',
+            email: counsellorInfo.counsellor_email || null,
+            role: counsellorInfo.role || null
+          },
+          assigned_l3_counsellor: recordJson.assigned_l3_counsellor_id ? {
+            id: recordJson.assigned_l3_counsellor_id,
+            name: l3CounsellorInfo.counsellor_name || 'Unknown',
+            email: l3CounsellorInfo.counsellor_email || null,
+            role: l3CounsellorInfo.role || 'l3'
+          } : null,
+          assigned_at: recordJson.created_at,
+          status_history_id: recordJson.status_history_id,
+          course_status: recordJson.course_status
+        };
+      }
     });
 
     if (!shortlistedStatuses.length) {
@@ -341,28 +404,59 @@ export const getShortlistedColleges = async (req, res) => {
       statusMap[college_name?.toLowerCase()?.trim()] = api_sent_status;
     });
 
-    const updatedArray = shortlistedStatuses.map(status => {
+    let updatedArray = shortlistedStatuses.map(status => {
       const plain = status.toJSON();
       const course = plain.courses_details || {};
       const api = course.university_api || null;
-
       const universityName = course.university_name?.toLowerCase()?.trim();
       const matchedApiStatus = universityName ? statusMap[universityName] : undefined;
+      
+      // Use course_id to look up journey info
+      const assignedInfo = journeyMap[plain.course_id] || {
+        assigned_by: {
+          id: null,
+          name: null,
+          email: null,
+          role: null
+        },
+        assigned_l3_counsellor: null,
+        assigned_at: null,
+        status_history_id: null,
+        course_status: null
+      };
 
       return {
         ...plain,
         ...course,
         university_api: api,
         has_api_data: !!api,
-        college_api_sent_status: matchedApiStatus || null
+        college_api_sent_status: matchedApiStatus || null,
+        assigned_counsellor: assignedInfo.assigned_by,
+        assigned_l3_counsellor: assignedInfo.assigned_l3_counsellor,
+        journey_details: {
+          status_history_id: assignedInfo.status_history_id,
+          course_status: assignedInfo.course_status,
+          assigned_at: assignedInfo.assigned_at
+        }
       };
     });
+
+    if (role === 'l3') {
+      // For L3, filter to only show colleges where they are the assigned L3 counsellor
+      const l3JourneyCourseIds = journeyRecords
+        .filter(record => record.assigned_l3_counsellor_id === userId)
+        .map(record => record.course_id);
+
+      updatedArray = updatedArray.filter(item => 
+        l3JourneyCourseIds.includes(item.course_id)
+      );
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Shortlisted colleges fetched successfully',
       data: updatedArray
     });
-
 
   } catch (error) {
     console.error('Error fetching shortlisted colleges:', error);
@@ -373,7 +467,6 @@ export const getShortlistedColleges = async (req, res) => {
     });
   }
 };
-
 // Additional helper function to get all course statuses for a student
 export const getAllCourseStatusesForStudent = async (req, res) => {
   try {
@@ -507,6 +600,7 @@ export const bulkUpdateCourseStatuses = async (req, res) => {
 import { QueryTypes } from "sequelize";
 import { configDotenv } from 'dotenv';
 import Analyser from '../models/Analyser.js';
+import CourseStatusJourney from '../models/course_status_jounreny.js';
 export const formatDate = (d) => {
   if (!d) return '';
   try {

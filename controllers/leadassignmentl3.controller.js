@@ -1,4 +1,5 @@
 import sendMail from "../config/SendLmsEmail.js";
+import CourseStatusJourney from "../models/course_status_jounreny.js";
 import {
   CourseStatusHistory,
   Student,
@@ -47,13 +48,12 @@ const sendAssignmentEmail = async (
 ) => {
   try {
     const student = await Student.findByPk(studentId, {
-      include: [
-        {
-          model: Counsellor,
-          as: "assignedCounsellorL3",
-          attributes: ["counsellor_name", "counsellor_email"],
-        },
-      ],
+      attributes: [
+        'student_id',
+        'student_name',
+        'student_email',
+        'student_phone'
+      ]
     });
 
     if (!student) return;
@@ -61,7 +61,9 @@ const sendAssignmentEmail = async (
     const courses = await CourseStatusHistory.findOne({
       where: { student_id: student.student_id },
     });
+    
     console.log("data", data);
+    
     const emailData = {
       id: student.student_id,
       name: student.student_name,
@@ -73,6 +75,7 @@ const sendAssignmentEmail = async (
       agent_name: counsellorname,
       agent_email: counselloremail,
     };
+    
     const recipients = [
       "Bhuwan@degreefyd.com",
       "Sid@degreefyd.com",
@@ -84,6 +87,441 @@ const sendAssignmentEmail = async (
     await sendMail(emailData, recipients);
   } catch (error) {
     console.error("Error sending assignment email:", error);
+  }
+};
+
+export const assignedtoL3byruleSet = async (req, res) => {
+  try {
+    const {
+      studentId,
+      collegeName,
+      Course,
+      Degree,
+      Specialization,
+      level,
+      source,
+      stream,
+    } = req.body;
+
+    console.log("=== L3 Assignment Process Started ===");
+    console.log("Request body received:", JSON.stringify(req.body, null, 2));
+
+    if (!studentId) {
+      console.log("Validation failed: studentId is missing");
+      return res.status(400).json({ message: "studentId is required" });
+    }
+
+    console.log(`Fetching student details for studentId: ${studentId}`);
+    const studentDetails = await Student.findByPk(studentId);
+    console.log(
+      "Student details retrieved:",
+      JSON.stringify(studentDetails, null, 2),
+    );
+
+    console.log("Fetching all active L3 rulesets...");
+    const allRulesets = await LeadAssignmentRuleL3.findAll({
+      where: { is_active: true },
+    });
+    console.log(`Found ${allRulesets?.length || 0} active rulesets`);
+
+    if (!allRulesets || allRulesets.length === 0) {
+      console.log(
+        "No active rulesets found - proceeding to fallback assignment",
+      );
+      return res.status(404).json({ message: "No active ruleset found" });
+    }
+
+    console.log("Starting ruleset filtering process...");
+    console.log("Filtering criteria:", {
+      collegeName,
+      source,
+      Course,
+      Degree,
+      Specialization,
+      level,
+      stream,
+    });
+
+    const filteredRulesets = allRulesets.filter((ruleset) => {
+      console.log(
+        `\n--- Evaluating ruleset: "${ruleset.name}" (ID: ${ruleset.l3_assignment_rulesets_id}) ---`,
+      );
+
+      const universityMatch =
+        !collegeName ||
+        !ruleset.university_name ||
+        ruleset.university_name.length === 0 ||
+        ruleset.university_name.some((uni) => {
+          if (!uni) return false;
+          const normalizedUni = uni.toLowerCase().trim();
+          const normalizedCollege = collegeName.toLowerCase().trim();
+          const match =
+            normalizedUni === normalizedCollege ||
+            normalizedUni.includes(normalizedCollege) ||
+            normalizedCollege.includes(normalizedUni);
+
+          console.log(
+            `University comparison: "${normalizedUni}" vs "${normalizedCollege}" -> ${match}`,
+          );
+          return match;
+        });
+
+      const sourceMatch =
+        !source || !ruleset.source?.length || ruleset.source.includes(source);
+
+      console.log(`Source match check:`, {
+        sourceProvided: source,
+        rulesetSources: ruleset.source,
+        sourceMatch,
+      });
+
+      console.log(`Ruleset evaluation result:`, {
+        universityMatch,
+        sourceMatch,
+        finalResult: universityMatch && sourceMatch,
+      });
+
+      return universityMatch && sourceMatch;
+    });
+
+    console.log(
+      `\nFiltering complete. Found ${filteredRulesets.length} matching rulesets`,
+    );
+
+    if (filteredRulesets.length === 0) {
+      console.log(
+        "No matching rulesets found - initiating fallback assignment",
+      );
+
+      let fallbackAgentId = DUMMY_AGENT_ID;
+      let fallbackAgentName = DUMMY_AGENT_NAME;
+
+      console.log(`Checking for dummy agent with ID: ${DUMMY_AGENT_ID}`);
+      const dummyAgent = await Counsellor.findOne({
+        where: { counsellor_id: DUMMY_AGENT_ID },
+      });
+
+      if (!dummyAgent) {
+        console.log("Dummy agent not found, searching for any L3 agent");
+        const anyL3Agent = await Counsellor.findOne({ where: { role: "l3" } });
+        if (anyL3Agent) {
+          console.log(`Found L3 agent:`, JSON.stringify(anyL3Agent, null, 2));
+          fallbackAgentId = anyL3Agent.counsellor_id;
+          fallbackAgentName = anyL3Agent.counsellor_name;
+        } else {
+          console.error(
+            "CRITICAL: No L3 agents found in the system for fallback assignment",
+          );
+          return res.status(404).json({
+            message: "No active rulesets and no L3 agents found for fallback",
+          });
+        }
+      }
+
+      console.log("Triggering assignment email...");
+      await sendAssignmentEmail(
+        studentId,
+        {
+          collegeName,
+          Course,
+          Degree,
+          Specialization,
+          level,
+          stream,
+          assignmentType: "fallback",
+        },
+        dummyAgent?.counsellor_email || anyL3Agent?.counsellor_email || "",
+        fallbackAgentName,
+      );
+
+      console.log("=== L3 Assignment Process Completed (Fallback) ===");
+      return res.status(200).json({
+        message: "No matching ruleset found, assigned fallback L3 counsellor",
+        student_id: studentId,
+        assigned_l3_counsellor_id: fallbackAgentId,
+        counsellor_name_l3: fallbackAgentName,
+        assignment_method: "dummy_fallback",
+        reason: "No ruleset found matching collegeName and source criteria",
+      });
+    }
+
+    const hierarchyChecks = [
+      {
+        name: "courseName",
+        check: (ruleset) => {
+          if (!Course || !ruleset.course_conditions?.courseName?.length)
+            return false;
+          return ruleset.course_conditions.courseName.some(
+            (courseName) =>
+              courseName.toLowerCase().includes(Course.toLowerCase()) ||
+              Course.toLowerCase().includes(courseName.toLowerCase()),
+          );
+        },
+      },
+      {
+        name: "degree",
+        check: (ruleset) => {
+          if (!Degree || !ruleset.course_conditions?.degree?.length)
+            return false;
+          return ruleset.course_conditions.degree.includes(Degree);
+        },
+      },
+      {
+        name: "specialization",
+        check: (ruleset) => {
+          if (
+            !Specialization ||
+            !ruleset.course_conditions?.specialization?.length
+          )
+            return false;
+          return ruleset.course_conditions.specialization.some(
+            (spec) =>
+              spec.toLowerCase().includes(Specialization.toLowerCase()) ||
+              Specialization.toLowerCase().includes(spec.toLowerCase()),
+          );
+        },
+      },
+      {
+        name: "stream",
+        check: (ruleset) => {
+          if (!stream || !ruleset.course_conditions?.stream?.length)
+            return false;
+          return ruleset.course_conditions.stream.some(
+            (s) =>
+              s.toLowerCase().includes(stream.toLowerCase()) ||
+              stream.toLowerCase().includes(s.toLowerCase()),
+          );
+        },
+      },
+      {
+        name: "level",
+        check: (ruleset) => {
+          if (!level || !ruleset.course_conditions?.level?.length) return false;
+          return ruleset.course_conditions.level.includes(level);
+        },
+      },
+    ];
+
+    console.log("\n=== Starting hierarchy-based matching ===");
+
+    const hasAnyCourseMatch = filteredRulesets.some((ruleset) =>
+      hierarchyChecks.some((hierarchyLevel) => hierarchyLevel.check(ruleset)),
+    );
+    console.log("Has any course match:", hasAnyCourseMatch);
+
+    let selectedRuleset = null;
+    let matchedAt = null;
+    let currentFilteredRulesets = [...filteredRulesets];
+
+    if (hasAnyCourseMatch) {
+      console.log(
+        "Course matches found - proceeding with hierarchical filtering",
+      );
+
+      for (const hierarchyLevel of hierarchyChecks) {
+        console.log(`\nChecking hierarchy level: ${hierarchyLevel.name}`);
+        console.log(
+          `Current pool size: ${currentFilteredRulesets.length} rulesets`,
+        );
+
+        const matchingRulesets = currentFilteredRulesets.filter((ruleset) =>
+          hierarchyLevel.check(ruleset),
+        );
+
+        console.log(
+          `Rulesets matching ${hierarchyLevel.name}: ${matchingRulesets.length}`,
+        );
+
+        if (matchingRulesets.length > 0) {
+          if (matchingRulesets.length === 1) {
+            selectedRuleset = matchingRulesets[0];
+            matchedAt = hierarchyLevel.name;
+            console.log(
+              `Single ruleset found at ${hierarchyLevel.name}:`,
+              selectedRuleset.name,
+            );
+            break;
+          } else {
+            console.log(
+              `Multiple rulesets found at ${hierarchyLevel.name}, moving to next level`,
+            );
+            currentFilteredRulesets = matchingRulesets;
+          }
+        } else {
+          console.log(`No matches at ${hierarchyLevel.name} level`);
+        }
+      }
+
+      if (!selectedRuleset && currentFilteredRulesets.length > 0) {
+        console.log(
+          "Multiple rulesets remain after hierarchy check - sorting by priority",
+        );
+        currentFilteredRulesets.sort(
+          (a, b) => (b.priority || 0) - (a.priority || 0),
+        );
+        selectedRuleset = currentFilteredRulesets[0];
+        matchedAt = "priority-based";
+      }
+    } else {
+      console.log(
+        "No course matches found - assigning from college-matched ruleset based on priority",
+      );
+      filteredRulesets.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+      selectedRuleset = filteredRulesets[0];
+      matchedAt = "college-name-only";
+    }
+
+    if (!selectedRuleset) {
+      console.log("No ruleset selected - throwing error");
+      return res
+        .status(404)
+        .json({ message: "No matching ruleset found for the given criteria" });
+    }
+
+    console.log("\n=== Selected Ruleset Details ===");
+    console.log("Selected ruleset:", JSON.stringify(selectedRuleset, null, 2));
+    console.log("Matched at level:", matchedAt);
+
+    const assignedCounsellors = selectedRuleset.assigned_counsellor_ids;
+    console.log("Assigned counsellors from ruleset:", assignedCounsellors);
+
+    if (!assignedCounsellors || assignedCounsellors.length === 0) {
+      console.log("No counsellors assigned to ruleset - throwing error");
+      return res
+        .status(404)
+        .json({ message: "No counsellors assigned to the selected ruleset" });
+    }
+
+    let selectedCounsellorId;
+    let assignmentMethod;
+    let currentRoundRobinIndex = 0;
+
+    if (assignedCounsellors.length === 1) {
+      selectedCounsellorId = assignedCounsellors[0];
+      assignmentMethod = "direct";
+      console.log(
+        "Single counsellor assigned - using direct assignment:",
+        selectedCounsellorId,
+      );
+    } else {
+      console.log("Multiple counsellors found - using round-robin assignment");
+      currentRoundRobinIndex = selectedRuleset.round_robin_index || 0;
+      console.log("Current round-robin index:", currentRoundRobinIndex);
+
+      if (currentRoundRobinIndex >= assignedCounsellors.length) {
+        console.log("Round-robin index out of range - resetting to 0");
+        currentRoundRobinIndex = 0;
+      }
+
+      selectedCounsellorId = assignedCounsellors[currentRoundRobinIndex];
+      assignmentMethod = "round-robin";
+      console.log("Selected counsellor via round-robin:", selectedCounsellorId);
+
+      const nextIndex =
+        (currentRoundRobinIndex + 1) % assignedCounsellors.length;
+      console.log(
+        `Updating round-robin index from ${currentRoundRobinIndex} to ${nextIndex}`,
+      );
+
+      await LeadAssignmentRuleL3.update(
+        { round_robin_index: nextIndex },
+        {
+          where: {
+            l3_assignment_rulesets_id:
+              selectedRuleset.l3_assignment_rulesets_id,
+          },
+        },
+      );
+      console.log("Round-robin index updated successfully");
+    }
+
+    console.log(`Fetching counsellor details for ID: ${selectedCounsellorId}`);
+    let counsellorDetails = await Counsellor.findOne({
+      where: { counsellor_id: selectedCounsellorId },
+    });
+    console.log(
+      "Counsellor details retrieved:",
+      JSON.stringify(counsellorDetails, null, 2),
+    );
+
+    if (!counsellorDetails) {
+      console.log("Selected counsellor not found - throwing error");
+      return res.status(404).json({ message: "Selected counsellor not found" });
+    }
+
+    const responseMessage = hasAnyCourseMatch
+      ? "L3 counsellor assigned successfully"
+      : "L3 counsellor assigned based on college name match (no course criteria matched)";
+
+    console.log("Triggering assignment email...");
+    await sendAssignmentEmail(
+      studentId,
+      {
+        collegeName,
+        Course,
+        Degree,
+        Specialization,
+        level,
+        stream,
+        assignmentType: hasAnyCourseMatch
+          ? "hierarchy_match"
+          : "college_only_match",
+        matchedAt,
+      },
+      counsellorDetails.counsellor_email,
+      counsellorDetails.counsellor_name,
+    );
+    console.log("Email trigger completed");
+
+    console.log("\n=== L3 Assignment Process Completed Successfully ===");
+    console.log("Assignment summary:", {
+      studentId,
+      assigned_l3_counsellor_id: counsellorDetails.counsellor_id,
+      counsellor_name: counsellorDetails.counsellor_name,
+      assignment_method: assignmentMethod,
+      hasAnyCourseMatch,
+      matched_ruleset: selectedRuleset.name,
+    });
+
+    res.status(200).json({
+      message: responseMessage,
+      student_id: studentId,
+      assigned_l3_counsellor_id: counsellorDetails.counsellor_id,
+      counsellor_name_l3: counsellorDetails.counsellor_name,
+      assignment_method: assignmentMethod,
+      course_fields_matched: hasAnyCourseMatch,
+      matched_ruleset: {
+        id: selectedRuleset.l3_assignment_rulesets_id,
+        name: selectedRuleset.name,
+        matched_at_level: matchedAt,
+        priority: selectedRuleset.priority || 0,
+      },
+      round_robin_info:
+        assignmentMethod === "round-robin"
+          ? {
+              used_index: currentRoundRobinIndex,
+              total_counsellors: assignedCounsellors.length,
+              next_index:
+                (currentRoundRobinIndex + 1) % assignedCounsellors.length,
+            }
+          : null,
+    });
+  } catch (error) {
+    console.error("\n=== ERROR IN L3 ASSIGNMENT ===");
+    console.error("Error timestamp:", new Date().toISOString());
+    console.error("Error name:", error.name);
+    console.error("Error message:", error.message);
+    console.error("Error stack:", error.stack);
+    console.error(
+      "Request body that caused error:",
+      JSON.stringify(req.body, null, 2),
+    );
+    console.error("=== End Error Log ===\n");
+
+    res.status(500).json({
+      message: "Error in assigning L3 counsellor",
+      error: error.message,
+    });
   }
 };
 
@@ -398,465 +836,4 @@ export const toggleRuleSetStatus = async (req, res) => {
   }
 };
 
-export const assignedtoL3byruleSet = async (req, res) => {
-  try {
-    const {
-      studentId,
-      collegeName,
-      Course,
-      Degree,
-      Specialization,
-      level,
-      source,
-      stream,
-    } = req.body;
 
-    console.log("=== L3 Assignment Process Started ===");
-    console.log("Request body received:", JSON.stringify(req.body, null, 2));
-
-    if (!studentId) {
-      console.log("Validation failed: studentId is missing");
-      return res.status(400).json({ message: "studentId is required" });
-    }
-
-    console.log(`Fetching student details for studentId: ${studentId}`);
-    const studentDetails = await Student.findByPk(studentId);
-    console.log(
-      "Student details retrieved:",
-      JSON.stringify(studentDetails, null, 2),
-    );
-
-    console.log("Fetching all active L3 rulesets...");
-    const allRulesets = await LeadAssignmentRuleL3.findAll({
-      where: { is_active: true },
-    });
-    console.log(`Found ${allRulesets?.length || 0} active rulesets`);
-
-    if (!allRulesets || allRulesets.length === 0) {
-      console.log(
-        "No active rulesets found - proceeding to fallback assignment",
-      );
-      return res.status(404).json({ message: "No active ruleset found" });
-    }
-
-    console.log("Starting ruleset filtering process...");
-    console.log("Filtering criteria:", {
-      collegeName,
-      source,
-      Course,
-      Degree,
-      Specialization,
-      level,
-      stream,
-    });
-
-    const filteredRulesets = allRulesets.filter((ruleset) => {
-      console.log(
-        `\n--- Evaluating ruleset: "${ruleset.name}" (ID: ${ruleset.l3_assignment_rulesets_id}) ---`,
-      );
-
-      // University Match
-      const universityMatch =
-        !collegeName ||
-        !ruleset.university_name ||
-        ruleset.university_name.length === 0 ||
-        ruleset.university_name.some((uni) => {
-          if (!uni) return false;
-          const normalizedUni = uni.toLowerCase().trim();
-          const normalizedCollege = collegeName.toLowerCase().trim();
-          const match =
-            normalizedUni === normalizedCollege ||
-            normalizedUni.includes(normalizedCollege) ||
-            normalizedCollege.includes(normalizedUni);
-
-          console.log(
-            `University comparison: "${normalizedUni}" vs "${normalizedCollege}" -> ${match}`,
-          );
-          return match;
-        });
-
-      // Source Match
-      const sourceMatch =
-        !source || !ruleset.source?.length || ruleset.source.includes(source);
-
-      console.log(`Source match check:`, {
-        sourceProvided: source,
-        rulesetSources: ruleset.source,
-        sourceMatch,
-      });
-
-      console.log(`Ruleset evaluation result:`, {
-        universityMatch,
-        sourceMatch,
-        finalResult: universityMatch && sourceMatch,
-      });
-
-      return universityMatch && sourceMatch;
-    });
-
-    console.log(
-      `\nFiltering complete. Found ${filteredRulesets.length} matching rulesets`,
-    );
-
-    if (filteredRulesets.length === 0) {
-      console.log(
-        "No matching rulesets found - initiating fallback assignment",
-      );
-
-      let fallbackAgentId = DUMMY_AGENT_ID;
-      let fallbackAgentName = DUMMY_AGENT_NAME;
-
-      console.log(`Checking for dummy agent with ID: ${DUMMY_AGENT_ID}`);
-      const dummyAgent = await Counsellor.findOne({
-        where: { counsellor_id: DUMMY_AGENT_ID },
-      });
-
-      if (!dummyAgent) {
-        console.log("Dummy agent not found, searching for any L3 agent");
-        const anyL3Agent = await Counsellor.findOne({ where: { role: "l3" } });
-        if (anyL3Agent) {
-          console.log(`Found L3 agent:`, JSON.stringify(anyL3Agent, null, 2));
-          fallbackAgentId = anyL3Agent.counsellor_id;
-          fallbackAgentName = anyL3Agent.counsellor_name;
-        } else {
-          console.error(
-            "CRITICAL: No L3 agents found in the system for fallback assignment",
-          );
-          return res.status(404).json({
-            message: "No active rulesets and no L3 agents found for fallback",
-          });
-        }
-      }
-
-      // Create journey entry for fallback assignment
-      const journeyEntry = await CourseStatusJourney.create({
-        student_id: studentId,
-        course_id: null, // Will be updated later when course is selected
-        assigned_l3_counsellor_id: fallbackAgentId,
-        course_status: "L3 Assigned - Fallback",
-        notes: "Fallback L3 assignment (no ruleset matched)",
-      });
-
-      console.log("Triggering assignment email...");
-      await sendAssignmentEmail(
-        studentId,
-        {
-          collegeName,
-          Course,
-          Degree,
-          Specialization,
-          level,
-          stream,
-          assignmentType: "fallback",
-        },
-        dummyAgent?.counsellor_email || anyL3Agent?.counsellor_email || "",
-        fallbackAgentName,
-      );
-
-      console.log("=== L3 Assignment Process Completed (Fallback) ===");
-      return res.status(200).json({
-        message: "No matching ruleset found, assigned fallback L3 counsellor",
-        student_id: studentId,
-        assigned_l3_counsellor_id: fallbackAgentId,
-        counsellor_name_l3: fallbackAgentName,
-        journey_id: journeyEntry.status_history_id,
-        assignment_method: "dummy_fallback",
-        reason: "No ruleset found matching collegeName and source criteria",
-      });
-    }
-
-    const hierarchyChecks = [
-      {
-        name: "courseName",
-        check: (ruleset) => {
-          if (!Course || !ruleset.course_conditions?.courseName?.length)
-            return false;
-          return ruleset.course_conditions.courseName.some(
-            (courseName) =>
-              courseName.toLowerCase().includes(Course.toLowerCase()) ||
-              Course.toLowerCase().includes(courseName.toLowerCase()),
-          );
-        },
-      },
-      {
-        name: "degree",
-        check: (ruleset) => {
-          if (!Degree || !ruleset.course_conditions?.degree?.length)
-            return false;
-          return ruleset.course_conditions.degree.includes(Degree);
-        },
-      },
-      {
-        name: "specialization",
-        check: (ruleset) => {
-          if (
-            !Specialization ||
-            !ruleset.course_conditions?.specialization?.length
-          )
-            return false;
-          return ruleset.course_conditions.specialization.some(
-            (spec) =>
-              spec.toLowerCase().includes(Specialization.toLowerCase()) ||
-              Specialization.toLowerCase().includes(spec.toLowerCase()),
-          );
-        },
-      },
-      {
-        name: "stream",
-        check: (ruleset) => {
-          if (!stream || !ruleset.course_conditions?.stream?.length)
-            return false;
-          return ruleset.course_conditions.stream.some(
-            (s) =>
-              s.toLowerCase().includes(stream.toLowerCase()) ||
-              stream.toLowerCase().includes(s.toLowerCase()),
-          );
-        },
-      },
-      {
-        name: "level",
-        check: (ruleset) => {
-          if (!level || !ruleset.course_conditions?.level?.length) return false;
-          return ruleset.course_conditions.level.includes(level);
-        },
-      },
-    ];
-
-    console.log("\n=== Starting hierarchy-based matching ===");
-
-    const hasAnyCourseMatch = filteredRulesets.some((ruleset) =>
-      hierarchyChecks.some((hierarchyLevel) => hierarchyLevel.check(ruleset)),
-    );
-    console.log("Has any course match:", hasAnyCourseMatch);
-
-    let selectedRuleset = null;
-    let matchedAt = null;
-    let currentFilteredRulesets = [...filteredRulesets];
-
-    if (hasAnyCourseMatch) {
-      console.log(
-        "Course matches found - proceeding with hierarchical filtering",
-      );
-
-      for (const hierarchyLevel of hierarchyChecks) {
-        console.log(`\nChecking hierarchy level: ${hierarchyLevel.name}`);
-        console.log(
-          `Current pool size: ${currentFilteredRulesets.length} rulesets`,
-        );
-
-        const matchingRulesets = currentFilteredRulesets.filter((ruleset) =>
-          hierarchyLevel.check(ruleset),
-        );
-
-        console.log(
-          `Rulesets matching ${hierarchyLevel.name}: ${matchingRulesets.length}`,
-        );
-
-        if (matchingRulesets.length > 0) {
-          if (matchingRulesets.length === 1) {
-            selectedRuleset = matchingRulesets[0];
-            matchedAt = hierarchyLevel.name;
-            console.log(
-              `Single ruleset found at ${hierarchyLevel.name}:`,
-              selectedRuleset.name,
-            );
-            break;
-          } else {
-            console.log(
-              `Multiple rulesets found at ${hierarchyLevel.name}, moving to next level`,
-            );
-            currentFilteredRulesets = matchingRulesets;
-          }
-        } else {
-          console.log(`No matches at ${hierarchyLevel.name} level`);
-        }
-      }
-
-      if (!selectedRuleset && currentFilteredRulesets.length > 0) {
-        console.log(
-          "Multiple rulesets remain after hierarchy check - sorting by priority",
-        );
-        currentFilteredRulesets.sort(
-          (a, b) => (b.priority || 0) - (a.priority || 0),
-        );
-        selectedRuleset = currentFilteredRulesets[0];
-        matchedAt = "priority-based";
-      }
-    } else {
-      console.log(
-        "No course matches found - assigning from college-matched ruleset based on priority",
-      );
-      filteredRulesets.sort((a, b) => (b.priority || 0) - (a.priority || 0));
-      selectedRuleset = filteredRulesets[0];
-      matchedAt = "college-name-only";
-    }
-
-    if (!selectedRuleset) {
-      console.log("No ruleset selected - throwing error");
-      return res
-        .status(404)
-        .json({ message: "No matching ruleset found for the given criteria" });
-    }
-
-    console.log("\n=== Selected Ruleset Details ===");
-    console.log("Selected ruleset:", JSON.stringify(selectedRuleset, null, 2));
-    console.log("Matched at level:", matchedAt);
-
-    // Get assigned counsellors from the selected ruleset
-    const assignedCounsellors = selectedRuleset.assigned_counsellor_ids;
-    console.log("Assigned counsellors from ruleset:", assignedCounsellors);
-
-    if (!assignedCounsellors || assignedCounsellors.length === 0) {
-      console.log("No counsellors assigned to ruleset - throwing error");
-      return res
-        .status(404)
-        .json({ message: "No counsellors assigned to the selected ruleset" });
-    }
-
-    let selectedCounsellorId;
-    let assignmentMethod;
-    let currentRoundRobinIndex = 0;
-
-    if (assignedCounsellors.length === 1) {
-      selectedCounsellorId = assignedCounsellors[0];
-      assignmentMethod = "direct";
-      console.log(
-        "Single counsellor assigned - using direct assignment:",
-        selectedCounsellorId,
-      );
-    } else {
-      console.log("Multiple counsellors found - using round-robin assignment");
-      currentRoundRobinIndex = selectedRuleset.round_robin_index || 0;
-      console.log("Current round-robin index:", currentRoundRobinIndex);
-
-      if (currentRoundRobinIndex >= assignedCounsellors.length) {
-        console.log("Round-robin index out of range - resetting to 0");
-        currentRoundRobinIndex = 0;
-      }
-
-      selectedCounsellorId = assignedCounsellors[currentRoundRobinIndex];
-      assignmentMethod = "round-robin";
-      console.log("Selected counsellor via round-robin:", selectedCounsellorId);
-
-      // Update round-robin index
-      const nextIndex =
-        (currentRoundRobinIndex + 1) % assignedCounsellors.length;
-      console.log(
-        `Updating round-robin index from ${currentRoundRobinIndex} to ${nextIndex}`,
-      );
-
-      await LeadAssignmentRuleL3.update(
-        { round_robin_index: nextIndex },
-        {
-          where: {
-            l3_assignment_rulesets_id:
-              selectedRuleset.l3_assignment_rulesets_id,
-          },
-        },
-      );
-      console.log("Round-robin index updated successfully");
-    }
-
-    // Find counsellor details using counsellor_id
-    console.log(`Fetching counsellor details for ID: ${selectedCounsellorId}`);
-    let counsellorDetails = await Counsellor.findOne({
-      where: { counsellor_id: selectedCounsellorId },
-    });
-    console.log(
-      "Counsellor details retrieved:",
-      JSON.stringify(counsellorDetails, null, 2),
-    );
-
-    if (!counsellorDetails) {
-      console.log("Selected counsellor not found - throwing error");
-      return res.status(404).json({ message: "Selected counsellor not found" });
-    }
-
-    // Create journey entry for the assignment
-    const journeyEntry = await CourseStatusJourney.create({
-      student_id: studentId,
-      course_id: null, // Will be updated later when course is selected
-      assigned_l3_counsellor_id: counsellorDetails.counsellor_id,
-      course_status: "L3 Assigned",
-      notes: `Assigned via ruleset: ${selectedRuleset.name} (${matchedAt})`,
-    });
-
-    console.log("Journey entry created:", journeyEntry.status_history_id);
-
-    const responseMessage = hasAnyCourseMatch
-      ? "L3 counsellor assigned successfully"
-      : "L3 counsellor assigned based on college name match (no course criteria matched)";
-
-    console.log("Triggering assignment email...");
-    await sendAssignmentEmail(
-      studentId,
-      {
-        collegeName,
-        Course,
-        Degree,
-        Specialization,
-        level,
-        stream,
-        assignmentType: hasAnyCourseMatch
-          ? "hierarchy_match"
-          : "college_only_match",
-        matchedAt,
-      },
-      counsellorDetails.counsellor_email,
-      counsellorDetails.counsellor_name,
-    );
-    console.log("Email trigger completed");
-
-    console.log("\n=== L3 Assignment Process Completed Successfully ===");
-    console.log("Assignment summary:", {
-      studentId,
-      assigned_l3_counsellor_id: counsellorDetails.counsellor_id,
-      counsellor_name: counsellorDetails.counsellor_name,
-      journey_id: journeyEntry.status_history_id,
-      assignment_method: assignmentMethod,
-      hasAnyCourseMatch,
-      matched_ruleset: selectedRuleset.name,
-    });
-
-    res.status(200).json({
-      message: responseMessage,
-      student_id: studentId,
-      assigned_l3_counsellor_id: counsellorDetails.counsellor_id,
-      counsellor_name_l3: counsellorDetails.counsellor_name,
-      journey_id: journeyEntry.status_history_id,
-      assignment_method: assignmentMethod,
-      course_fields_matched: hasAnyCourseMatch,
-      matched_ruleset: {
-        id: selectedRuleset.l3_assignment_rulesets_id,
-        name: selectedRuleset.name,
-        matched_at_level: matchedAt,
-        priority: selectedRuleset.priority || 0,
-      },
-      round_robin_info:
-        assignmentMethod === "round-robin"
-          ? {
-              used_index: currentRoundRobinIndex,
-              total_counsellors: assignedCounsellors.length,
-              next_index:
-                (currentRoundRobinIndex + 1) % assignedCounsellors.length,
-            }
-          : null,
-    });
-  } catch (error) {
-    console.error("\n=== ERROR IN L3 ASSIGNMENT ===");
-    console.error("Error timestamp:", new Date().toISOString());
-    console.error("Error name:", error.name);
-    console.error("Error message:", error.message);
-    console.error("Error stack:", error.stack);
-    console.error(
-      "Request body that caused error:",
-      JSON.stringify(req.body, null, 2),
-    );
-    console.error("=== End Error Log ===\n");
-
-    res.status(500).json({
-      message: "Error in assigning L3 counsellor",
-      error: error.message,
-    });
-  }
-};

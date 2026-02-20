@@ -61,13 +61,11 @@ const CourseStatusJourney = sequelize.define(
       type: DataTypes.STRING(50),
       allowNull: true,
     },
-    timestamp: {
-      type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW,
-    },
   },
   {
-    timestamps: false,
+    timestamps: true,
+    createdAt: "created_at",
+    updatedAt: false,
     underscored: true,
     freezeTableName: true,
   },

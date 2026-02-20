@@ -192,7 +192,7 @@ export const updateStudentStatus = async (req, res) => {
           student.is_connected_yet_l3 || callingStatus === "Connected",
         is_reactivity: false,
       };
-      const log = await CourseStatusHistory.create({
+      const log = await CourseStatusJourney.create({
         student_id: studentId,
         course_id: selectedCourse,
         counsellor_id: counsellorId,
@@ -201,6 +201,7 @@ export const updateStudentStatus = async (req, res) => {
         currency: "INR",
         exam_interview_date: null,
         last_admission_date: null,
+        
         notes: "L3 Status BY Remark Handling",
         timestamp: new Date(),
       });

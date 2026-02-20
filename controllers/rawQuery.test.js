@@ -548,6 +548,15 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     WHERE ${l3CounsellorFilter}
     ORDER BY csj.student_id, csj.created_at DESC
   ),
+  -- Get first journey entry for each student (for created_at_l3 and assigned_l3_date)
+  first_journey_entries AS (
+    SELECT DISTINCT ON (csj.student_id)
+      csj.student_id,
+      csj.created_at as first_journey_timestamp
+    FROM course_status_journeys csj
+    WHERE ${l3CounsellorFilter}
+    ORDER BY csj.student_id, csj.created_at ASC
+  ),
   -- Get L3 counsellor details
   l3_counsellor_details AS (
     SELECT 
@@ -702,7 +711,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       orderBySQL = `ORDER BY latest_callback_date ${nextCallbacksort.toUpperCase() === "ASC" ? "ASC NULLS LAST" : "DESC NULLS LAST"}`;
     } else if (createdAtsort) {
       if (data === "l3") {
-        orderBySQL = `ORDER BY lje.journey_timestamp ${createdAtsort.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
+        // For L3, use first journey entry timestamp for sorting
+        orderBySQL = `ORDER BY fje.first_journey_timestamp ${createdAtsort.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
       } else {
         orderBySQL = `ORDER BY s.created_at ${createdAtsort.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
       }
@@ -714,7 +724,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       if (userrole == "l3" && data !== "l3") {
         orderBySQL = `ORDER BY s.assigned_l3_date ${sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
       } else if (data === "l3") {
-        orderBySQL = `ORDER BY lje.journey_timestamp ${sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
+        // For L3, use first journey entry timestamp for sorting
+        orderBySQL = `ORDER BY fje.first_journey_timestamp ${sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
       } else {
         orderBySQL = `ORDER BY s.created_at ${sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
       }
@@ -905,6 +916,10 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       SELECT
         ${isDownload ? downloadSelectFields : ""}
         ${normalSelectFields}
+        -- Use first journey entry timestamp as created_at_l3 and assigned_l3_date
+        fje.first_journey_timestamp as created_at_l3,
+        fje.first_journey_timestamp as assigned_l3_date_from_journey,
+        
         -- L3 Counsellor details from journey
         lcd.counsellor_id as l3_counsellor_id,
         lcd.counsellor_name as l3_counsellor_name,
@@ -940,6 +955,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
 
       FROM students s
       INNER JOIN latest_journey_entries lje ON s.student_id = lje.student_id
+      INNER JOIN first_journey_entries fje ON s.student_id = fje.student_id
       LEFT JOIN l3_counsellor_details lcd ON lje.assigned_l3_counsellor_id = lcd.counsellor_id
       LEFT JOIN counsellors c1 ON s.assigned_counsellor_id = c1.counsellor_id
       LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
@@ -1063,6 +1079,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       SELECT COUNT(DISTINCT s.student_id) as total
       FROM students s
       INNER JOIN latest_journey_entries lje ON s.student_id = lje.student_id
+      INNER JOIN first_journey_entries fje ON s.student_id = fje.student_id
       LEFT JOIN l3_counsellor_details lcd ON lje.assigned_l3_counsellor_id = lcd.counsellor_id
       LEFT JOIN counsellors c1 ON s.assigned_counsellor_id = c1.counsellor_id
       LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
@@ -1180,8 +1197,10 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
             next_call_time_l3: item?.next_call_time_l3,
             is_connected_yet_l3: item?.is_connected_yet_l3,
             remark_count: item.remarks_count,
-            created_at: item.created_at,
-            assigned_l3_date: item?.assigned_l3_date,
+            // Use first journey entry timestamp as created_at for L3
+            created_at: item.created_at_l3 || item.created_at,
+            // Use journey timestamp for assigned_l3_date
+            assigned_l3_date: item.assigned_l3_date_from_journey || item?.assigned_l3_date,
             is_reactivity: item?.is_reactivity,
             assigned_team_owner_date: item?.assigned_team_owner_date,
             mode: item.mode,
@@ -1433,7 +1452,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         selectedagent,
         dataMode: data,
         ...(data === "l3" && {
-          note: "L3 view - showing distinct students with assigned L3 counsellor",
+          note: "L3 view - showing distinct students with assigned L3 counsellor, created_at and assigned_l3_date from first journey entry",
         }),
         ...(userRole === "to" && {
           note: "Team Owner view - showing leads based on role and filters",
@@ -1490,7 +1509,8 @@ async function getL3OverallStatsFromJourney({
     const query = `
       WITH base_students_with_journey AS (
         SELECT DISTINCT csj.student_id,
-               MAX(csj.created_at) as latest_journey_date
+               MAX(csj.created_at) as latest_journey_date,
+               MIN(csj.created_at) as first_journey_date
         FROM course_status_journeys csj
         WHERE ${journeyWhere}
         GROUP BY csj.student_id
@@ -1499,6 +1519,7 @@ async function getL3OverallStatsFromJourney({
         SELECT DISTINCT s.student_id,
                s.number_of_unread_messages,
                s.created_at as student_created_at,
+               bj.first_journey_date as journey_created_at,
                s.is_connected_yet,
                s.is_connected_yet_l3,
                s.total_remarks_l3,
@@ -1566,8 +1587,8 @@ async function getL3OverallStatsFromJourney({
       created_today AS (
         SELECT COUNT(*) as created_today_count
         FROM base_students bs
-        WHERE bs.student_created_at >= '${todayStartFormatted}'::timestamp
-          AND bs.student_created_at <= '${todayEndFormatted}'::timestamp
+        WHERE bs.journey_created_at >= '${todayStartFormatted}'::timestamp
+          AND bs.journey_created_at <= '${todayEndFormatted}'::timestamp
       )
       SELECT 
         (SELECT COUNT(*) FROM fresh_leads) as fresh_leads,

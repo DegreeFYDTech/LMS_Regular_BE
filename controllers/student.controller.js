@@ -192,6 +192,14 @@ export const updateStudentStatus = async (req, res) => {
           student.is_connected_yet_l3 || callingStatus === "Connected",
         is_reactivity: false,
       };
+      const journeylogs = await CourseStatusJourney.findOne({
+        where: {
+          student_id: studentId,
+          course_id: selectedCourse,
+        },
+        order: [["created_at", "DESC"]],
+      });
+
       const log = await CourseStatusJourney.create({
         student_id: studentId,
         course_id: selectedCourse,
@@ -201,7 +209,8 @@ export const updateStudentStatus = async (req, res) => {
         currency: "INR",
         exam_interview_date: null,
         last_admission_date: null,
-        
+        assigned_l3_counsellor_id:
+          journeylogs?.assigned_l3_counsellor_id || null,
         notes: "L3 Status BY Remark Handling",
         timestamp: new Date(),
       });
@@ -447,7 +456,7 @@ export const getStudentById = async (req, res) => {
     if (counsellorRole === "l2") {
       whereConditions = {
         student_id: id,
-        assigned_counsellor_id: counsellorId
+        assigned_counsellor_id: counsellorId,
       };
     } else if (counsellorRole === "Analyser" || counsellorRole === "analyser") {
       const analyser = await AnalyserUser.findByPk(counsellorId);
@@ -552,7 +561,14 @@ export const getStudentById = async (req, res) => {
             {
               model: UniversityCourse,
               as: "enrolledCourse",
-              attributes: ["course_id", "university_name", "course_name", "degree_name", "stream", "level"],
+              attributes: [
+                "course_id",
+                "university_name",
+                "course_name",
+                "degree_name",
+                "stream",
+                "level",
+              ],
               required: false,
             },
           ],
@@ -601,60 +617,90 @@ export const getStudentById = async (req, res) => {
        ORDER BY created_at DESC`,
       {
         replacements: { studentId: id },
-        type: QueryTypes.SELECT
-      }
+        type: QueryTypes.SELECT,
+      },
     );
 
     // Get unique counsellor IDs to fetch their names
-    const counsellorIds = [...new Set(allL3Journeys.map(j => j.assigned_l3_counsellor_id).filter(Boolean))];
+    const counsellorIds = [
+      ...new Set(
+        allL3Journeys.map((j) => j.assigned_l3_counsellor_id).filter(Boolean),
+      ),
+    ];
 
     // Fetch counsellor names separately
-    const counsellors = counsellorIds.length > 0 ? await Counsellor.findAll({
-      where: { counsellor_id: counsellorIds },
-      attributes: ["counsellor_id", "counsellor_name", "counsellor_email", "role"]
-    }) : [];
+    const counsellors =
+      counsellorIds.length > 0
+        ? await Counsellor.findAll({
+            where: { counsellor_id: counsellorIds },
+            attributes: [
+              "counsellor_id",
+              "counsellor_name",
+              "counsellor_email",
+              "role",
+            ],
+          })
+        : [];
 
     // Create a map for quick lookup
     const counsellorMap = {};
-    counsellors.forEach(c => {
+    counsellors.forEach((c) => {
       counsellorMap[c.counsellor_id] = c;
     });
 
     // Get unique course IDs to fetch course details
-    const courseIds = [...new Set(allL3Journeys.map(j => j.course_id).filter(Boolean))];
+    const courseIds = [
+      ...new Set(allL3Journeys.map((j) => j.course_id).filter(Boolean)),
+    ];
 
     // Fetch course details separately
-    const courses = courseIds.length > 0 ? await UniversityCourse.findAll({
-      where: { course_id: courseIds },
-      attributes: ["course_id", "course_name", "university_name", "degree_name", "stream", "level"]
-    }) : [];
+    const courses =
+      courseIds.length > 0
+        ? await UniversityCourse.findAll({
+            where: { course_id: courseIds },
+            attributes: [
+              "course_id",
+              "course_name",
+              "university_name",
+              "degree_name",
+              "stream",
+              "level",
+            ],
+          })
+        : [];
 
     // Create a map for quick lookup
     const courseMap = {};
-    courses.forEach(c => {
+    courses.forEach((c) => {
       courseMap[c.course_id] = c;
     });
 
     // Enhance journeys with counsellor and course details
-    const enhancedJourneys = allL3Journeys.map(journey => {
+    const enhancedJourneys = allL3Journeys.map((journey) => {
       // Add counsellor details
-      if (journey.assigned_l3_counsellor_id && counsellorMap[journey.assigned_l3_counsellor_id]) {
+      if (
+        journey.assigned_l3_counsellor_id &&
+        counsellorMap[journey.assigned_l3_counsellor_id]
+      ) {
         journey.counsellor = counsellorMap[journey.assigned_l3_counsellor_id];
       }
-      
+
       // Add course details
       if (journey.course_id && courseMap[journey.course_id]) {
         journey.university_course = courseMap[journey.course_id];
       }
-      
+
       return journey;
     });
 
     const journeysByCourse = {};
-    enhancedJourneys.forEach(journey => {
+    enhancedJourneys.forEach((journey) => {
       if (journey.course_id) {
-        if (!journeysByCourse[journey.course_id] || 
-            new Date(journey.created_at) > new Date(journeysByCourse[journey.course_id].created_at)) {
+        if (
+          !journeysByCourse[journey.course_id] ||
+          new Date(journey.created_at) >
+            new Date(journeysByCourse[journey.course_id].created_at)
+        ) {
           journeysByCourse[journey.course_id] = journey;
         }
       }
@@ -662,33 +708,40 @@ export const getStudentById = async (req, res) => {
 
     // Create a map of course_id to L3 counsellor details
     const courseL3Map = {};
-    Object.values(journeysByCourse).forEach(journey => {
+    Object.values(journeysByCourse).forEach((journey) => {
       if (journey.course_id && journey.assigned_l3_counsellor_id) {
         courseL3Map[journey.course_id] = {
           assigned_l3_counsellor_id: journey.assigned_l3_counsellor_id,
-          l3_counsellor_name: journey.counsellor?.counsellor_name || 'Unknown',
-          l3_counsellor_email: journey.counsellor?.counsellor_email || '',
+          l3_counsellor_name: journey.counsellor?.counsellor_name || "Unknown",
+          l3_counsellor_email: journey.counsellor?.counsellor_email || "",
           journey_created_at: journey.created_at,
-          journey_status: journey.course_status
+          journey_status: journey.course_status,
         };
       }
     });
 
     // Add L3 journey data to each college credential
-    if (studentData.collegeCredentials && studentData.collegeCredentials.length > 0) {
-      studentData.collegeCredentials = studentData.collegeCredentials.map(cred => {
-        const l3Data = cred.course_id ? courseL3Map[cred.course_id] : null;
-        return {
-          ...cred,
-          l3_counsellor_details: l3Data ? {
-            assigned_l3_counsellor_id: l3Data.assigned_l3_counsellor_id,
-            counsellor_name: l3Data.l3_counsellor_name,
-            counsellor_email: l3Data.l3_counsellor_email,
-            journey_created_at: l3Data.journey_created_at,
-            journey_status: l3Data.journey_status
-          } : null
-        };
-      });
+    if (
+      studentData.collegeCredentials &&
+      studentData.collegeCredentials.length > 0
+    ) {
+      studentData.collegeCredentials = studentData.collegeCredentials.map(
+        (cred) => {
+          const l3Data = cred.course_id ? courseL3Map[cred.course_id] : null;
+          return {
+            ...cred,
+            l3_counsellor_details: l3Data
+              ? {
+                  assigned_l3_counsellor_id: l3Data.assigned_l3_counsellor_id,
+                  counsellor_name: l3Data.l3_counsellor_name,
+                  counsellor_email: l3Data.l3_counsellor_email,
+                  journey_created_at: l3Data.journey_created_at,
+                  journey_status: l3Data.journey_status,
+                }
+              : null,
+          };
+        },
+      );
     }
 
     // Also add all L3 journeys to student data for reference
@@ -696,18 +749,21 @@ export const getStudentById = async (req, res) => {
 
     // Add a summary of assigned L3 counsellors (distinct)
     const assignedL3Counsellors = {};
-    enhancedJourneys.forEach(journey => {
-      if (journey.assigned_l3_counsellor_id && !assignedL3Counsellors[journey.assigned_l3_counsellor_id]) {
+    enhancedJourneys.forEach((journey) => {
+      if (
+        journey.assigned_l3_counsellor_id &&
+        !assignedL3Counsellors[journey.assigned_l3_counsellor_id]
+      ) {
         assignedL3Counsellors[journey.assigned_l3_counsellor_id] = {
           counsellor_id: journey.assigned_l3_counsellor_id,
-          counsellor_name: journey.counsellor?.counsellor_name || 'Unknown',
-          counsellor_email: journey.counsellor?.counsellor_email || '',
-          role: 'l3',
-          first_assigned: journey.created_at
+          counsellor_name: journey.counsellor?.counsellor_name || "Unknown",
+          counsellor_email: journey.counsellor?.counsellor_email || "",
+          role: "l3",
+          first_assigned: journey.created_at,
         };
       }
     });
-    
+
     studentData.assigned_l3_counsellors = Object.values(assignedL3Counsellors);
 
     if (counsellorRole.toLowerCase() === "analyser") {
@@ -779,7 +835,10 @@ export const getStudentById = async (req, res) => {
       }
 
       // Mask lead activities data
-      if (studentData.lead_activities && studentData.lead_activities.length > 0) {
+      if (
+        studentData.lead_activities &&
+        studentData.lead_activities.length > 0
+      ) {
         studentData.lead_activities = studentData.lead_activities.map(
           (activity) => {
             if (activity.student_name) {
@@ -842,7 +901,7 @@ export const getStudentById = async (req, res) => {
 
       // Mask L3 journey data if needed
       if (studentData.l3_journeys && studentData.l3_journeys.length > 0) {
-        studentData.l3_journeys = studentData.l3_journeys.map(journey => {
+        studentData.l3_journeys = studentData.l3_journeys.map((journey) => {
           if (journey.counsellor) {
             // Keep counsellor info visible as it's just names
           }
@@ -851,13 +910,18 @@ export const getStudentById = async (req, res) => {
       }
 
       // Mask college credentials L3 data if needed
-      if (studentData.collegeCredentials && studentData.collegeCredentials.length > 0) {
-        studentData.collegeCredentials = studentData.collegeCredentials.map(cred => {
-          if (cred.l3_counsellor_details) {
-            // Keep L3 counsellor info visible as it's just names
-          }
-          return cred;
-        });
+      if (
+        studentData.collegeCredentials &&
+        studentData.collegeCredentials.length > 0
+      ) {
+        studentData.collegeCredentials = studentData.collegeCredentials.map(
+          (cred) => {
+            if (cred.l3_counsellor_details) {
+              // Keep L3 counsellor info visible as it's just names
+            }
+            return cred;
+          },
+        );
       }
 
       studentData.data_masked = true;

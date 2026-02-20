@@ -330,14 +330,21 @@ export const assignCounsellorsToStudents = async (req, res) => {
     const { assignmentType, selectedStudents, selectedAgents } = req.body;
     const { supervisorId } = req.user;
 
+    // Only allow L2 assignment
+    if (assignmentType !== 'L2') {
+      return res.status(400).json({
+        success: false,
+        message: 'This endpoint only supports L2 assignment. For L3, use the replacement endpoint.'
+      });
+    }
+
     if (
-      !['L2', 'L3'].includes(assignmentType) ||
       !Array.isArray(selectedStudents) || selectedStudents.length === 0 ||
       !Array.isArray(selectedAgents) || selectedAgents.length === 0
     ) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid or missing assignmentType, selectedStudents, or selectedAgents'
+        message: 'Invalid or missing selectedStudents or selectedAgents'
       });
     }
 
@@ -346,15 +353,14 @@ export const assignCounsellorsToStudents = async (req, res) => {
     const validCounsellors = await Counsellor.findAll({
       where: {
         counsellor_id: { [Op.in]: agentIds },
-        role: assignmentType.toLowerCase()
-        // status: 'active'
+        role: 'l2'
       }
     });
 
     if (validCounsellors.length !== selectedAgents.length) {
       return res.status(400).json({
         success: false,
-        message: `Some agents are invalid or not active ${assignmentType} counsellors`
+        message: `Some agents are invalid or not active L2 counsellors`
       });
     }
 
@@ -369,7 +375,7 @@ export const assignCounsellorsToStudents = async (req, res) => {
       });
     }
 
-    // 1️⃣ Create a mapping of studentId -> counsellorId
+    // Create a mapping of studentId -> counsellorId
     const studentCounsellorMap = {};
 
     const updatePromises = selectedStudents.map((studentId, index) => {
@@ -378,18 +384,15 @@ export const assignCounsellorsToStudents = async (req, res) => {
       // Save mapping for logs later
       studentCounsellorMap[studentId] = counsellorId;
 
-      const updateFields = assignmentType === 'L2'
-        ? { assigned_counsellor_id: counsellorId }
-        : { assigned_counsellor_l3_id: counsellorId, assigned_l3_date: new Date() };
-
       SocketEmitter({ student_id: studentId }, {
         counsellor_id: counsellorId,
         counsellor_name: name
       });
 
-      return Student.update(updateFields, {
-        where: { student_id: studentId }
-      });
+      return Student.update(
+        { assigned_counsellor_id: counsellorId },
+        { where: { student_id: studentId } }
+      );
     });
 
     await Promise.all(updatePromises);
@@ -404,46 +407,43 @@ export const assignCounsellorsToStudents = async (req, res) => {
 
     await Promise.all(logPromises);
 
-
+    // FIX: Don't include the L3 association when fetching updated students
+    // This is what's causing the error
     const updatedStudents = await Student.findAll({
       where: {
         student_id: { [Op.in]: selectedStudents }
       },
-      include: [
-        {
-          model: Counsellor,
-          as: 'assignedCounsellorL3',
-          attributes: ['counsellor_name', 'counsellor_email']
-        },
+      attributes: [
+        'student_id',
+        'student_name',
+        'student_email',
+        'student_phone',
+        'assigned_counsellor_id'
       ]
+      // Remove the include for assignedCounsellorL3
     });
 
-    if (assignmentType.toLowerCase() === 'l3') {
-      const emailPromises = updatedStudents.map(student => {
-        return GenerateEmailFunction({
-          id: student.student_id,
-          name: student.student_name,
-          email: student.student_email,
-          phone: student.student_phone,
-          timestamp: new Date(),
-          asigned_college: student?.course?.collegeName || 'N/A',
-          asigned_course: student?.course?.courseName || 'N/A',
-          agent_name: student?.assignedCounsellorL3?.counsellor_name,
-          agent_email: student?.assignedCounsellorL3?.counsellor_email
-        }, [
-          student?.assignedCounsellorL3?.counsellor_email
-        ]);
-      });
-      await Promise.all(emailPromises);
-    }
-
+    // If you need L2 counsellor details, fetch them separately or use a different approach
+    const updatedStudentsWithCounsellor = await Promise.all(
+      updatedStudents.map(async (student) => {
+        const counsellor = await Counsellor.findOne({
+          where: { counsellor_id: student.assigned_counsellor_id },
+          attributes: ['counsellor_name', 'counsellor_email']
+        });
+        
+        return {
+          ...student.toJSON(),
+          assignedCounsellor: counsellor
+        };
+      })
+    );
 
     res.status(200).json({
       success: true,
-      message: `Assigned ${selectedStudents.length} students to ${selectedAgents.length} ${assignmentType} counsellor(s)`,
+      message: `Assigned ${selectedStudents.length} students to ${selectedAgents.length} L2 counsellor(s)`,
       data: {
-        assignmentType,
-        updatedStudents,
+        assignmentType: 'L2',
+        updatedStudents: updatedStudentsWithCounsellor,
         summary: {
           totalStudents: selectedStudents.length,
           totalCounsellors: selectedAgents.length,
@@ -451,19 +451,20 @@ export const assignCounsellorsToStudents = async (req, res) => {
         }
       }
     });
+    
     await activityLogger(req, {
       success: true,
-      message: `Assigned ${selectedStudents.length} students to ${selectedAgents.length} ${assignmentType} counsellor(s)`,
+      message: `Assigned ${selectedStudents.length} students to ${selectedAgents.length} L2 counsellor(s)`,
       data: {
-        assignmentType,
-        updatedStudents,
+        assignmentType: 'L2',
+        updatedStudents: updatedStudentsWithCounsellor,
         summary: {
           totalStudents: selectedStudents.length,
           totalCounsellors: selectedAgents.length,
           assignmentDate: new Date()
         }
       }
-    })
+    });
 
   } catch (error) {
     console.error('Error in assignCounsellorsToStudents:', error);
@@ -476,7 +477,7 @@ export const assignCounsellorsToStudents = async (req, res) => {
       success: false,
       message: 'Internal server error',
       error: error
-    })
+    });
   }
 };
 

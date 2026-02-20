@@ -52,6 +52,7 @@ export const createStatusLog = async (req, res) => {
       { where: { course_id: courseId, student_id: studentId } },
     );
     console.log("Journey entry created:", journeyEntry.status_history_id);
+    console.log("Journey entry created:", journeyEntry.status_history_id);
 
     if (
       status == "Form Submitted – Portal Pending" ||
@@ -63,7 +64,7 @@ export const createStatusLog = async (req, res) => {
     ) {
       try {
         const l3data = await axios.post(
-          "http://localhost:3031/v1/leadassignmentl3/assign",
+          "http://localhost:3032/v1/leadassignmentl3/assign",
           {
             studentId,
             collegeName: courseDetails.university_name,

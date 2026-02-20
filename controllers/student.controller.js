@@ -199,7 +199,7 @@ export const updateStudentStatus = async (req, res) => {
         },
         order: [["created_at", "DESC"]],
       });
-
+      console.log(journeylogs, "journeylogs");
       const log = await CourseStatusJourney.create({
         student_id: studentId,
         course_id: selectedCourse,

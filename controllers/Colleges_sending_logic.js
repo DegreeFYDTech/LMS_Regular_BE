@@ -2244,9 +2244,7 @@ async function CgcLandran(
     isPartnerPortal,
   );
 
-  // if (!courseHeaderValue?.values) {
-  //   throw new Error("Course header values not found");
-  // }
+
 
   const defaultValues = {
     name: `${userResponse.student_name || ""} ${""}`.trim(),
@@ -2262,7 +2260,7 @@ async function CgcLandran(
     source: "nuvora",
     state: "Punjab",
     city: "Mohali",
-    course: "B.Tech-CSE",
+    course: "B.Tech - CSE",
     secret_key: "b30c9bcd9fb18a82e41a505fae8490b2",
   };
   const values = courseHeaderValue?.values || defaultValues;
@@ -2273,53 +2271,7 @@ async function CgcLandran(
     throw new Error("API URL not found in the course header values");
   }
 
-  const cgcPayload = {};
 
-  // for (const [key, value] of Object.entries(values)) {
-  //   if (key === "API_URL") continue;
-
-  //   let finalValue;
-
-  //   if (typeof value === "string" && value.startsWith("student.")) {
-  //     const userKey = value.replace("student.", "");
-  //     const mapping = {
-  //       phone_number: "student_phone",
-  //       preferred_state: "preferredState",
-  //       name: "student_name",
-  //       email: "student_email",
-  //       preferred_city: "preferred_city",
-  //     };
-  //     const actualKey = mapping[userKey] || userKey;
-
-  //     let userValue = userResponse[actualKey];
-
-  //     if (Array.isArray(userValue)) {
-  //       userValue = userValue.length > 0 ? userValue[0] : "";
-  //     }
-
-  //     if (!isPrimary) {
-  //       if (actualKey === "student_email" && studentEmail) {
-  //         userValue = studentEmail;
-  //       } else if (actualKey === "student_phone" && studentPhone) {
-  //         userValue = studentPhone;
-  //       }
-  //     }
-
-  //     if (actualKey === "preferredState") {
-  //       finalValue = userValue && userValue.trim() !== "" ? userValue : "";
-  //     } else if (actualKey === "preferredCity") {
-  //       finalValue = userValue && userValue.trim() !== "" ? userValue : "";
-  //     } else if (actualKey === "phoneNumber" && userValue) {
-  //       finalValue = `+91-${userValue}`;
-  //     } else {
-  //       finalValue = userValue || "";
-  //     }
-  //   } else {
-  //     finalValue = value;
-  //   }
-
-  //   cgcPayload[key] = finalValue;
-  // }
 
   const headers = {
     "Content-Type": "application/json",

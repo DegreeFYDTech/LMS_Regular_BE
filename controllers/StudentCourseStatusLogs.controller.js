@@ -492,9 +492,6 @@ const getCounsellorPivotReport = async (
   level,
   courseWhereClause,
 ) => {
-  const counsellorIdField =
-    level === "l2" ? "assigned_counsellor_id" : "assigned_counsellor_l3_id";
-
   const subqueryWhere = {};
 
   if (startDate || endDate) {
@@ -558,29 +555,73 @@ const getCounsellorPivotReport = async (
     raw: true,
   });
 
-  // Get ALL students, including those without assigned counsellors
+  // Get student IDs from latest records
   const studentIds = [...new Set(latestRecords.map((r) => r.student_id))];
-
-  const students = await Student.findAll({
-    where: {
-      student_id: studentIds,
-    },
-    attributes: ["student_id", counsellorIdField],
-    raw: true,
-  });
-
+  
   const studentCounsellorMap = {};
   const unassignedStudents = [];
 
-  students.forEach((student) => {
-    const counsellorId = student[counsellorIdField];
-    if (counsellorId && counsellorId.trim() !== "") {
-      studentCounsellorMap[student.student_id] = counsellorId;
-    } else {
-      studentCounsellorMap[student.student_id] = null;
-      unassignedStudents.push(student.student_id);
+  if (level === "l2") {
+    // For L2, use student table's assigned_counsellor_id
+    const students = await Student.findAll({
+      where: {
+        student_id: studentIds,
+      },
+      attributes: ["student_id", "assigned_counsellor_id"],
+      raw: true,
+    });
+
+    students.forEach((student) => {
+      const counsellorId = student.assigned_counsellor_id;
+      if (counsellorId && counsellorId.trim() !== "") {
+        studentCounsellorMap[student.student_id] = counsellorId;
+      } else {
+        studentCounsellorMap[student.student_id] = null;
+        unassignedStudents.push(student.student_id);
+      }
+    });
+  } else {
+    // For L3, get counsellor from journey table's assigned_l3_counsellor_id
+    // Get the latest journey entry for each student-course combination
+    const journeySubquery = await CourseStatusJourney.findAll({
+      where: {
+        student_id: studentIds,
+      },
+      attributes: [
+        "student_id",
+        "course_id",
+        [Sequelize.fn("MAX", Sequelize.col("created_at")), "latest_date"],
+      ],
+      group: ["student_id", "course_id"],
+      raw: true,
+    });
+
+    if (journeySubquery.length > 0) {
+      const latestJourneyEntries = await CourseStatusJourney.findAll({
+        where: {
+          [Op.or]: journeySubquery.map((item) => ({
+            student_id: item.student_id,
+            course_id: item.course_id,
+            created_at: item.latest_date,
+          })),
+        },
+        attributes: ["student_id", "course_id", "assigned_l3_counsellor_id"],
+        raw: true,
+      });
+
+      latestJourneyEntries.forEach((entry) => {
+        const key = `${entry.student_id}_${entry.course_id}`;
+        const counsellorId = entry.assigned_l3_counsellor_id;
+        
+        if (counsellorId && counsellorId.trim() !== "") {
+          studentCounsellorMap[key] = counsellorId;
+        } else {
+          studentCounsellorMap[key] = null;
+          unassignedStudents.push(`${entry.student_id} (Course: ${entry.course_id})`);
+        }
+      });
     }
-  });
+  }
 
   // Log unassigned students for debugging
   if (unassignedStudents.length > 0) {
@@ -595,10 +636,20 @@ const getCounsellorPivotReport = async (
   const uniqueCombinations = new Set();
 
   latestRecords.forEach((record) => {
-    const counsellorId = studentCounsellorMap[record.student_id];
+    let counsellorId;
+    
+    if (level === "l2") {
+      // For L2, use student-level mapping
+      counsellorId = studentCounsellorMap[record.student_id];
+    } else {
+      // For L3, use student-course level mapping
+      const key = `${record.student_id}_${record.course_id}`;
+      counsellorId = studentCounsellorMap[key];
+    }
+    
     const status = record.course_status;
 
-    // Use "Unassigned" for students without counsellor
+    // Use "Unassigned" for records without counsellor
     const displayCounsellorId = counsellorId || "unassigned";
 
     const combinationKey = `${displayCounsellorId}_${record.student_id}_${record.course_id}`;
@@ -694,6 +745,7 @@ const getCounsellorPivotReport = async (
       statusTotals,
       grandTotal,
     },
+    note: level === "l3" ? "L3 counsellors mapped from journey table (student-course level)" : undefined,
   };
 };
 

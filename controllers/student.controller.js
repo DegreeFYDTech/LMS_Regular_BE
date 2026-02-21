@@ -947,10 +947,45 @@ export const updateStudentDetails = async (req, res) => {
   try {
     const { studentId } = req.params;
     const { payload } = req.body;
+    console.log(payload, "Received payload for updateStudentDetails");
+    
     if (!payload || typeof payload !== "object") {
       return res
         .status(400)
         .json({ message: "Invalid payload in request body" });
+    }
+
+    const student = await Student.findOne({
+      where: { student_id: studentId },
+    });
+
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    console.log("Current student state:", {
+      source: student.source,
+      is_edited: student.is_edited,
+      edited_by: student.edited_by,
+      current_email: student.student_email
+    });
+
+    const oneTimeEditSources = ["IVR", "WhatsApp", "IVR ", "Whatsapp"];
+
+    const isEmailEdit =
+      "student_email" in payload &&
+      payload.student_email !== student.student_email;
+
+
+
+    if (oneTimeEditSources.includes(student.source) && isEmailEdit) {
+      if (student.is_edited) {
+        console.log("Blocking edit - already edited");
+        return res.status(403).json({
+          message: "Email can only be edited once for IVR/WhatsApp sources",
+          previouslyEditedBy: student.edited_by,
+        });
+      }
     }
 
     const formatArray = (value) => {
@@ -972,6 +1007,8 @@ export const updateStudentDetails = async (req, res) => {
       updateData.student_current_city = payload.student_current_city;
     if ("student_current_state" in payload)
       updateData.student_current_state = payload.student_current_state;
+    if ("student_email" in payload)
+      updateData.student_email = payload.student_email;
     if ("preferredStream" in payload)
       updateData.preferred_stream = formatArray(payload.preferredStream);
     if ("preferredDegree" in payload)
@@ -1002,19 +1039,27 @@ export const updateStudentDetails = async (req, res) => {
       updateData.work_experience = payload.work_experience;
     if ("objective" in payload) updateData.objective = payload.objective;
 
-    const studentExists = await Student.findOne({
-      where: { student_id: studentId },
-    });
-
-    if (!studentExists) {
-      return res.status(404).json({ message: "Student not found" });
+    // Only set is_edited and edited_by if this is an email edit for restricted sources
+    if (
+      oneTimeEditSources.includes(student.source) &&
+      isEmailEdit 
+    ) {
+      console.log("Setting edit tracking fields:", {
+        wasAlreadyEdited: student.is_edited,
+        settingTo: true,
+        editedBy: req.user.id
+      });
+      
+      updateData.is_edited = true;
+      updateData.edited_by = req.user.id;
     }
 
+    console.log("Final update data:", updateData);
+
     if (Object.keys(updateData).length === 0) {
-      console.log("✅ No fields to update - returning success");
       return res.status(200).json({
         message: "No changes to update",
-        student: studentExists,
+        student: student,
       });
     }
 
@@ -1023,9 +1068,22 @@ export const updateStudentDetails = async (req, res) => {
       returning: true,
     });
 
+    console.log("Update result:", {
+      affectedCount,
+      updatedStudent: updatedStudents?.[0]?.dataValues
+    });
+
+    let message = "Student details processed successfully";
+    if (
+      oneTimeEditSources.includes(student.source) &&
+      isEmailEdit
+    ) {
+      message = "Student email updated successfully (one-time edit used)";
+    }
+
     return res.status(200).json({
-      message: "Student details processed successfully",
-      student: updatedStudents?.[0] || studentExists,
+      message: message,
+      student: updatedStudents?.[0] || student,
       fieldsUpdated: Object.keys(updateData).length,
     });
   } catch (error) {
@@ -1036,7 +1094,6 @@ export const updateStudentDetails = async (req, res) => {
     });
   }
 };
-
 export const bulkCreateLeads = async (req, res) => {
   try {
     const { data } = req.body;
@@ -1172,7 +1229,7 @@ export const bulkReassignLeads = async (req, res) => {
   try {
     const supervisorId = req?.user?.id;
     const { data, level } = req.body.data;
-    
+
     if (!data || !Array.isArray(data) || data.length === 0) {
       console.log("Invalid data format:", data);
       return res.status(400).json({
@@ -1192,7 +1249,7 @@ export const bulkReassignLeads = async (req, res) => {
         message: "Invalid level. Expected L2 or L3.",
       });
     }
-    
+
     const toLowerCaseLevel = level?.toLowerCase();
     const results = [];
     const errors = [];
@@ -1266,7 +1323,6 @@ export const bulkReassignLeads = async (req, res) => {
           } catch (err) {
             console.error("❌ Failed to create LeadAssignmentLog:", err);
           }
-
         } else {
           // L3 - Update only journey entries with matching courseId
           const [updatedCount] = await CourseStatusJourney.update(
@@ -1274,9 +1330,9 @@ export const bulkReassignLeads = async (req, res) => {
             {
               where: {
                 student_id: reassignmentData.studentId,
-                course_id: reassignmentData.courseId
-              }
-            }
+                course_id: reassignmentData.courseId,
+              },
+            },
           );
 
           if (updatedCount === 0) {
@@ -1304,7 +1360,9 @@ export const bulkReassignLeads = async (req, res) => {
         results.push({
           index: i + 1,
           student_id: reassignmentData.studentId,
-          ...(level?.toLowerCase() === "l3" && { course_id: reassignmentData.courseId }),
+          ...(level?.toLowerCase() === "l3" && {
+            course_id: reassignmentData.courseId,
+          }),
           old_agent: oldAgent ? oldAgent.counsellor_name : "None",
           new_agent: newAgent.counsellor_name,
           data: reassignmentData,

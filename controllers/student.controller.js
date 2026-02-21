@@ -976,7 +976,24 @@ export const updateStudentDetails = async (req, res) => {
       "student_email" in payload &&
       payload.student_email !== student.student_email;
 
+    // Check if email already exists in another student (only if email is being changed)
+    if (isEmailEdit && payload.student_email) {
+      const existingStudentWithEmail = await Student.findOne({
+        where: { 
+          student_email: payload.student_email,
+          student_id: { [Op.ne]: studentId } // Exclude current student
+        }
+      });
 
+      if (existingStudentWithEmail) {
+        console.log("Email already exists in another student");
+        return res.status(409).json({
+          message: "Email already in use by another student",
+          error: "DUPLICATE_EMAIL",
+          field: "student_email"
+        });
+      }
+    }
 
     if (oneTimeEditSources.includes(student.source) && isEmailEdit) {
       if (student.is_edited) {
@@ -1088,6 +1105,16 @@ export const updateStudentDetails = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ ERROR updating student:", error);
+    
+    // Handle Sequelize unique constraint error
+    if (error.name === 'SequelizeUniqueConstraintError' && error.fields?.student_email) {
+      return res.status(409).json({
+        message: "Email already in use by another student",
+        error: "DUPLICATE_EMAIL",
+        field: "student_email"
+      });
+    }
+    
     return res.status(500).json({
       message: "Server error",
       error: error.message,

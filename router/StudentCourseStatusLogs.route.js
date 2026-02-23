@@ -4,6 +4,8 @@ import {
   createStatusLog,
   getCollegeStatusReports,
   getDistinctL3CounsellorsByStudentIds,
+  getStudentJourneyDetails,
+  replaceL3CounsellorForSpecificJourney,
   replaceL3CounsellorForStudents,
 } from "../controllers/StudentCourseStatusLogs.controller.js";
 import { sentStatustoCollege } from "../controllers/Colleges_sending_logic.js";
@@ -17,7 +19,9 @@ router.post(
   authorize(["Supervisor"]),
   getDistinctL3CounsellorsByStudentIds,
 );
-
+// Add these routes to your counsellor routes file
+router.post('/student-journey-details', getStudentJourneyDetails);
+router.post('/replace-l3-specific-journey', replaceL3CounsellorForSpecificJourney);
 router.post(
   "/replace",
   authorize(["Supervisor"]),

@@ -10,11 +10,13 @@ import {
 import { Op, QueryTypes, Sequelize } from "sequelize";
 import CourseStatusJourney from "../models/course_status_jounreny.js";
 
+// Add these functions to your counsellor controller
 
-export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
+// Get detailed journey information for students
+export const getStudentJourneyDetails = async (req, res) => {
   try {
     const { studentIds } = req.body;
-    console.log("Received student IDs for distinct L3 counsellors:", studentIds);
+
     if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
       return res.status(400).json({
         success: false,
@@ -23,37 +25,113 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
     }
 
     const escapedIds = studentIds.map(id => `'${id}'`).join(',');
-    
-    const query = `
-      SELECT DISTINCT 
-        csj.assigned_l3_counsellor_id,
-        c.counsellor_name,
-        c.counsellor_email,
-        c.role,
-        COUNT(DISTINCT csj.student_id) as student_count
-      FROM course_status_journeys csj
-      LEFT JOIN counsellors c ON csj.assigned_l3_counsellor_id = c.counsellor_id
-      WHERE csj.student_id IN (${escapedIds})
-        AND csj.assigned_l3_counsellor_id IS NOT NULL
-      GROUP BY csj.assigned_l3_counsellor_id, c.counsellor_name, c.counsellor_email, c.role
-      ORDER BY c.counsellor_name;
-    `;
 
-    const counsellors = await sequelize.query(query, {
+    const query = `
+            SELECT 
+                csj.status_history_id,
+                csj.student_id,
+                csj.course_id,
+                uc.university_name,
+                uc.course_name,
+                uc.degree_name,
+                uc.level,
+                csj.assigned_l3_counsellor_id as current_counsellor_id,
+                c.counsellor_name as current_counsellor_name,
+                csj.course_status,
+                csj.created_at
+            FROM course_status_journeys csj
+            LEFT JOIN university_courses uc ON csj.course_id = uc.course_id
+            LEFT JOIN counsellors c ON csj.assigned_l3_counsellor_id = c.counsellor_id
+            WHERE csj.student_id IN (${escapedIds})
+            ORDER BY csj.student_id, csj.created_at DESC;
+        `;
+
+    const journeys = await sequelize.query(query, {
       type: QueryTypes.SELECT
     });
 
     return res.status(200).json({
       success: true,
-      data: counsellors,
-      message: "Distinct L3 counsellors fetched successfully"
+      data: journeys,
+      message: "Student journey details fetched successfully"
     });
 
   } catch (error) {
-    console.error("Error fetching distinct L3 counsellors:", error);
+    console.error("Error fetching student journey details:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch distinct L3 counsellors",
+      message: "Failed to fetch student journey details",
+      error: error.message
+    });
+  }
+};
+
+// Replace L3 counsellor for a specific journey entry
+export const replaceL3CounsellorForSpecificJourney = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { studentId, courseId, toCounsellorId } = req.body;
+
+    // Validation
+    if (!studentId || !courseId || !toCounsellorId) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Please provide studentId, courseId, and toCounsellorId"
+      });
+    }
+
+    // Check if target counsellor exists and is L3
+    const counsellorCheckQuery = `
+            SELECT counsellor_id FROM counsellors 
+            WHERE counsellor_id = '${toCounsellorId}' AND role = 'l3'
+        `;
+
+    const targetCounsellor = await sequelize.query(counsellorCheckQuery, {
+      type: QueryTypes.SELECT
+    });
+
+    if (!targetCounsellor || targetCounsellor.length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Target counsellor not found or is not an L3 counsellor"
+      });
+    }
+
+    // Update the specific journey entry
+    const updateQuery = `
+            UPDATE course_status_journeys
+            SET assigned_l3_counsellor_id = '${toCounsellorId}'
+            WHERE student_id = '${studentId}' 
+            AND course_id = '${courseId}'
+        `;
+
+    const [updatedCount] = await sequelize.query(updateQuery, {
+      type: QueryTypes.UPDATE,
+      transaction
+    });
+
+    await transaction.commit();
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully updated counsellor for student ${studentId} and course ${courseId}`,
+      data: {
+        studentId,
+        courseId,
+        toCounsellorId,
+        updated: true
+      }
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error("Error replacing L3 counsellor for specific journey:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to replace L3 counsellor",
       error: error.message
     });
   }
@@ -62,7 +140,7 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
 // Replace L3 counsellor for selected students across all journey entries
 export const replaceL3CounsellorForStudents = async (req, res) => {
   const transaction = await sequelize.transaction();
-  
+
   try {
     const { studentIds, fromCounsellorId, toCounsellorId } = req.body;
 
@@ -96,7 +174,7 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
       SELECT counsellor_id FROM counsellors 
       WHERE counsellor_id = '${toCounsellorId}' AND role = 'l3'
     `;
-    
+
     const targetCounsellor = await sequelize.query(counsellorCheckQuery, {
       type: QueryTypes.SELECT
     });
@@ -111,7 +189,7 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
 
     // Escape student IDs
     const escapedIds = studentIds.map(id => `'${id}'`).join(',');
-    
+
     // Count records to be updated
     const countQuery = `
       SELECT COUNT(*) as count
@@ -119,12 +197,12 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
       WHERE student_id IN (${escapedIds})
         AND assigned_l3_counsellor_id = '${fromCounsellorId}'
     `;
-    
+
     const countResult = await sequelize.query(countQuery, {
       type: QueryTypes.SELECT,
       transaction
     });
-    
+
     const recordsToUpdate = parseInt(countResult[0]?.count || 0);
 
     if (recordsToUpdate === 0) {
@@ -557,7 +635,7 @@ const getCounsellorPivotReport = async (
 
   // Get student IDs from latest records
   const studentIds = [...new Set(latestRecords.map((r) => r.student_id))];
-  
+
   const studentCounsellorMap = {};
   const unassignedStudents = [];
 
@@ -612,7 +690,7 @@ const getCounsellorPivotReport = async (
       latestJourneyEntries.forEach((entry) => {
         const key = `${entry.student_id}_${entry.course_id}`;
         const counsellorId = entry.assigned_l3_counsellor_id;
-        
+
         if (counsellorId && counsellorId.trim() !== "") {
           studentCounsellorMap[key] = counsellorId;
         } else {
@@ -637,7 +715,7 @@ const getCounsellorPivotReport = async (
 
   latestRecords.forEach((record) => {
     let counsellorId;
-    
+
     if (level === "l2") {
       // For L2, use student-level mapping
       counsellorId = studentCounsellorMap[record.student_id];
@@ -646,7 +724,7 @@ const getCounsellorPivotReport = async (
       const key = `${record.student_id}_${record.course_id}`;
       counsellorId = studentCounsellorMap[key];
     }
-    
+
     const status = record.course_status;
 
     // Use "Unassigned" for records without counsellor
@@ -766,6 +844,133 @@ export const getCollegesList = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error fetching colleges list",
+    });
+  }
+};
+
+
+// Update your existing getDistinctL3CounsellorsByStudentIds function
+export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
+  try {
+    const { studentIds } = req.body;
+    console.log("Received student IDs for distinct L3 counsellors:", studentIds);
+
+    if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide an array of student IDs"
+      });
+    }
+
+    const escapedIds = studentIds.map(id => `'${id}'`).join(',');
+
+    // First query: Get distinct counsellors (same as before)
+    const counsellorsQuery = `
+      SELECT DISTINCT 
+        csj.assigned_l3_counsellor_id,
+        c.counsellor_name,
+        c.counsellor_email,
+        c.role,
+        COUNT(DISTINCT csj.student_id) as student_count
+      FROM course_status_journeys csj
+      LEFT JOIN counsellors c ON csj.assigned_l3_counsellor_id = c.counsellor_id
+      WHERE csj.student_id IN (${escapedIds})
+        AND csj.assigned_l3_counsellor_id IS NOT NULL
+      GROUP BY csj.assigned_l3_counsellor_id, c.counsellor_name, c.counsellor_email, c.role
+      ORDER BY c.counsellor_name;
+    `;
+
+    const counsellors = await sequelize.query(counsellorsQuery, {
+      type: QueryTypes.SELECT
+    });
+
+    // Second query: Get journey details with counts per student
+    const journeyDetailsQuery = `
+      SELECT 
+        csj.student_id,
+        csj.course_id,
+        uc.university_name,
+        uc.course_name,
+        uc.degree_name,
+        uc.level,
+        csj.assigned_l3_counsellor_id as current_counsellor_id,
+        c.counsellor_name as current_counsellor_name,
+        csj.course_status,
+        csj.created_at,
+        csj.status_history_id,
+        -- Count total journeys per student
+        COUNT(*) OVER (PARTITION BY csj.student_id) as student_journey_count
+      FROM course_status_journeys csj
+      LEFT JOIN university_courses uc ON csj.course_id = uc.course_id
+      LEFT JOIN counsellors c ON csj.assigned_l3_counsellor_id = c.counsellor_id
+      WHERE csj.student_id IN (${escapedIds})
+      ORDER BY csj.student_id, csj.created_at DESC;
+    `;
+
+    const journeyDetails = await sequelize.query(journeyDetailsQuery, {
+      type: QueryTypes.SELECT
+    });
+
+    // Calculate journey statistics
+    const journeyStats = {
+      totalStudents: studentIds.length,
+      studentsWithMultipleJourneys: 0,
+      studentJourneyMap: {}
+    };
+
+    // Group journeys by student and count them
+    const journeyMap = {};
+    journeyDetails.forEach(journey => {
+      if (!journeyMap[journey.student_id]) {
+        journeyMap[journey.student_id] = {
+          student_id: journey.student_id,
+          journey_count: 0,
+          journeys: []
+        };
+      }
+      journeyMap[journey.student_id].journey_count++;
+      journeyMap[journey.student_id].journeys.push(journey);
+    });
+
+    // Count students with multiple journeys
+    Object.values(journeyMap).forEach(student => {
+      if (student.journey_count > 1) {
+        journeyStats.studentsWithMultipleJourneys++;
+      }
+    });
+
+    // Check if any student has multiple journeys
+    const hasMultipleJourneys = Object.values(journeyMap).some(
+      student => student.journey_count > 1
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        // Distinct counsellors (for the single journey replacement UI)
+        distinctCounsellors: counsellors,
+
+        // Detailed journey information (for the multiple journeys UI)
+        journeyDetails: journeyDetails,
+
+        // Journey statistics
+        journeyStats: journeyStats,
+
+        // Flag for UI to determine which view to show
+        hasMultipleJourneys: hasMultipleJourneys,
+
+        // Grouped by student for easier frontend processing
+        journeysByStudent: journeyMap
+      },
+      message: "L3 counsellors and journey details fetched successfully"
+    });
+
+  } catch (error) {
+    console.error("Error fetching distinct L3 counsellors:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch L3 counsellors data",
+      error: error.message
     });
   }
 };

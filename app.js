@@ -15,6 +15,7 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 const allowedOrigins = [
   "http://localhost:3000",
+  "https://testing.nuvoraed.com",
   "http://localhost:5173",
   "https://www.degreefyd.com",
   "https://degreefyd.com",
@@ -35,7 +36,7 @@ const allowedOrigins = [
   "https://lms-api-test.degreefyd.com",
   "https://apply.degreefyd.com/lp/engineering-colleges-in-punjab",
   "https://apply.degreefyd.com/lp/colleges-in-punjab",
-  "https://onlinesikhsa.com"
+  "https://onlinesikhsa.com",
 ];
 
 app.use(
@@ -43,13 +44,13 @@ app.use(
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
 
-    if (
-      allowedOrigins.includes(origin) ||
-      origin.includes('degreefyd.com') ||
-      origin.endsWith('.findonlineuniversity.com')
-    ) {
-      return callback(null, true);
-    }
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.includes("degreefyd.com") ||
+        origin.endsWith(".findonlineuniversity.com")
+      ) {
+        return callback(null, true);
+      }
 
       return callback(null, false);
     },

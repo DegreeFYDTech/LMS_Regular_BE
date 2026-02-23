@@ -24,11 +24,9 @@ api.post("/lead/initiate", initiateLead);
 api.put("/lead/update", updateLead);
 api.post("/lead/abandon", abandonLead);
 
-// Pricing and Coupon Configuration
 api.get("/config/pricing/:pageSlug", getPricingBySlug);
 api.post("/config/coupon/validate", validateCoupon);
 
-// Payment Reports & History (Now using Snapshot/Order data)
 api.get("/student/:student_id", getPaymentsByStudent);
 api.get("/student-details/:student_id", getPaymentsByStudentWithDetails);
 api.get("/reports", getPaymentReports);

@@ -16,6 +16,16 @@ const PricingSnapshot = sequelize.define(
             type: DataTypes.DECIMAL(10, 2),
             allowNull: false,
         },
+        paymentFor: {
+            type: DataTypes.STRING,
+            defaultValue: "admission",
+        },
+        collegeName: {
+            type: DataTypes.STRING,
+        },
+        interestedCourse: {
+            type: DataTypes.STRING,
+        },
         appliedCouponCode: {
             type: DataTypes.STRING,
         },

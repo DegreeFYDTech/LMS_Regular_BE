@@ -253,6 +253,8 @@ export const createAdmissionOrder = async (req, res) => {
       onModel: getModelName(onModel),
       paymentFor: paymentFor || "admission",
       baseAmount: pricingRule.baseAmount,
+      collegeName: pricingRule.collegeName || collegeForApplied,
+      interestedCourse: req.body.interestedCourse || lead.interestedCourse || lead.preferred_degree || "N/A",
       appliedCouponCode: appliedCoupon,
       discountAmount: discountAmount,
       finalAmount: finalAmount,
@@ -570,10 +572,125 @@ export const getPaymentsByStudentWithDetails = async (req, res) => {
 
 export const getPaymentReports = async (req, res) => {
   try {
+    const { status, startDate, endDate, onModel } = req.query;
+
+    const orderWhere = {};
+    if (status) {
+      if (status.toLowerCase() === "success" || status.toLowerCase() === "completed") {
+        orderWhere.status = "PAID";
+      } else {
+        orderWhere.status = status.toUpperCase();
+      }
+    }
+
+    const snapshotWhere = {};
+    if (onModel) snapshotWhere.onModel = onModel;
+
+    // Add date filtering if provided
+    if (startDate && endDate) {
+      orderWhere.created_at = {
+        [Op.between]: [new Date(startDate), new Date(endDate)]
+      };
+    }
+
     const orders = await PaymentOrder.findAll({
-      include: [{ model: PricingSnapshot, as: 'snapshot' }],
+      where: orderWhere,
+      include: [{
+        model: PricingSnapshot,
+        as: 'snapshot',
+        where: snapshotWhere,
+      }],
       order: [["created_at", "DESC"]]
     });
-    res.status(200).json(orders);
-  } catch (error) { res.status(500).json({ message: "Internal server error" }); }
+
+    // Group admissionIds by model for efficient fetching
+    const modelMap = {
+      students: new Set(),
+      admissions: new Set(),
+      registrations: new Set()
+    };
+
+    orders.forEach(o => {
+      const snap = o.snapshot;
+      if (snap && snap.onModel && modelMap[snap.onModel]) {
+        modelMap[snap.onModel].add(snap.admissionId);
+      }
+    });
+
+    // Fetch leads for each model
+    const leadsData = {
+      students: {},
+      admissions: {},
+      registrations: {}
+    };
+
+    if (modelMap.students.size > 0) {
+      const students = await Student.findAll({ where: { student_id: Array.from(modelMap.students) } });
+      students.forEach(s => leadsData.students[s.student_id] = s);
+    }
+    if (modelMap.admissions.size > 0) {
+      // Postgres: Cast admissionIds to INTEGER if needed, but since they are stored as strings in modelMap, we just use them.
+      // If admissionIds are numbers like "144", findAll with where: { id: [...] } usually handles it if Postgres allows string-to-int conversion in IN clause.
+      // To be safe, we cast to Numbers.
+      const ids = Array.from(modelMap.admissions).map(id => parseInt(id)).filter(id => !isNaN(id));
+      if (ids.length > 0) {
+        const admissions = await Admission.findAll({ where: { id: ids } });
+        admissions.forEach(a => leadsData.admissions[a.id] = a);
+      }
+    }
+    if (modelMap.registrations.size > 0) {
+      const ids = Array.from(modelMap.registrations).map(id => parseInt(id)).filter(id => !isNaN(id));
+      if (ids.length > 0) {
+        const registrations = await Registration.findAll({ where: { id: ids } });
+        registrations.forEach(r => leadsData.registrations[r.id] = r);
+      }
+    }
+
+    // Map data to match exact frontend expected format
+    const formattedData = orders.map(order => {
+      const snap = order.snapshot || {};
+      const lead = leadsData[snap.onModel] ? leadsData[snap.onModel][snap.admissionId] : null;
+
+      return {
+        id: order.id,
+        student_id: snap.admissionId,
+        college_name: snap.collegeName || "N/A",
+        course_name: snap.interestedCourse || "N/A",
+        status: order.status === 'PAID' ? 'COMPLETED' : order.status,
+        payment_for: snap.paymentFor,
+        base_amount: snap.baseAmount,
+        final_amount: snap.finalAmount,
+        couponCode: snap.appliedCouponCode,
+        discount_amount: snap.discountAmount,
+        currency: order.currency,
+        razorpay_order_id: order.razorpayOrderId,
+        created_at: order.createdAt,
+        updated_at: order.updatedAt,
+        student: lead ? {
+          student_id: snap.admissionId,
+          student_name: lead.student_name || lead.name || "N/A",
+          student_phone: lead.student_phone || lead.mobile || "N/A",
+          student_email: lead.student_email || lead.email || "N/A",
+          assigned_counsellor_id: lead.assigned_counsellor_id || lead.counsellor_id || "N/A",
+        } : null
+      };
+    });
+
+    // Calculate Summary Stats in expected format
+    const analytics = {
+      total_records: orders.length,
+      success: orders.filter(o => o.status === 'PAID').length,
+      failed: orders.filter(o => o.status === 'FAILED').length,
+      pending: orders.filter(o => o.status === 'PENDING' || o.status === 'CREATED').length,
+      total_revenue: orders.filter(o => o.status === 'PAID').reduce((sum, o) => sum + parseFloat(o.amount || 0), 0),
+    };
+
+    res.status(200).json({
+      analytics,
+      data: formattedData
+    });
+  } catch (error) {
+    console.error("Report Error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
 };

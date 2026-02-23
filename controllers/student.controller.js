@@ -14,6 +14,8 @@ import {
   AnalyserUser,
   Message,
   CourseStatusHistory,
+  PricingSnapshot,
+  PaymentOrder
 } from "../models/index.js";
 import {
   processStudentLead,
@@ -572,7 +574,6 @@ export const getStudentById = async (req, res) => {
             },
           ],
         },
-
       ],
     });
 
@@ -588,7 +589,31 @@ export const getStudentById = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
 
+    // Fetch snapshots and payment orders for this student
+    const studentSnapshots = await PricingSnapshot.findAll({
+      where: { admissionId: id, onModel: 'students' },
+      include: [{ model: PaymentOrder, as: 'paymentOrder' }],
+      order: [['created_at', 'DESC']]
+    });
+
     let studentData = student.toJSON ? student.toJSON() : student;
+
+    // Map snapshots to match frontend expectations (compatible with old Payment schema)
+    studentData.payments = studentSnapshots.map(snap => ({
+      id: snap.id,
+      college_name: snap.collegeName || "N/A",
+      course_name: snap.interestedCourse || "N/A",
+      status: snap.paymentOrder ? snap.paymentOrder.status : snap.status,
+      payment_for: snap.paymentFor,
+      base_amount: snap.baseAmount,
+      final_amount: snap.finalAmount,
+      discount_amount: snap.discountAmount,
+      coupon_code: snap.appliedCouponCode,
+      razorpay_order_id: snap.razorpayOrderId,
+      created_at: snap.created_at,
+      updated_at: snap.updated_at,
+      transaction_details: snap.paymentOrder ? snap.paymentOrder.payments : []
+    }));
 
     // Fetch all L3 journey data for this student using raw query
     const allL3Journeys = await sequelize.query(

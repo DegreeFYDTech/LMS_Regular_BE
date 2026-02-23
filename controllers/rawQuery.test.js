@@ -131,7 +131,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
 
     const boolSQL = (field, val) => {
       if (val === undefined || val === null || val === "") return "";
-      
+
       // Handle string values like "Connected" and "Not Connected"
       if (typeof val === "string") {
         if (val.toLowerCase() === "connected" || val === "true" || val === "1") {
@@ -140,7 +140,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           return `${field} = false`;
         }
       }
-      
+
       // Handle boolean values
       return `${field} = ${val === true || val === "true" || val === "1" ? "true" : "false"}`;
     };
@@ -283,22 +283,22 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     if (data === "l3") {
       // For L3, use is_connected_yet_l3
       if (isConnectedYet !== undefined && isConnectedYet !== null && isConnectedYet !== "") {
-        const value = isConnectedYet === true || isConnectedYet === "true" || isConnectedYet === "1" || isConnectedYet === "Connected" 
-          ? "true" 
+        const value = isConnectedYet === true || isConnectedYet === "true" || isConnectedYet === "1" || isConnectedYet === "Connected"
+          ? "true"
           : "false";
         where.push(`s.is_connected_yet_l3 = ${value}`);
       }
       if (isConnectedYetL3 !== undefined && isConnectedYetL3 !== null && isConnectedYetL3 !== "") {
-        const value = isConnectedYetL3 === true || isConnectedYetL3 === "true" || isConnectedYetL3 === "1" || isConnectedYetL3 === "Connected" 
-          ? "true" 
+        const value = isConnectedYetL3 === true || isConnectedYetL3 === "true" || isConnectedYetL3 === "1" || isConnectedYetL3 === "Connected"
+          ? "true"
           : "false";
         where.push(`s.is_connected_yet_l3 = ${value}`);
       }
     } else {
       // For L2 and others, use is_connected_yet
       if (isConnectedYet !== undefined && isConnectedYet !== null && isConnectedYet !== "") {
-        const value = isConnectedYet === true || isConnectedYet === "true" || isConnectedYet === "1" || isConnectedYet === "Connected" 
-          ? "true" 
+        const value = isConnectedYet === true || isConnectedYet === "true" || isConnectedYet === "1" || isConnectedYet === "Connected"
+          ? "true"
           : "false";
         where.push(`s.is_connected_yet = ${value}`);
       }
@@ -509,16 +509,16 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     if (utmCreativeId)
       utmWhere.push(`la.utm_creative_id = ${escape(utmCreativeId)}`);
 
-   const latestRemarkWhere = 
-  data === "l3" && userRole === "l3" 
-    ? `WHERE sr.counsellor_id = ${escape(userId)}` // L3 counsellor sees only their remarks
-    : data === "l3" && selectedagent
-      ? `WHERE sr.counsellor_id = ${escape(selectedagent)}` // Filter by selected agent in L3 view
-      : selectedagent && isSupervisorView && data && data !== "to" && data !== "l3"
-        ? `WHERE sr.counsellor_id IN (${supervisorCounsellorIds.map(escape).join(",")})`
-        : selectedagent && data && data !== "to" && data !== "l3"
-          ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
-          : "";
+    const latestRemarkWhere =
+      data === "l3" && userRole === "l3"
+        ? `WHERE sr.counsellor_id = ${escape(userId)}` // L3 counsellor sees only their remarks
+        : data === "l3" && selectedagent
+          ? `WHERE sr.counsellor_id = ${escape(selectedagent)}` // Filter by selected agent in L3 view
+          : selectedagent && isSupervisorView && data && data !== "to" && data !== "l3"
+            ? `WHERE sr.counsellor_id IN (${supervisorCounsellorIds.map(escape).join(",")})`
+            : selectedagent && data && data !== "to" && data !== "l3"
+              ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
+              : "";
 
     // Determine the L3 counsellor ID to filter by
     let l3CounsellorFilter = "";
@@ -535,9 +535,9 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       }
     }
 
-  const baseCTEs =
-  data === "l3"
-    ? `
+    const baseCTEs =
+      data === "l3"
+        ? `
   -- Get distinct students with their assigned L3 counsellor (latest journey entry)
   latest_journey_entries AS (
     SELECT DISTINCT ON (csj.student_id)
@@ -584,7 +584,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     ${utmWhere.length > 0 ? "WHERE " + utmWhere.join(" AND ") : ""}
     ORDER BY la.student_id, la.created_at ASC
   )`
-    : `
+        : `
   latest_remark AS (
     SELECT DISTINCT ON (sr.student_id)
       sr.student_id, sr.remark_id, sr.lead_status, sr.lead_sub_status, sr.calling_status,
@@ -960,8 +960,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       LEFT JOIN counsellors c1 ON s.assigned_counsellor_id = c1.counsellor_id
       LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
       LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
-      ${
-        isDownload
+      ${isDownload
           ? `
       LEFT JOIN first_remark_l2 frl2 ON s.student_id = frl2.student_id
       LEFT JOIN first_remark_l3 frl3 ON s.student_id = frl3.student_id
@@ -973,7 +972,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       LEFT JOIN first_application_remark far ON s.student_id = far.student_id
       `
           : ""
-      }
+        }
       ${whereSQL}
       ${orderBySQL}
       ${!isDownload ? `LIMIT ${limitNum} OFFSET ${offset}` : ""}`
@@ -996,7 +995,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
             'role', MIN(c2_inner.role)
           )
           FROM counsellors c2_inner 
-          WHERE c2_inner.counsellor_id = ANY(s.assigned_counsellor_l3_id)
+          WHERE c2_inner.counsellor_id = s.assigned_counsellor_l3_id
         ) as l3_counsellor,
 
         -- For backward compatibility
@@ -1028,11 +1027,10 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
 
       FROM students s
       LEFT JOIN counsellors c1 ON s.assigned_counsellor_id = c1.counsellor_id
-      LEFT JOIN counsellors c2_single ON c2_single.counsellor_id = ANY(s.assigned_counsellor_l3_id)
+      LEFT JOIN counsellors c2_single ON c2_single.counsellor_id = s.assigned_counsellor_l3_id
       LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
       LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
-      ${
-        isDownload
+      ${isDownload
           ? `
       LEFT JOIN first_remark_l2 frl2 ON s.student_id = frl2.student_id
       LEFT JOIN first_remark_l3 frl3 ON s.student_id = frl3.student_id
@@ -1044,7 +1042,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       LEFT JOIN first_application_remark far ON s.student_id = far.student_id
       `
           : ""
-      }
+        }
       ${whereSQL}
       GROUP BY 
         s.student_id, 
@@ -1055,9 +1053,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         fla.utm_source, fla.utm_medium, fla.utm_campaign, fla.utm_keyword,
         fla.utm_campaign_id, fla.utm_adgroup_id, fla.utm_creative_id,
         fla.source, fla.source_url, fla.activity_created_at
-        ${
-          isDownload
-            ? `,
+        ${isDownload
+          ? `,
         frl2.first_call_date_l2,
         frl3.first_call_date_l3,
         ficc.first_icc_date,
@@ -1067,7 +1064,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         hia.student_id,
         pns.student_id
         `
-            : ""
+          : ""
         }
       ${orderBySQL}
       ${!isDownload ? `LIMIT ${limitNum} OFFSET ${offset}` : ""}`;
@@ -1084,8 +1081,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       LEFT JOIN counsellors c1 ON s.assigned_counsellor_id = c1.counsellor_id
       LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
       LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
-      ${
-        isDownload
+      ${isDownload
           ? `
       LEFT JOIN first_remark_l2 frl2 ON s.student_id = frl2.student_id
       LEFT JOIN first_remark_l3 frl3 ON s.student_id = frl3.student_id
@@ -1097,18 +1093,17 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       LEFT JOIN first_application_remark far ON s.student_id = far.student_id
       `
           : ""
-      }
+        }
       ${whereSQL}`
         : `
       ${ctesSQL}
       SELECT COUNT(DISTINCT s.student_id) as total
       FROM students s
       LEFT JOIN counsellors c1 ON s.assigned_counsellor_id = c1.counsellor_id
-      LEFT JOIN counsellors c2_single ON c2_single.counsellor_id = ANY(s.assigned_counsellor_l3_id)
+      LEFT JOIN counsellors c2_single ON c2_single.counsellor_id = s.assigned_counsellor_l3_id
       LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
       LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
-      ${
-        isDownload
+      ${isDownload
           ? `
       LEFT JOIN first_remark_l2 frl2 ON s.student_id = frl2.student_id
       LEFT JOIN first_remark_l3 frl3 ON s.student_id = frl3.student_id
@@ -1120,7 +1115,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       LEFT JOIN first_application_remark far ON s.student_id = far.student_id
       `
           : ""
-      }
+        }
       ${whereSQL}`;
 
     const studentWhereStr =
@@ -1153,34 +1148,34 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       }
     }
 
-   const [students, countResult, overallStats = {}] = await Promise.all([
-  sequelize.query(mainQuery, { type: QueryTypes.SELECT }),
-  sequelize.query(countQuery, { type: QueryTypes.SELECT }),
-  !isDownload && freshLeads !== "Fresh"
-    ? data === "l3"
-      ? getL3OverallStatsFromJourney({
-          journeyWhere,
-          remarkWhere: remarkWhereStr,
-          utmWhere: utmWhereStr,
-          todayStart: today,
-          todayEnd: tomorrow,
-          callback,
-          selectedagent,
-          role: data,
-          userId // Pass userId for L3 counsellor filtering
-        })
-      : getOptimizedOverallStatsFromHelper({
-          studentWhere: studentWhereStr,
-          remarkWhere: remarkWhereStr,
-          utmWhere: utmWhereStr,
-          todayStart: today,
-          todayEnd: tomorrow,
-          selectedagent,
-          callback,
-          role: data,
-        })
-    : Promise.resolve({}),
-]);
+    const [students, countResult, overallStats = {}] = await Promise.all([
+      sequelize.query(mainQuery, { type: QueryTypes.SELECT }),
+      sequelize.query(countQuery, { type: QueryTypes.SELECT }),
+      !isDownload && freshLeads !== "Fresh"
+        ? data === "l3"
+          ? getL3OverallStatsFromJourney({
+            journeyWhere,
+            remarkWhere: remarkWhereStr,
+            utmWhere: utmWhereStr,
+            todayStart: today,
+            todayEnd: tomorrow,
+            callback,
+            selectedagent,
+            role: data,
+            userId // Pass userId for L3 counsellor filtering
+          })
+          : getOptimizedOverallStatsFromHelper({
+            studentWhere: studentWhereStr,
+            remarkWhere: remarkWhereStr,
+            utmWhere: utmWhereStr,
+            todayStart: today,
+            todayEnd: tomorrow,
+            selectedagent,
+            callback,
+            role: data,
+          })
+        : Promise.resolve({}),
+    ]);
 
     function convertFlatArrayToNested(arr) {
       if (data === "l3") {
@@ -1229,35 +1224,35 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
 
             student_remarks: item.remark_id
               ? [
-                  {
-                    remark_id: item.remark_id,
-                    lead_status: item.lead_status,
-                    lead_sub_status: item.lead_sub_status,
-                    calling_status: item.calling_status,
-                    sub_calling_status: item.sub_calling_status,
-                    remarks: item.remarks,
-                    callback_date: item.latest_callback_date,
-                    callback_time: item.callback_time,
-                    created_at: item.latest_remark_date,
-                  },
-                ]
+                {
+                  remark_id: item.remark_id,
+                  lead_status: item.lead_status,
+                  lead_sub_status: item.lead_sub_status,
+                  calling_status: item.calling_status,
+                  sub_calling_status: item.sub_calling_status,
+                  remarks: item.remarks,
+                  callback_date: item.latest_callback_date,
+                  callback_time: item.callback_time,
+                  created_at: item.latest_remark_date,
+                },
+              ]
               : [],
 
             lead_activities: item.utm_source
               ? [
-                  {
-                    utm_source: item.utm_source,
-                    utm_medium: item.utm_medium,
-                    utm_campaign: item.utm_campaign,
-                    utm_keyword: item.utm_keyword,
-                    utm_campaign_id: item.utm_campaign_id,
-                    utm_adgroup_id: item.utm_adgroup_id,
-                    utm_creative_id: item.utm_creative_id,
-                    created_at: item.activity_created_at,
-                    source: item.source,
-                    source_url: item.source_url,
-                  },
-                ]
+                {
+                  utm_source: item.utm_source,
+                  utm_medium: item.utm_medium,
+                  utm_campaign: item.utm_campaign,
+                  utm_keyword: item.utm_keyword,
+                  utm_campaign_id: item.utm_campaign_id,
+                  utm_adgroup_id: item.utm_adgroup_id,
+                  utm_creative_id: item.utm_creative_id,
+                  created_at: item.activity_created_at,
+                  source: item.source,
+                  source_url: item.source_url,
+                },
+              ]
               : [],
           };
 
@@ -1335,11 +1330,11 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
             },
             assignedCounsellorL3: item.counsellor_l3_id
               ? {
-                  counsellor_id: item.counsellor_l3_id,
-                  counsellor_name: item.counsellor_l3_name,
-                  counsellor_email: item.counsellor_l3_email,
-                  role: item.counsellor_l3_role,
-                }
+                counsellor_id: item.counsellor_l3_id,
+                counsellor_name: item.counsellor_l3_name,
+                counsellor_email: item.counsellor_l3_email,
+                role: item.counsellor_l3_role,
+              }
               : null,
             student_remarks: [
               {
@@ -1505,7 +1500,7 @@ async function getL3OverallStatsFromJourney({
     // For Supervisor (no selectedagent, role is 'l3' from data param but user is Supervisor)
     // We need to detect if this is a Supervisor view vs L3 counsellor view
     const isSupervisorView = role === 'l3' && !selectedagent && userId && userId.startsWith('SUP-');
-    
+
     const query = `
       WITH base_students_with_journey AS (
         SELECT DISTINCT csj.student_id,
@@ -1540,9 +1535,9 @@ async function getL3OverallStatsFromJourney({
         WHERE NOT EXISTS (
           SELECT 1 FROM student_remarks sr
           WHERE sr.student_id = bs.student_id
-          ${!isSupervisorView && (selectedagent || userId) ? 
-            `AND sr.counsellor_id = ${selectedagent ? escape(selectedagent) : escape(userId)}` : 
-            ''}
+          ${!isSupervisorView && (selectedagent || userId) ?
+        `AND sr.counsellor_id = ${selectedagent ? escape(selectedagent) : escape(userId)}` :
+        ''}
         )
       ),
       latest_remarks AS (
@@ -1556,9 +1551,9 @@ async function getL3OverallStatsFromJourney({
           sr.lead_status
         FROM student_remarks sr
         INNER JOIN base_students bs ON sr.student_id = bs.student_id
-        ${!isSupervisorView && (selectedagent || userId) ? 
-          `WHERE sr.counsellor_id = ${selectedagent ? escape(selectedagent) : escape(userId)}` : 
-          ''}
+        ${!isSupervisorView && (selectedagent || userId) ?
+        `WHERE sr.counsellor_id = ${selectedagent ? escape(selectedagent) : escape(userId)}` :
+        ''}
         ORDER BY sr.student_id, sr.created_at DESC
       ),
       today_callbacks AS (

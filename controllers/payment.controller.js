@@ -417,7 +417,7 @@ export const handleWebhook = async (req, res) => {
                 created_at: new Date(),
               }, { transaction });
               await Student.update({
-                number_of_unread_messages: sequelize.literal('number_of_unread_messages + 1')
+                remarks_count: sequelize.literal('remarks_count + 1')
               }, { where: { student_id: targetStudentId }, transaction });
             }
           }

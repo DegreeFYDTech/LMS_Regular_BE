@@ -260,7 +260,7 @@ export const createAdmissionOrder = async (req, res) => {
     const snapshot = await PricingSnapshot.create({
       admissionId: lead[idField].toString(),
       onModel: getModelName(onModel),
-      paymentFor: paymentFor || (onModel === "Registration" || onModel === "Registration" ? "application" : "admission"),
+      paymentFor: paymentFor || (onModel === "Registration" || onModel === "registrations" ? "application" : "admission"),
       baseAmount: pricingRule.baseAmount,
       collegeName: pricingRule.collegeName || collegeForApplied,
       interestedCourse: req.body.interestedCourse || lead.interestedCourse || lead.preferred_degree || "N/A",
@@ -417,8 +417,8 @@ export const handleWebhook = async (req, res) => {
                 created_at: new Date(),
               }, { transaction });
               await Student.update({
-                number_of_unread_messages: number_of_unread_messages + 1
-              }, { where: { student_id: targetStudentId }, transaction })
+                number_of_unread_messages: sequelize.literal('number_of_unread_messages + 1')
+              }, { where: { student_id: targetStudentId }, transaction });
             }
           }
 

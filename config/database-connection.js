@@ -6,8 +6,8 @@ async function databaseConnection() {
     await sequelize.authenticate();
     console.log('✅ Database connected...');
 
-    await sequelize.sync({ alter: true }); // Automatically updates the schema to match models
-    console.log('🚀 Database models synchronized (altered) successfully.');
+    await sequelize.sync(); // Create tables if they don't exist, but don't alter existing ones
+    console.log('🚀 Database models synchronized successfully.');
 
     // Ping the DB once to warm up query planner and buffers
     await sequelize.query('SELECT 1');

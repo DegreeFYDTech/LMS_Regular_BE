@@ -316,7 +316,7 @@ export const handleWebhook = async (req, res) => {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
   const signature = req.headers["x-razorpay-signature"];
   const body = JSON.stringify(req.body);
-
+console.log("triggered webhook with body:", body);
   if (secret) {
     const expectedSignature = crypto.createHmac("sha256", secret).update(body).digest("hex");
     if (expectedSignature !== signature) {

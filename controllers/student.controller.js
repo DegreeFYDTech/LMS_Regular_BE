@@ -15,7 +15,9 @@ import {
   Message,
   CourseStatusHistory,
   PricingSnapshot,
-  PaymentOrder
+  PaymentOrder,
+  Admission,
+  Registration
 } from "../models/index.js";
 import {
   processStudentLead,
@@ -589,11 +591,40 @@ export const getStudentById = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
 
-    // Fetch snapshots and payment orders for this student
+    // Fetch snapshots and payment orders for this student across all models (linked by phone/email)
+    const matchingAdmissions = await Admission.findAll({
+      where: {
+        [Op.or]: [
+          { email: student.student_email },
+          { mobile: student.student_phone }
+        ]
+      },
+      attributes: ['id']
+    });
+
+    const matchingRegistrations = await Registration.findAll({
+      where: {
+        [Op.or]: [
+          { email: student.student_email },
+          { mobile: student.student_phone }
+        ]
+      },
+      attributes: ['id']
+    });
+
+    const admissionIds = matchingAdmissions.map(a => a.id.toString());
+    const registrationIds = matchingRegistrations.map(r => r.id.toString());
+
     const studentSnapshots = await PricingSnapshot.findAll({
-      where: { admissionId: id, onModel: 'students' },
+      where: {
+        [Op.or]: [
+          { admissionId: student.student_id, onModel: 'students' },
+          { admissionId: { [Op.in]: admissionIds }, onModel: 'admissions' },
+          { admissionId: { [Op.in]: registrationIds }, onModel: 'registrations' }
+        ]
+      },
       include: [{ model: PaymentOrder, as: 'paymentOrder' }],
-      order: [['created_at', 'DESC']]
+      order: [['createdAt', 'DESC']]
     });
 
     let studentData = student.toJSON ? student.toJSON() : student;

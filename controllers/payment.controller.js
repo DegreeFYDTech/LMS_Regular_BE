@@ -416,6 +416,9 @@ export const handleWebhook = async (req, res) => {
                 fees: snapshot.finalAmount,
                 created_at: new Date(),
               }, { transaction });
+              await Student.update({
+                number_of_unread_messages: number_of_unread_messages + 1
+              }, { where: { student_id: targetStudentId }, transaction })
             }
           }
 

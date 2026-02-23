@@ -316,7 +316,7 @@ export const handleWebhook = async (req, res) => {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
   const signature = req.headers["x-razorpay-signature"];
   const body = JSON.stringify(req.body);
-console.log("triggered webhook with body:", body);
+  console.log("triggered webhook with body:", body);
   if (secret) {
     const expectedSignature = crypto.createHmac("sha256", secret).update(body).digest("hex");
     if (expectedSignature !== signature) {
@@ -376,15 +376,28 @@ console.log("triggered webhook with body:", body);
             if (Model !== Student) lead.UTRNumber = paymentEntity.id;
             await lead.save({ transaction });
 
-            const studentId = Model === Student ? lead.student_id : null;
-            if (studentId) {
+            let targetStudentId = Model === Student ? lead.student_id : null;
+
+            // If it's an Admission or Registration, try to find matching Student by phone
+            if (!targetStudentId) {
+              const phoneToSearch = lead.mobile || lead.student_phone;
+              if (phoneToSearch) {
+                const linkedStudent = await Student.findOne({
+                  where: { student_phone: phoneToSearch },
+                  transaction
+                });
+                if (linkedStudent) targetStudentId = linkedStudent.student_id;
+              }
+            }
+
+            if (targetStudentId) {
               await StudentRemark.create({
-                student_id: studentId,
+                student_id: targetStudentId,
                 lead_status: snapshot.paymentFor === "admission" ? "Admission" : "Application",
                 lead_sub_status: snapshot.paymentFor === "admission" ? "Partially Paid" : "Form Filled_Degreefyd",
                 calling_status: "Connected",
                 sub_calling_status: "Warm",
-                remarks: `Payment of amount ${snapshot.finalAmount} completed successfully. Payment ID: ${paymentEntity.id}`,
+                remarks: `Payment of amount ${snapshot.finalAmount} completed successfully via ${snapshot.onModel}. Payment ID: ${paymentEntity.id}`,
                 fees: snapshot.finalAmount,
                 created_at: new Date(),
               }, { transaction });

@@ -54,8 +54,12 @@ router.put(
   authorize(["l2", "l3", "to", "supervisor", "Supervisor"]),
   updateStudentDetails,
 );
-router.post("/bulkReassign", authorize(["Supervisor"]), bulkReassignLeads);
-router.post("/bulkCreate", authorize(["Supervisor"]), bulkCreateLeads);
+router.post(
+  "/bulkReassign",
+  authorize(["Supervisor", "to"]),
+  bulkReassignLeads,
+);
+router.post("/bulkCreate", authorize(["Supervisor", "to"]), bulkCreateLeads);
 router.post(
   "/addLeadDirect",
   authorize(["l2", "l3", "to", "Supervisor"]),

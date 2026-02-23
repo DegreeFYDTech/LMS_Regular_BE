@@ -6,8 +6,8 @@ async function databaseConnection() {
     await sequelize.authenticate();
     console.log('✅ Database connected...');
 
-    await sequelize.sync(); // Only do this in dev or with { alter: true } if needed
-    console.log('🚀 Database models synchronized successfully.');
+    await sequelize.sync({ alter: true }); // Automatically updates the schema to match models
+    console.log('🚀 Database models synchronized (altered) successfully.');
 
     // Ping the DB once to warm up query planner and buffers
     await sequelize.query('SELECT 1');
@@ -25,7 +25,7 @@ async function databaseConnection() {
     } catch (e) {
       console.error('⚠️ Keep-alive ping failed:', e.message);
     }
-  }, 5 * 60 * 1000); 
+  }, 5 * 60 * 1000);
 }
 
 export default databaseConnection;

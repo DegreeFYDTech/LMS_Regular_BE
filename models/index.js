@@ -32,7 +32,6 @@ import WhishList from './WhishList.js'
 //student credentials 
 import StudentCollegeCred from './StudentCreads.js'
 import UniversitiesAPIHeaderValues from './university_header_values.js'
-import Payment from './Payment.js'
 import PricingRule from './PricingRule.js';
 import Coupon from './Coupon.js';
 import PricingSnapshot from './PricingSnapshot.js';
@@ -43,10 +42,6 @@ import Registration from './Registration.js';
 
 Student.belongsTo(Counsellor, { foreignKey: 'assigned_counsellor_id', as: 'assignedCounsellor' });
 Student.belongsTo(Counsellor, { foreignKey: 'assigned_counsellor_l3_id', as: 'assignedCounsellorL3' });
-
-// Student has many Payments
-// Student has many Payments
-Student.hasMany(Payment, { foreignKey: 'student_id', sourceKey: 'student_id', as: 'payments', onDelete: 'CASCADE' });
 
 // Pricing Snapshot associations
 // (Note: Polymorphic associations in Sequelize are usually handled manually in controllers or with custom hooks)
@@ -210,7 +205,6 @@ export {
   WhishList, UniversitiesAPIHeaderValues,
   WebsiteChat,
   WebsiteChatMessage,
-  Payment,
   PricingRule,
   Coupon,
   PricingSnapshot,

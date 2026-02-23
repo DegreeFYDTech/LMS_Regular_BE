@@ -5,8 +5,8 @@ const Registration = sequelize.define(
     "Registration",
     {
         name: { type: DataTypes.STRING },
-        email: { type: DataTypes.STRING, allowNull: false },
-        mobile: { type: DataTypes.STRING, allowNull: false },
+        email: { type: DataTypes.STRING, allowNull: true },
+        mobile: { type: DataTypes.STRING, allowNull: true },
         countryCode: { type: DataTypes.STRING, defaultValue: "+91" },
         alternateNumber: { type: DataTypes.STRING },
         gender: { type: DataTypes.STRING },
@@ -23,7 +23,7 @@ const Registration = sequelize.define(
         specialization: { type: DataTypes.STRING },
         lastQualification: { type: DataTypes.STRING },
         lastQualificationPercentage: { type: DataTypes.DECIMAL(5, 2) },
-        collegeForApplied: { type: DataTypes.STRING, allowNull: false },
+        collegeForApplied: { type: DataTypes.STRING, allowNull: true },
         pageUrl: { type: DataTypes.TEXT },
         paymentStatus: {
             type: DataTypes.ENUM("PENDING", "PARTIAL", "COMPLETED", "FAILED", "REFUNDED"),

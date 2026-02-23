@@ -13,7 +13,6 @@ import {
   Supervisor,
   AnalyserUser,
   Message,
-  Payment,
   CourseStatusHistory,
 } from "../models/index.js";
 import {
@@ -573,13 +572,7 @@ export const getStudentById = async (req, res) => {
             },
           ],
         },
-        {
-          model: Payment,
-          as: "payments",
-          separate: true,
-          order: [["created_at", "DESC"]],
-          required: false,
-        },
+
       ],
     });
 
@@ -632,14 +625,14 @@ export const getStudentById = async (req, res) => {
     const counsellors =
       counsellorIds.length > 0
         ? await Counsellor.findAll({
-            where: { counsellor_id: counsellorIds },
-            attributes: [
-              "counsellor_id",
-              "counsellor_name",
-              "counsellor_email",
-              "role",
-            ],
-          })
+          where: { counsellor_id: counsellorIds },
+          attributes: [
+            "counsellor_id",
+            "counsellor_name",
+            "counsellor_email",
+            "role",
+          ],
+        })
         : [];
 
     // Create a map for quick lookup
@@ -657,16 +650,16 @@ export const getStudentById = async (req, res) => {
     const courses =
       courseIds.length > 0
         ? await UniversityCourse.findAll({
-            where: { course_id: courseIds },
-            attributes: [
-              "course_id",
-              "course_name",
-              "university_name",
-              "degree_name",
-              "stream",
-              "level",
-            ],
-          })
+          where: { course_id: courseIds },
+          attributes: [
+            "course_id",
+            "course_name",
+            "university_name",
+            "degree_name",
+            "stream",
+            "level",
+          ],
+        })
         : [];
 
     // Create a map for quick lookup
@@ -699,7 +692,7 @@ export const getStudentById = async (req, res) => {
         if (
           !journeysByCourse[journey.course_id] ||
           new Date(journey.created_at) >
-            new Date(journeysByCourse[journey.course_id].created_at)
+          new Date(journeysByCourse[journey.course_id].created_at)
         ) {
           journeysByCourse[journey.course_id] = journey;
         }
@@ -732,12 +725,12 @@ export const getStudentById = async (req, res) => {
             ...cred,
             l3_counsellor_details: l3Data
               ? {
-                  assigned_l3_counsellor_id: l3Data.assigned_l3_counsellor_id,
-                  counsellor_name: l3Data.l3_counsellor_name,
-                  counsellor_email: l3Data.l3_counsellor_email,
-                  journey_created_at: l3Data.journey_created_at,
-                  journey_status: l3Data.journey_status,
-                }
+                assigned_l3_counsellor_id: l3Data.assigned_l3_counsellor_id,
+                counsellor_name: l3Data.l3_counsellor_name,
+                counsellor_email: l3Data.l3_counsellor_email,
+                journey_created_at: l3Data.journey_created_at,
+                journey_status: l3Data.journey_status,
+              }
               : null,
           };
         },
@@ -948,7 +941,7 @@ export const updateStudentDetails = async (req, res) => {
     const { studentId } = req.params;
     const { payload } = req.body;
     console.log(payload, "Received payload for updateStudentDetails");
-    
+
     if (!payload || typeof payload !== "object") {
       return res
         .status(400)
@@ -979,7 +972,7 @@ export const updateStudentDetails = async (req, res) => {
     // Check if email already exists in another student (only if email is being changed)
     if (isEmailEdit && payload.student_email) {
       const existingStudentWithEmail = await Student.findOne({
-        where: { 
+        where: {
           student_email: payload.student_email,
           student_id: { [Op.ne]: studentId } // Exclude current student
         }
@@ -1059,14 +1052,14 @@ export const updateStudentDetails = async (req, res) => {
     // Only set is_edited and edited_by if this is an email edit for restricted sources
     if (
       oneTimeEditSources.includes(student.source) &&
-      isEmailEdit 
+      isEmailEdit
     ) {
       console.log("Setting edit tracking fields:", {
         wasAlreadyEdited: student.is_edited,
         settingTo: true,
         editedBy: req.user.id
       });
-      
+
       updateData.is_edited = true;
       updateData.edited_by = req.user.id;
     }
@@ -1105,7 +1098,7 @@ export const updateStudentDetails = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ ERROR updating student:", error);
-    
+
     // Handle Sequelize unique constraint error
     if (error.name === 'SequelizeUniqueConstraintError' && error.fields?.student_email) {
       return res.status(409).json({
@@ -1114,7 +1107,7 @@ export const updateStudentDetails = async (req, res) => {
         field: "student_email"
       });
     }
-    
+
     return res.status(500).json({
       message: "Server error",
       error: error.message,
@@ -1407,9 +1400,8 @@ export const bulkReassignLeads = async (req, res) => {
     // Final response
     const responsePayload = {
       success: true,
-      message: `Processed ${data.length} reassignments for ${level}${
-        level?.toLowerCase() === "l3" ? " (journey entries only)" : ""
-      }`,
+      message: `Processed ${data.length} reassignments for ${level}${level?.toLowerCase() === "l3" ? " (journey entries only)" : ""
+        }`,
       results: {
         reassigned: results.length,
         errors: errors.length,
@@ -1598,10 +1590,10 @@ export const addLeadDirect = async (req, res) => {
         ...lead.toJSON(),
         referenceStudent: referenceStudent
           ? {
-              student_id: referenceStudent.student_id,
-              student_name: referenceStudent.student_name,
-              student_email: referenceStudent.student_email,
-            }
+            student_id: referenceStudent.student_id,
+            student_name: referenceStudent.student_name,
+            student_email: referenceStudent.student_email,
+          }
           : null,
       },
     });

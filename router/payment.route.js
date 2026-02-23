@@ -1,7 +1,5 @@
 import express from "express";
 import {
-    createPayment,
-    updatePaymentStatus,
     getPaymentsByStudent,
     getAllPayments,
     getPaymentsByStudentWithDetails,
@@ -10,26 +8,30 @@ import {
     handleWebhook,
     initiateLead,
     updateLead,
-    abandonLead
+    abandonLead,
+    getPricingBySlug,
+    validateCoupon
 } from "../controllers/payment.controller.js";
 
 const api = express.Router();
 
-// Legacy / Internal UI Routes
-api.post("/", createPayment);
-api.get("/student/:student_id", getPaymentsByStudent);
-api.get("/student-details/:student_id", getPaymentsByStudentWithDetails);
-api.get("/reports", getPaymentReports);
-api.put("/:id/status", updatePaymentStatus);
-api.get("/", getAllPayments);
-
-// Migrated Payment Logic Routes
+// Order & Webhook
 api.post("/create-order", createAdmissionOrder);
 api.post("/webhook", handleWebhook);
 
-// Lead Management Routes
+// Lead Management
 api.post("/lead/initiate", initiateLead);
 api.put("/lead/update", updateLead);
 api.post("/lead/abandon", abandonLead);
+
+// Pricing and Coupon Configuration
+api.get("/config/pricing/:pageSlug", getPricingBySlug);
+api.post("/config/coupon/validate", validateCoupon);
+
+// Payment Reports & History (Now using Snapshot/Order data)
+api.get("/student/:student_id", getPaymentsByStudent);
+api.get("/student-details/:student_id", getPaymentsByStudentWithDetails);
+api.get("/reports", getPaymentReports);
+api.get("/all", getAllPayments);
 
 export default api;

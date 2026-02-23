@@ -1,7 +1,6 @@
 import axios from "axios";
 import {
   sequelize,
-  Payment,
   Student,
   PricingRule,
   Coupon,
@@ -80,6 +79,7 @@ export const initiateLead = async (req, res) => {
       [Model === Student ? "preferred_university" : "collegeForApplied"]: Model === Student ? [collegeForApplied] : collegeForApplied,
       [Model === Student ? "first_source_url" : "pageUrl"]: req.body.pageUrl,
       paymentStatus: "PENDING",
+      lastQualificationPercentage: (req.body.lastQualificationPercentage === "" || req.body.lastQualificationPercentage === undefined) ? null : req.body.lastQualificationPercentage,
     };
 
     const newEntry = await Model.create(newLeadData);
@@ -110,7 +110,6 @@ export const updateLead = async (req, res) => {
       return res.status(404).json({ success: false, message: "Lead not found" });
     }
 
-    // Mapping for Student vs Admission/Registration
     if (Model === Student) {
       if (formData.fullName) lead.student_name = formData.fullName;
       if (formData.contactNumber) lead.student_phone = formData.contactNumber;
@@ -136,6 +135,8 @@ export const updateLead = async (req, res) => {
     safeFields.forEach((field) => {
       if (formData[field] !== undefined) lead[field] = formData[field];
     });
+
+    if (formData.lastQualificationPercentage === "") lead.lastQualificationPercentage = null;
 
     lead.updated_at = new Date();
     await lead.save();
@@ -234,19 +235,21 @@ export const createAdmissionOrder = async (req, res) => {
         student_email: email?.toLowerCase(),
         student_phone: mobile,
         preferred_university: collegeForApplied ? [collegeForApplied] : [],
-        ...req.body
+        ...req.body,
+        lastQualificationPercentage: (req.body.lastQualificationPercentage === "" || req.body.lastQualificationPercentage === undefined) ? null : req.body.lastQualificationPercentage,
       } : {
         email: email?.toLowerCase(),
         mobile: mobile,
         collegeForApplied: collegeForApplied,
         name: req.body.fullName,
-        ...req.body
+        ...req.body,
+        lastQualificationPercentage: (req.body.lastQualificationPercentage === "" || req.body.lastQualificationPercentage === undefined) ? null : req.body.lastQualificationPercentage,
       };
       lead = await Model.create(leadData, { transaction });
     }
 
     const snapshot = await PricingSnapshot.create({
-      admissionId: lead[idField],
+      admissionId: lead[idField].toString(),
       onModel: getModelName(onModel),
       paymentFor: paymentFor || "admission",
       baseAmount: pricingRule.baseAmount,
@@ -282,22 +285,6 @@ export const createAdmissionOrder = async (req, res) => {
       status: order.status,
     }, { transaction });
 
-    // legacy Payment record
-    await Payment.create({
-      student_id: Model === Student ? lead.student_id : null,
-      college_name: collegeForApplied,
-      course_name: req.body.interestedCourse,
-      status: "PENDING",
-      payment_for: paymentFor || "admission",
-      base_amount: pricingRule.baseAmount,
-      final_amount: finalAmount,
-      couponCode: appliedCoupon,
-      discount_amount: discountAmount,
-      currency: pricingRule.currency,
-      razorpay_order_id: order.id,
-      mongo_snapshot_id: snapshot.id.toString(),
-    }, { transaction });
-
     await transaction.commit();
 
     res.status(200).json({
@@ -308,7 +295,7 @@ export const createAdmissionOrder = async (req, res) => {
         amount: order.amount,
         key_id: process.env.RAZORPAY_KEY_ID,
         name: pricingRule.collegeName || "Nuvora Education",
-        description: `Admission Fee for ${req.body.interestedCourse || 'Course'}`,
+        description: `${paymentFor || 'Admission'} Fee for ${req.body.interestedCourse || 'Course'}`,
         prefill: {
           name: Model === Student ? lead.student_name : lead.name,
           email: Model === Student ? lead.student_email : lead.email,
@@ -387,14 +374,6 @@ export const handleWebhook = async (req, res) => {
             if (Model !== Student) lead.UTRNumber = paymentEntity.id;
             await lead.save({ transaction });
 
-            const legacyPayment = await Payment.findOne({
-              where: { mongo_snapshot_id: snapshot.id.toString() },
-              transaction,
-            });
-            if (legacyPayment) {
-              await legacyPayment.update({ status: "COMPLETED", updated_at: new Date() }, { transaction });
-            }
-
             const studentId = Model === Student ? lead.student_id : null;
             if (studentId) {
               await StudentRemark.create({
@@ -449,13 +428,6 @@ export const handleWebhook = async (req, res) => {
         if (snapshot) {
           snapshot.status = "FAILED";
           await snapshot.save({ transaction });
-          const legacyPayment = await Payment.findOne({
-            where: { mongo_snapshot_id: snapshot.id.toString() },
-            transaction,
-          });
-          if (legacyPayment && legacyPayment.status !== "COMPLETED") {
-            await legacyPayment.update({ status: "FAILED" }, { transaction });
-          }
         }
       }
     }
@@ -476,40 +448,96 @@ export const handleWebhook = async (req, res) => {
   }
 };
 
-// Legacy UI Helper Functions
-export const createPayment = async (req, res) => {
+export const getPricingBySlug = async (req, res) => {
   try {
-    const { email, phone } = req.body;
-    let student_id = null;
-    if (email) {
-      const student = await Student.findOne({ where: { student_email: email } });
-      if (student) student_id = student.student_id;
+    const { pageSlug } = req.params;
+    const rule = await PricingRule.findOne({ where: { pageSlug, isActive: true } });
+
+    if (!rule) {
+      return res.status(404).json({ success: false, message: "Pricing not configured for this page" });
     }
-    if (!student_id && phone) {
-      const student = await Student.findOne({ where: { student_phone: phone } });
-      if (student) student_id = student.student_id;
-    }
-    const newPayment = await Payment.create({ ...req.body, student_id: student_id });
-    res.status(201).json(newPayment);
-  } catch (error) { res.status(500).json({ message: "Internal server error" }); }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        baseAmount: rule.baseAmount,
+        currency: rule.currency,
+        allowCoupons: rule.allowCoupons,
+        collegeName: rule.collegeName
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
 
-export const updatePaymentStatus = async (req, res) => {
+export const validateCoupon = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { status } = req.body;
-    const payment = await Payment.findOne({ where: { mongo_snapshot_id: id } });
-    if (!payment) return res.status(404).json({ message: "Payment not found" });
-    await payment.update({ status: status, updated_at: new Date() });
-    res.status(200).json(payment);
-  } catch (error) { res.status(500).json({ message: "Internal server error" }); }
+    const { code, pageSlug, orderAmount } = req.body;
+    if (!code) return res.status(400).json({ success: false, message: "Coupon code required" });
+
+    const coupon = await Coupon.findOne({
+      where: {
+        code: code.toUpperCase(),
+        isActive: true,
+        validTill: { [Op.gte]: new Date() }
+      }
+    });
+
+    if (!coupon) {
+      return res.status(404).json({ success: false, message: "Invalid or expired coupon" });
+    }
+
+    if (coupon.usedCount >= coupon.usageLimitGlobal) {
+      return res.status(400).json({ success: false, message: "Coupon usage limit exceeded" });
+    }
+
+    if (coupon.applicablePages && Array.isArray(coupon.applicablePages) && coupon.applicablePages.length > 0) {
+      if (!coupon.applicablePages.includes(pageSlug)) {
+        return res.status(400).json({ success: false, message: "Coupon not applicable for this page" });
+      }
+    }
+
+    if (orderAmount < coupon.minOrderAmount) {
+      return res.status(400).json({ success: false, message: `Minimum order amount of ${coupon.minOrderAmount} required` });
+    }
+
+    let discount = 0;
+    const baseAmount = parseFloat(orderAmount);
+    if (coupon.discountType === 'FLAT') {
+      discount = parseFloat(coupon.discountValue);
+    } else if (coupon.discountType === 'PERCENTAGE') {
+      discount = (baseAmount * parseFloat(coupon.discountValue)) / 100;
+      if (coupon.maxDiscountAmount) {
+        discount = Math.min(discount, parseFloat(coupon.maxDiscountAmount));
+      }
+    }
+    discount = Math.min(discount, baseAmount);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        code: coupon.code,
+        discountAmount: discount,
+        finalAmount: baseAmount - discount,
+        message: "Coupon applied successfully"
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
 
 export const getPaymentsByStudent = async (req, res) => {
   try {
     const { student_id } = req.params;
-    const payments = await Payment.findAll({ where: { student_id } });
-    res.status(200).json(payments);
+    const snapshots = await PricingSnapshot.findAll({
+      where: { admissionId: student_id, onModel: 'students' },
+      include: [{ model: PaymentOrder, as: 'paymentOrder' }],
+      order: [["created_at", "DESC"]],
+    });
+    res.status(200).json(snapshots);
   } catch (error) { res.status(500).json({ message: "Internal server error" }); }
 };
 
@@ -517,27 +545,35 @@ export const getAllPayments = async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
-    const payments = await Payment.findAndCountAll({
+    const orders = await PaymentOrder.findAndCountAll({
       limit: parseInt(limit),
       offset: parseInt(offset),
+      include: [{ model: PricingSnapshot, as: 'snapshot' }],
       order: [["created_at", "DESC"]],
     });
-    res.status(200).json(payments);
+    res.status(200).json(orders);
   } catch (error) { res.status(500).json({ message: "Internal server error" }); }
 };
 
 export const getPaymentsByStudentWithDetails = async (req, res) => {
   try {
     const { student_id } = req.params;
-    const payments = await Payment.findAll({ where: { student_id }, order: [["created_at", "DESC"]] });
+    const snapshots = await PricingSnapshot.findAll({
+      where: { admissionId: student_id, onModel: 'students' },
+      include: [{ model: PaymentOrder, as: 'paymentOrder' }],
+      order: [["created_at", "DESC"]]
+    });
     const student = await Student.findByPk(student_id);
-    res.status(200).json({ student, payments });
+    res.status(200).json({ student, payments: snapshots });
   } catch (error) { res.status(500).json({ message: "Internal server error" }); }
 };
 
 export const getPaymentReports = async (req, res) => {
   try {
-    const payments = await Payment.findAll({ order: [["created_at", "DESC"]] });
-    res.status(200).json(payments);
+    const orders = await PaymentOrder.findAll({
+      include: [{ model: PricingSnapshot, as: 'snapshot' }],
+      order: [["created_at", "DESC"]]
+    });
+    res.status(200).json(orders);
   } catch (error) { res.status(500).json({ message: "Internal server error" }); }
 };

@@ -404,7 +404,7 @@ export const handleWebhook = async (req, res) => {
                 if (linkedStudent) targetStudentId = linkedStudent.student_id;
               }
             }
-
+            console.log(targetStudentId)
             if (targetStudentId) {
               await StudentRemark.create({
                 student_id: targetStudentId,

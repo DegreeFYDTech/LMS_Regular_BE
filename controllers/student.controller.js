@@ -601,18 +601,20 @@ export const getStudentById = async (req, res) => {
     // Map snapshots to match frontend expectations (compatible with old Payment schema)
     studentData.payments = studentSnapshots.map(snap => ({
       id: snap.id,
+      student_id: snap.admissionId,
       college_name: snap.collegeName || "N/A",
       course_name: snap.interestedCourse || "N/A",
-      status: snap.paymentOrder ? snap.paymentOrder.status : snap.status,
+      status: (snap.paymentOrder ? snap.paymentOrder.status : snap.status) === 'PAID' ? 'COMPLETED' : (snap.paymentOrder ? snap.paymentOrder.status : snap.status),
       payment_for: snap.paymentFor,
       base_amount: snap.baseAmount,
       final_amount: snap.finalAmount,
       discount_amount: snap.discountAmount,
-      coupon_code: snap.appliedCouponCode,
+      couponCode: snap.appliedCouponCode,
+      currency: snap.currency || "INR",
       razorpay_order_id: snap.razorpayOrderId,
-      created_at: snap.created_at,
-      updated_at: snap.updated_at,
-      transaction_details: snap.paymentOrder ? snap.paymentOrder.payments : []
+      mongo_snapshot_id: null, // Legacy field for frontend compatibility
+      created_at: snap.createdAt,
+      updated_at: snap.updatedAt,
     }));
 
     // Fetch all L3 journey data for this student using raw query

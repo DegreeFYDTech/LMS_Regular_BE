@@ -14,6 +14,7 @@ import {
 import { Op } from "sequelize";
 import Razorpay from "razorpay";
 import crypto from "crypto";
+import GenerateEmailFunction from "../utils/email/TriggerEmail.js";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || "rzp_test_placeholder",
@@ -161,6 +162,14 @@ export const abandonLead = async (req, res) => {
 
     lead.paymentStatus = "FAILED";
     await lead.save();
+
+    await GenerateEmailFunction(
+      lead,
+      req?.body?.reason
+        ? "Application Payment Failed"
+        : "Application initiated but not completed",
+      req.body.reason
+    );
 
     res.json({ success: true, message: "Lead marked as abandoned" });
   } catch (error) {
@@ -378,7 +387,6 @@ export const handleWebhook = async (req, res) => {
 
             let targetStudentId = Model === Student ? lead.student_id : null;
 
-            // If it's an Admission or Registration, try to find matching Student by phone
             if (!targetStudentId) {
               const phoneToSearch = lead.mobile || lead.student_phone;
               if (phoneToSearch) {
@@ -443,6 +451,16 @@ export const handleWebhook = async (req, res) => {
         if (snapshot) {
           snapshot.status = "FAILED";
           await snapshot.save({ transaction });
+
+          const Model = getModel(snapshot.onModel);
+          const lead = await Model.findByPk(snapshot.admissionId, { transaction });
+          if (lead) {
+            await GenerateEmailFunction(
+              lead,
+              "Application Payment Failed",
+              paymentEntity.error_description || "Internal Payment Link Error"
+            );
+          }
         }
       }
     }

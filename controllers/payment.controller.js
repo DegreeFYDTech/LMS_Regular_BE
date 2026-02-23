@@ -385,6 +385,13 @@ export const handleWebhook = async (req, res) => {
             if (Model !== Student) lead.UTRNumber = paymentEntity.id;
             await lead.save({ transaction });
 
+            await GenerateEmailFunction(
+              lead,
+              snapshot.onModel === "registrations"
+                ? "Application Received"
+                : "Admission Received",
+            );
+
             let targetStudentId = Model === Student ? lead.student_id : null;
 
             if (!targetStudentId) {

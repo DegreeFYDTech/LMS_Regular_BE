@@ -260,7 +260,7 @@ export const createAdmissionOrder = async (req, res) => {
     const snapshot = await PricingSnapshot.create({
       admissionId: lead[idField].toString(),
       onModel: getModelName(onModel),
-      paymentFor: paymentFor || "admission",
+      paymentFor: paymentFor || (onModel === "Registration" || onModel === "Registration" ? "application" : "admission"),
       baseAmount: pricingRule.baseAmount,
       collegeName: pricingRule.collegeName || collegeForApplied,
       interestedCourse: req.body.interestedCourse || lead.interestedCourse || lead.preferred_degree || "N/A",

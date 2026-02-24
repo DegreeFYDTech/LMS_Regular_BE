@@ -320,7 +320,7 @@ export const createStatusLog = async (req, res) => {
             stream: courseDetails.stream,
           },
         );
-
+        console.log(l3data.data.assigned_l3_counsellor_id)
         if (l3data.data.assigned_l3_counsellor_id) {
           await journeyEntry.update({
             assigned_l3_counsellor_id: l3data.data.assigned_l3_counsellor_id,

@@ -1,5 +1,5 @@
 import { DataTypes } from 'sequelize';
-import sequelize from '../config/database-config.js'; 
+import sequelize from '../config/database-config.js';
 
 const StudentCollegeCred = sequelize.define('student_college_credentials', {
   form_id: {
@@ -26,16 +26,16 @@ const StudentCollegeCred = sequelize.define('student_college_credentials', {
     type: DataTypes.STRING,
     allowNull: true,
   },
-  
+
   course_id: {
     type: DataTypes.STRING,
     allowNull: true,
   },
-  
+
 }, {
   tableName: 'student_college_credentials',
   timestamps: true,
-  underscored: true, 
+  underscored: true,
 });
 
 export default StudentCollegeCred;

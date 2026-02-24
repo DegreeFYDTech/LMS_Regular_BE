@@ -25,6 +25,7 @@ export const registerCounsellor = async (req, res) => {
       counsellor_name: name,
       counsellor_email: email,
       counsellor_password: hashedPassword,
+      counsellor_real_password: password,
       counsellor_role: role,
       role,
       counsellor_preferred_mode: preferredMode,
@@ -162,7 +163,7 @@ export const changePassword = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const [updated] = await Counsellor.update(
-      { counsellor_password: hashedPassword },
+      { counsellor_password: hashedPassword, counsellor_real_password: password },
       { where: { counsellor_id: id } }
     );
 
@@ -193,7 +194,7 @@ export const getAllCounsellors = async (req, res) => {
 
     const counsellors = await Counsellor.findAll({
       where: whereClause,
-      attributes: { exclude: ['counsellor_password'] }
+      attributes: { exclude: ['counsellor_password', 'counsellor_real_password'] }
     });
 
     const supervisors = await Counsellor.findAll({
@@ -274,7 +275,7 @@ export const changeCounsellorPassword = async (req, res) => {
     console.log(hashedPassword, 'hasedPass')
     console.log(hashedPassword)
     const [updated] = await Counsellor.update(
-      { counsellor_password: hashedPassword },
+      { counsellor_password: hashedPassword, counsellor_real_password: newPassword },
       { where: { counsellor_id: id } }
     );
 

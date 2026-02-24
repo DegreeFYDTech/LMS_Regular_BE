@@ -7,7 +7,10 @@ const PricingRule = sequelize.define(
     pageSlug: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
+    },
+    campusLocation: {
+      type: DataTypes.STRING,
+      allowNull: true,
     },
     collegeName: {
       type: DataTypes.STRING,
@@ -40,6 +43,12 @@ const PricingRule = sequelize.define(
     tableName: "pricing_rules",
     timestamps: true,
     underscored: true,
+    indexes: [
+      {
+        unique: true,
+        fields: ["page_slug", "campus_location"],
+      },
+    ],
   }
 );
 

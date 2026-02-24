@@ -58,6 +58,10 @@ const Coupon = sequelize.define(
             type: DataTypes.JSON, // Storing array of strings as JSON
             defaultValue: [],
         },
+        applicableCampuses: {
+            type: DataTypes.JSON, // Storing array of campus names as JSON
+            defaultValue: [],
+        },
     },
     {
         tableName: "coupons",

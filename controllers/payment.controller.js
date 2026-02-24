@@ -195,10 +195,20 @@ export const createAdmissionOrder = async (req, res) => {
 
     if (!pageSlug) throw new Error("Page identifier (pageSlug) is required");
 
-    const pricingRule = await PricingRule.findOne({
-      where: { pageSlug, isActive: true },
+    const { campusLocation } = req.body;
+    let pricingRule = await PricingRule.findOne({
+      where: { pageSlug, campusLocation: campusLocation || null, isActive: true },
       transaction,
     });
+
+    if (!pricingRule && campusLocation) {
+      // Fallback to generic rule if campus specific rule not found
+      pricingRule = await PricingRule.findOne({
+        where: { pageSlug, campusLocation: null, isActive: true },
+        transaction,
+      });
+    }
+
     if (!pricingRule) throw new Error("Pricing configuration invalid");
 
     let finalAmount = parseFloat(pricingRule.baseAmount);
@@ -216,6 +226,19 @@ export const createAdmissionOrder = async (req, res) => {
       });
 
       if (coupon) {
+        if (coupon.applicableCampuses && Array.isArray(coupon.applicableCampuses) && coupon.applicableCampuses.length > 0) {
+          if (!coupon.applicableCampuses.includes(campusLocation)) {
+            // If coupon is campus-specific and current campus doesn't match, don't apply
+            console.log("Coupon not applicable for this campus");
+          } else {
+            applyCouponLogic(coupon);
+          }
+        } else {
+          applyCouponLogic(coupon);
+        }
+      }
+
+      function applyCouponLogic(coupon) {
         if (coupon.usedCount < coupon.usageLimitGlobal) {
           if (coupon.discountType === "FLAT") {
             discountAmount = parseFloat(coupon.discountValue);
@@ -494,7 +517,18 @@ export const handleWebhook = async (req, res) => {
 export const getPricingBySlug = async (req, res) => {
   try {
     const { pageSlug } = req.params;
-    const rule = await PricingRule.findOne({ where: { pageSlug, isActive: true } });
+    const { campusLocation } = req.query;
+
+    let rule = await PricingRule.findOne({
+      where: { pageSlug, campusLocation: campusLocation || null, isActive: true }
+    });
+
+    if (!rule && campusLocation) {
+      // Fallback to generic rule if campus specific rule not found
+      rule = await PricingRule.findOne({
+        where: { pageSlug, campusLocation: null, isActive: true }
+      });
+    }
 
     if (!rule) {
       return res.status(404).json({ success: false, message: "Pricing not configured for this page" });
@@ -516,7 +550,7 @@ export const getPricingBySlug = async (req, res) => {
 
 export const validateCoupon = async (req, res) => {
   try {
-    const { code, pageSlug, orderAmount } = req.body;
+    const { code, pageSlug, orderAmount, campusLocation } = req.body;
     if (!code) return res.status(400).json({ success: false, message: "Coupon code required" });
 
     const coupon = await Coupon.findOne({
@@ -538,6 +572,12 @@ export const validateCoupon = async (req, res) => {
     if (coupon.applicablePages && Array.isArray(coupon.applicablePages) && coupon.applicablePages.length > 0) {
       if (!coupon.applicablePages.includes(pageSlug)) {
         return res.status(400).json({ success: false, message: "Coupon not applicable for this page" });
+      }
+    }
+
+    if (coupon.applicableCampuses && Array.isArray(coupon.applicableCampuses) && coupon.applicableCampuses.length > 0) {
+      if (!coupon.applicableCampuses.includes(campusLocation || null)) {
+        return res.status(400).json({ success: false, message: "Coupon not applicable for this campus" });
       }
     }
 

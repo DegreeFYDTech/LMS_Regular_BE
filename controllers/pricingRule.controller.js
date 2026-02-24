@@ -7,7 +7,9 @@ import { Op } from "sequelize";
  */
 export const createPricingRule = async (req, res) => {
     try {
-        const rule = await PricingRule.create(req.body);
+        const data = { ...req.body };
+        if (data.campusLocation === "") data.campusLocation = null;
+        const rule = await PricingRule.create(data);
         res.status(201).json({
             success: true,
             message: "Pricing rule created successfully",
@@ -18,7 +20,7 @@ export const createPricingRule = async (req, res) => {
         res.status(500).json({
             success: false,
             message: error.name === "SequelizeUniqueConstraintError"
-                ? "Pricing rule for this page slug already exists"
+                ? "Pricing rule for this page slug and campus already exists"
                 : error.message,
         });
     }
@@ -39,6 +41,14 @@ export const getAllPricingRules = async (req, res) => {
 
         if (collegeName) {
             where.collegeName = { [Op.iLike]: `%${collegeName}%` };
+        }
+
+        if (req.query.pageSlug) {
+            where.pageSlug = req.query.pageSlug;
+        }
+
+        if (req.query.campusLocation) {
+            where.campusLocation = req.query.campusLocation;
         }
 
         const rules = await PricingRule.findAll({
@@ -84,7 +94,9 @@ export const updatePricingRule = async (req, res) => {
             return res.status(404).json({ success: false, message: "Pricing rule not found" });
         }
 
-        await rule.update(req.body);
+        const data = { ...req.body };
+        if (data.campusLocation === "") data.campusLocation = null;
+        await rule.update(data);
         res.status(200).json({
             success: true,
             message: "Pricing rule updated successfully",

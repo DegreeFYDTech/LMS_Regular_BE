@@ -16,15 +16,17 @@ router.post("/sentStatustoCollege", sentStatustoCollege);
 
 router.post(
   "/distinct-by-students",
-  authorize(["Supervisor"]),
+  authorize(["Supervisor", "to"]),
   getDistinctL3CounsellorsByStudentIds,
 );
 // Add these routes to your counsellor routes file
-router.post('/student-journey-details', getStudentJourneyDetails);
-router.post('/replace-l3-specific-journey', replaceL3CounsellorForSpecificJourney);
+router.post('/student-journey-details', authorize(["Supervisor", "to"]),
+  getStudentJourneyDetails);
+router.post('/replace-l3-specific-journey', authorize(["Supervisor", "to"]),
+  replaceL3CounsellorForSpecificJourney);
 router.post(
   "/replace",
-  authorize(["Supervisor"]),
+  authorize(["Supervisor", "to"]),
   replaceL3CounsellorForStudents,
 );
 

@@ -66,77 +66,6 @@ export const getStudentJourneyDetails = async (req, res) => {
   }
 };
 
-// Replace L3 counsellor for a specific journey entry
-export const replaceL3CounsellorForSpecificJourney = async (req, res) => {
-  const transaction = await sequelize.transaction();
-
-  try {
-    const { studentId, courseId, toCounsellorId } = req.body;
-
-    // Validation
-    if (!studentId || !courseId || !toCounsellorId) {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        message: "Please provide studentId, courseId, and toCounsellorId"
-      });
-    }
-
-    // Check if target counsellor exists and is L3
-    const counsellorCheckQuery = `
-            SELECT counsellor_id FROM counsellors 
-            WHERE counsellor_id = '${toCounsellorId}' AND role = 'l3'
-        `;
-
-    const targetCounsellor = await sequelize.query(counsellorCheckQuery, {
-      type: QueryTypes.SELECT
-    });
-
-    if (!targetCounsellor || targetCounsellor.length === 0) {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        message: "Target counsellor not found or is not an L3 counsellor"
-      });
-    }
-
-    // Update the specific journey entry
-    const updateQuery = `
-            UPDATE course_status_journeys
-            SET assigned_l3_counsellor_id = '${toCounsellorId}'
-            WHERE student_id = '${studentId}' 
-            AND course_id = '${courseId}'
-        `;
-
-    const [updatedCount] = await sequelize.query(updateQuery, {
-      type: QueryTypes.UPDATE,
-      transaction
-    });
-
-    await transaction.commit();
-
-    return res.status(200).json({
-      success: true,
-      message: `Successfully updated counsellor for student ${studentId} and course ${courseId}`,
-      data: {
-        studentId,
-        courseId,
-        toCounsellorId,
-        updated: true
-      }
-    });
-
-  } catch (error) {
-    await transaction.rollback();
-    console.error("Error replacing L3 counsellor for specific journey:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to replace L3 counsellor",
-      error: error.message
-    });
-  }
-};
-
 // Replace L3 counsellor for selected students across all journey entries
 export const replaceL3CounsellorForStudents = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -169,15 +98,16 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
       });
     }
 
-    // Check if target counsellor exists and is L3
-    const counsellorCheckQuery = `
-      SELECT counsellor_id FROM counsellors 
-      WHERE counsellor_id = '${toCounsellorId}' AND role = 'l3'
-    `;
-
-    const targetCounsellor = await sequelize.query(counsellorCheckQuery, {
-      type: QueryTypes.SELECT
-    });
+    // Check if target counsellor exists and is L3 - using parameterized query
+    const targetCounsellor = await sequelize.query(
+      `SELECT counsellor_id FROM counsellors 
+       WHERE counsellor_id = $1 AND role = 'l3'`,
+      {
+        bind: [toCounsellorId],
+        type: QueryTypes.SELECT,
+        transaction
+      }
+    );
 
     if (!targetCounsellor || targetCounsellor.length === 0) {
       await transaction.rollback();
@@ -187,21 +117,35 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
       });
     }
 
-    // Escape student IDs
-    const escapedIds = studentIds.map(id => `'${id}'`).join(',');
+    // Check if fromCounsellorId exists (optional, for validation)
+    if (fromCounsellorId !== 'any') { // Allow 'any' as a special value to replace regardless of current
+      const fromCounsellor = await sequelize.query(
+        `SELECT counsellor_id FROM counsellors 
+         WHERE counsellor_id = $1 AND role = 'l3'`,
+        {
+          bind: [fromCounsellorId],
+          type: QueryTypes.SELECT,
+          transaction
+        }
+      );
 
-    // Count records to be updated
-    const countQuery = `
-      SELECT COUNT(*) as count
-      FROM course_status_journeys
-      WHERE student_id IN (${escapedIds})
-        AND assigned_l3_counsellor_id = '${fromCounsellorId}'
-    `;
+      if (!fromCounsellor || fromCounsellor.length === 0) {
+        console.warn(`Source counsellor ${fromCounsellorId} not found, but continuing with replacement`);
+      }
+    }
 
-    const countResult = await sequelize.query(countQuery, {
-      type: QueryTypes.SELECT,
-      transaction
-    });
+    // Count records to be updated - using parameterized query
+    const countResult = await sequelize.query(
+      `SELECT COUNT(*) as count
+       FROM course_status_journeys
+       WHERE student_id = ANY($1::text[])
+         AND assigned_l3_counsellor_id = $2`,
+      {
+        bind: [studentIds, fromCounsellorId],
+        type: QueryTypes.SELECT,
+        transaction
+      }
+    );
 
     const recordsToUpdate = parseInt(countResult[0]?.count || 0);
 
@@ -213,18 +157,18 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
       });
     }
 
-    // Update all journey entries for the selected students
-    const updateQuery = `
-      UPDATE course_status_journeys
-      SET assigned_l3_counsellor_id = '${toCounsellorId}'
-      WHERE student_id IN (${escapedIds})
-        AND assigned_l3_counsellor_id = '${fromCounsellorId}'
-    `;
-
-    await sequelize.query(updateQuery, {
-      type: QueryTypes.UPDATE,
-      transaction
-    });
+    // Update all journey entries for the selected students - using parameterized query
+    await sequelize.query(
+      `UPDATE course_status_journeys
+       SET assigned_l3_counsellor_id = $1
+       WHERE student_id = ANY($2::text[])
+         AND assigned_l3_counsellor_id = $3`,
+      {
+        bind: [toCounsellorId, studentIds, fromCounsellorId],
+        type: QueryTypes.UPDATE,
+        transaction
+      }
+    );
 
     // Commit transaction
     await transaction.commit();
@@ -241,16 +185,116 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
     });
 
   } catch (error) {
-    await transaction.rollback();
+    try {
+      await transaction.rollback();
+    } catch (rollbackError) {
+      console.error("Error rolling back transaction:", rollbackError);
+    }
+    
     console.error("Error replacing L3 counsellor:", error);
+    
+    // Check for connection errors
+    if (error.code === 'ECONNRESET' || error.parent?.code === 'ECONNRESET') {
+      return res.status(503).json({
+        success: false,
+        message: "Database connection error. Please try again.",
+        error: "Connection reset"
+      });
+    }
+    
     return res.status(500).json({
       success: false,
       message: "Failed to replace L3 counsellor",
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
+// Replace L3 counsellor for a specific journey entry
+export const replaceL3CounsellorForSpecificJourney = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { studentId, courseId, toCounsellorId } = req.body;
+
+    // Validation
+    if (!studentId || !courseId || !toCounsellorId) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Please provide studentId, courseId, and toCounsellorId"
+      });
+    }
+
+    // Check if target counsellor exists and is L3 - using parameterized query
+    const targetCounsellor = await sequelize.query(
+      `SELECT counsellor_id FROM counsellors 
+       WHERE counsellor_id = $1 AND role = 'l3'`,
+      {
+        bind: [toCounsellorId],
+        type: QueryTypes.SELECT,
+        transaction
+      }
+    );
+
+    if (!targetCounsellor || targetCounsellor.length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Target counsellor not found or is not an L3 counsellor"
+      });
+    }
+
+    // Update the specific journey entry - using parameterized query
+    const [updatedCount] = await sequelize.query(
+      `UPDATE course_status_journeys
+       SET assigned_l3_counsellor_id = $1
+       WHERE student_id = $2 
+         AND course_id = $3`,
+      {
+        bind: [toCounsellorId, studentId, courseId],
+        type: QueryTypes.UPDATE,
+        transaction
+      }
+    );
+
+    await transaction.commit();
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully updated counsellor for student ${studentId} and course ${courseId}`,
+      data: {
+        studentId,
+        courseId,
+        toCounsellorId,
+        updated: true
+      }
+    });
+
+  } catch (error) {
+    try {
+      await transaction.rollback();
+    } catch (rollbackError) {
+      console.error("Error rolling back transaction:", rollbackError);
+    }
+    
+    console.error("Error replacing L3 counsellor for specific journey:", error);
+    
+    if (error.code === 'ECONNRESET' || error.parent?.code === 'ECONNRESET') {
+      return res.status(503).json({
+        success: false,
+        message: "Database connection error. Please try again.",
+        error: "Connection reset"
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: "Failed to replace L3 counsellor",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
 
 
 export const createStatusLog = async (req, res) => {

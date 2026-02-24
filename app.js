@@ -20,6 +20,7 @@ const allowedOrigins = [
   "https://www.degreefyd.com",
   "https://degreefyd.com",
   "http://localhost:5174",
+  "https://nuvoraed.com",
   "http://localhost:5175",
   "https://regularlms.degreefyd.com",
   "https://online.degreefyd.com",

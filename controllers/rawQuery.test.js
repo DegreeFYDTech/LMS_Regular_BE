@@ -1238,21 +1238,19 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
               ]
               : [],
 
-            lead_activities: item.utm_source
-              ? [
-                {
-                  utm_source: item.utm_source,
-                  utm_medium: item.utm_medium,
-                  utm_campaign: item.utm_campaign,
-                  utm_keyword: item.utm_keyword,
-                  utm_campaign_id: item.utm_campaign_id,
-                  utm_adgroup_id: item.utm_adgroup_id,
-                  utm_creative_id: item.utm_creative_id,
-                  created_at: item.activity_created_at,
-                  source: item.source,
-                  source_url: item.source_url,
-                },
-              ]
+            lead_activities: item.activity_created_at
+              ? [{
+                utm_source: item.utm_source,
+                utm_medium: item.utm_medium,
+                utm_campaign: item.utm_campaign,
+                utm_keyword: item.utm_keyword,
+                utm_campaign_id: item.utm_campaign_id,
+                utm_adgroup_id: item.utm_adgroup_id,
+                utm_creative_id: item.utm_creative_id,
+                created_at: item.activity_created_at,
+                source: item.source,
+                source_url: item.source_url,
+              }]
               : [],
           };
 

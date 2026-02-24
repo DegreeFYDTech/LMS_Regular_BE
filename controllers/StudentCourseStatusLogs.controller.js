@@ -190,9 +190,9 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
     } catch (rollbackError) {
       console.error("Error rolling back transaction:", rollbackError);
     }
-    
+
     console.error("Error replacing L3 counsellor:", error);
-    
+
     // Check for connection errors
     if (error.code === 'ECONNRESET' || error.parent?.code === 'ECONNRESET') {
       return res.status(503).json({
@@ -201,7 +201,7 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
         error: "Connection reset"
       });
     }
-    
+
     return res.status(500).json({
       success: false,
       message: "Failed to replace L3 counsellor",
@@ -277,9 +277,9 @@ export const replaceL3CounsellorForSpecificJourney = async (req, res) => {
     } catch (rollbackError) {
       console.error("Error rolling back transaction:", rollbackError);
     }
-    
+
     console.error("Error replacing L3 counsellor for specific journey:", error);
-    
+
     if (error.code === 'ECONNRESET' || error.parent?.code === 'ECONNRESET') {
       return res.status(503).json({
         success: false,
@@ -287,7 +287,7 @@ export const replaceL3CounsellorForSpecificJourney = async (req, res) => {
         error: "Connection reset"
       });
     }
-    
+
     return res.status(500).json({
       success: false,
       message: "Failed to replace L3 counsellor",

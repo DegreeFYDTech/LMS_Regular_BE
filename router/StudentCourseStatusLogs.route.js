@@ -22,7 +22,7 @@ router.post(
 // Add these routes to your counsellor routes file
 router.post('/student-journey-details', authorize(["Supervisor", "to"]),
   getStudentJourneyDetails);
-router.post('/replace-l3-specific-journey', authorize(["Supervisor", "to"]),
+router.post('/replace-l3-specific-journey',
   replaceL3CounsellorForSpecificJourney);
 router.post(
   "/replace",

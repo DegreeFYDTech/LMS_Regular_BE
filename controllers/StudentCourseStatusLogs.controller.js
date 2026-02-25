@@ -967,11 +967,52 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
       type: QueryTypes.SELECT
     });
 
+    // NEW: Query to count course_status that include "Form"
+    const formStatusCountQuery = `
+      SELECT 
+        COUNT(*) as total_form_status_count,
+        COUNT(DISTINCT student_id) as students_with_form_status,
+        course_status,
+        COUNT(*) as status_count
+      FROM course_status_journeys
+      WHERE student_id IN (${escapedIds})
+        AND course_status ILIKE '%Form%'
+      GROUP BY course_status
+      ORDER BY status_count DESC;
+    `;
+
+    const formStatusCounts = await sequelize.query(formStatusCountQuery, {
+      type: QueryTypes.SELECT
+    });
+
+    // NEW: Get total count of all statuses that include "Form"
+    const totalFormStatusCountQuery = `
+      SELECT COUNT(*) as total
+      FROM course_status_journeys
+      WHERE student_id IN (${escapedIds})
+        AND course_status ILIKE '%Form%';
+    `;
+
+    const totalFormStatusResult = await sequelize.query(totalFormStatusCountQuery, {
+      type: QueryTypes.SELECT
+    });
+
+    const totalFormStatusCount = totalFormStatusResult[0]?.total || 0;
+
     // Calculate journey statistics
     const journeyStats = {
       totalStudents: studentIds.length,
       studentsWithMultipleJourneys: 0,
-      studentJourneyMap: {}
+      studentJourneyMap: {},
+      // NEW: Add form status statistics
+      formStatusStats: {
+        totalFormStatusCount: totalFormStatusCount,
+        studentsWithFormStatus: formStatusCounts.length > 0 ? formStatusCounts[0]?.students_with_form_status || 0 : 0,
+        formStatusBreakdown: formStatusCounts.map(item => ({
+          status: item.course_status,
+          count: parseInt(item.status_count)
+        }))
+      }
     };
 
     // Group journeys by student and count them
@@ -1007,7 +1048,16 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
         journeyDetails: journeyDetails,
         journeyStats: journeyStats,
         hasMultipleJourneys: hasMultipleJourneys,
-        journeysByStudent: journeyMap
+        journeysByStudent: journeyMap,
+        // NEW: Add form status summary at the top level for easy access
+        formStatusSummary: {
+          totalCount: totalFormStatusCount,
+          studentsWithFormStatus: formStatusCounts.length > 0 ? formStatusCounts[0]?.students_with_form_status || 0 : 0,
+          breakdown: formStatusCounts.map(item => ({
+            status: item.course_status,
+            count: parseInt(item.status_count)
+          }))
+        }
       },
       message: "L3 counsellors and latest journey details fetched successfully"
     });

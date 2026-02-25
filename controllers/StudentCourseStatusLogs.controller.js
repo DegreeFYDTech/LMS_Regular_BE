@@ -893,7 +893,6 @@ export const getCollegesList = async (req, res) => {
 };
 
 
-// Update your existing getDistinctL3CounsellorsByStudentIds function
 export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
   try {
     const { studentIds } = req.body;
@@ -908,7 +907,7 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
 
     const escapedIds = studentIds.map(id => `'${id}'`).join(',');
 
-    // First query: Get distinct counsellors (same as before)
+    // First query: Get distinct counsellors
     const counsellorsQuery = `
       SELECT DISTINCT 
         csj.assigned_l3_counsellor_id,
@@ -928,8 +927,17 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
       type: QueryTypes.SELECT
     });
 
-    // Second query: Get journey details with counts per student
+    // Get ONLY the latest journey entry for each student-course combination
     const journeyDetailsQuery = `
+      WITH latest_journeys AS (
+        SELECT 
+          student_id,
+          course_id,
+          MAX(created_at) as latest_created_at
+        FROM course_status_journeys
+        WHERE student_id IN (${escapedIds})
+        GROUP BY student_id, course_id
+      )
       SELECT 
         csj.student_id,
         csj.course_id,
@@ -942,13 +950,17 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
         csj.course_status,
         csj.created_at,
         csj.status_history_id,
-        -- Count total journeys per student
+        -- Count total journeys per student (for backward compatibility)
         COUNT(*) OVER (PARTITION BY csj.student_id) as student_journey_count
       FROM course_status_journeys csj
+      INNER JOIN latest_journeys lj 
+        ON csj.student_id = lj.student_id 
+        AND csj.course_id = lj.course_id 
+        AND csj.created_at = lj.latest_created_at
       LEFT JOIN university_courses uc ON csj.course_id = uc.course_id
       LEFT JOIN counsellors c ON csj.assigned_l3_counsellor_id = c.counsellor_id
       WHERE csj.student_id IN (${escapedIds})
-      ORDER BY csj.student_id, csj.created_at DESC;
+      ORDER BY csj.student_id, uc.university_name;
     `;
 
     const journeyDetails = await sequelize.query(journeyDetailsQuery, {
@@ -991,22 +1003,13 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: {
-        // Distinct counsellors (for the single journey replacement UI)
         distinctCounsellors: counsellors,
-
-        // Detailed journey information (for the multiple journeys UI)
         journeyDetails: journeyDetails,
-
-        // Journey statistics
         journeyStats: journeyStats,
-
-        // Flag for UI to determine which view to show
         hasMultipleJourneys: hasMultipleJourneys,
-
-        // Grouped by student for easier frontend processing
         journeysByStudent: journeyMap
       },
-      message: "L3 counsellors and journey details fetched successfully"
+      message: "L3 counsellors and latest journey details fetched successfully"
     });
 
   } catch (error) {

@@ -6,7 +6,6 @@ import {
   sequelize,
   StudentCollegeApiSentStatus,
   Student,
-  StudentLeadActivity,
   StudentRemark,
   Counsellor,
 } from "../models/index.js";
@@ -812,12 +811,10 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
         type,
       )
     ) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "Invalid type. Use agent, source, campaign, created_at, or source_url",
-        });
+      return res.status(400).json({
+        error:
+          "Invalid type. Use agent, source, campaign, created_at, or source_url",
+      });
     }
 
     const dateRangeSQL = (col, start, end) => {
@@ -1008,7 +1005,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     let supervisorSelect;
     let counsellorJoin = "";
     let counsellorStatusCondition = "";
-    
+
     // ALWAYS include assigned_counsellor join
     counsellorJoin = `
       LEFT JOIN counsellors assigned_counsellor ON s.assigned_counsellor_id = assigned_counsellor.counsellor_id
@@ -1448,12 +1445,16 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     if (whereSQL || counsellorStatusCondition) {
       mainQuery += " WHERE ";
       if (whereSQL) {
-        const wherePart = whereSQL.startsWith("WHERE ") ? whereSQL.substring(6) : whereSQL;
+        const wherePart = whereSQL.startsWith("WHERE ")
+          ? whereSQL.substring(6)
+          : whereSQL;
         mainQuery += wherePart;
       }
       if (counsellorStatusCondition) {
         if (whereSQL) mainQuery += " AND ";
-        const statusPart = counsellorStatusCondition.startsWith("AND ") ? counsellorStatusCondition.substring(4) : counsellorStatusCondition;
+        const statusPart = counsellorStatusCondition.startsWith("AND ")
+          ? counsellorStatusCondition.substring(4)
+          : counsellorStatusCondition;
         mainQuery += statusPart;
       }
     }
@@ -1767,7 +1768,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
 
         // Create a unique key based on the group_by field
         const key = row.group_by;
-        
+
         // Skip if we've already processed this group
         if (processedKeys.has(key)) {
           console.log("Skipping duplicate in overall calc:", key);
@@ -2320,12 +2321,10 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
         type,
       )
     ) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "Invalid type. Use agent, source, campaign, created_at, or source_url",
-        });
+      return res.status(400).json({
+        error:
+          "Invalid type. Use agent, source, campaign, created_at, or source_url",
+      });
     }
 
     // Helper for date range SQL conditions
@@ -3914,12 +3913,10 @@ export const getTrackerReport2 = async (req, res) => {
     const userRole = req.user?.role; // Get user role from request
     console.log(userRole);
     if (!date_start || !date_end) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "date_start and date_end are required",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "date_start and date_end are required",
+      });
     }
 
     // Use explicit timezone handling (IST = UTC+5:30)
@@ -4391,12 +4388,10 @@ export const getTrackerReport2RawData = async (req, res) => {
     const { date_start, date_end, groupBy = "detailed" } = req.query;
 
     if (!date_start || !date_end) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "date_start and date_end are required",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "date_start and date_end are required",
+      });
     }
 
     console.log(
@@ -5811,12 +5806,10 @@ export const bulkInsertCourseStatus = async (req, res) => {
     const courseStatusList = req.body; // Expecting an array of objects
 
     if (!Array.isArray(courseStatusList) || courseStatusList.length === 0) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "courseStatusList must be a non-empty array",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "courseStatusList must be a non-empty array",
+      });
     }
 
     // Bulk create with "updateOnDuplicate" to avoid unique index conflicts

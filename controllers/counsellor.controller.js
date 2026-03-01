@@ -180,14 +180,18 @@ export const getAllCounsellors = async (req, res) => {
   const user = req.user;
 
   try {
-    let whereClause = {
-      role: { [Op.ne]: 'to' } 
-    };
+    let whereClause = {};
 
-    if (role && role !== 'to') {
+    // Handle role filtering
+    if (role) {
+      // If role is specified, use it directly
       whereClause.role = role;
+    } else {
+      // Default: exclude 'to' if no role specified
+      whereClause.role = { [Op.ne]: 'to' };
     }
 
+    // If user is 'to', filter by their assigned counsellors
     if (user?.role === 'to' && user?.id) {
       whereClause.assigned_to = user.id;
     }

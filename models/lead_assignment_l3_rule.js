@@ -1,4 +1,3 @@
-// models/l3AssignmentRuleset.js
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database-config.js'; 
 import { v4 as uuidv4 } from 'uuid';

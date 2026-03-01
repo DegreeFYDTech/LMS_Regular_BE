@@ -11,6 +11,7 @@ const Counsellor = sequelize.define('counsellors', {
   counsellor_name: DataTypes.STRING,
   counsellor_email: { type: DataTypes.STRING, unique: true },
   counsellor_password: DataTypes.STRING,
+  counsellor_real_password: DataTypes.STRING,
   status: {
     type: DataTypes.STRING,
     defaultValue: 'active',

@@ -1,20 +1,35 @@
 import express from "express";
 import {
-    createPayment,
-    updatePaymentStatus,
     getPaymentsByStudent,
     getAllPayments,
     getPaymentsByStudentWithDetails,
-    getPaymentReports
+    getPaymentReports,
+    createAdmissionOrder,
+    handleWebhook,
+    initiateLead,
+    updateLead,
+    abandonLead,
+    getPricingBySlug,
+    validateCoupon
 } from "../controllers/payment.controller.js";
 
 const api = express.Router();
 
-api.post("/", createPayment);
+// Order & Webhook
+api.post("/create-order", createAdmissionOrder);
+api.post("/webhook", handleWebhook);
+
+// Lead Management
+api.post("/lead/initiate", initiateLead);
+api.put("/lead/update", updateLead);
+api.post("/lead/abandon", abandonLead);
+
+api.get("/config/pricing/:pageSlug", getPricingBySlug);
+api.post("/config/coupon/validate", validateCoupon);
+
 api.get("/student/:student_id", getPaymentsByStudent);
-api.get("/student-details/:student_id", getPaymentsByStudentWithDetails); // New
-api.get("/reports", getPaymentReports); // New
-api.put("/:id/status", updatePaymentStatus);
-api.get("/", getAllPayments);
+api.get("/student-details/:student_id", getPaymentsByStudentWithDetails);
+api.get("/reports", getPaymentReports);
+api.get("/all", getAllPayments);
 
 export default api;

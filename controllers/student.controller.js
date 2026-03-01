@@ -13,8 +13,11 @@ import {
   Supervisor,
   AnalyserUser,
   Message,
-  Payment,
   CourseStatusHistory,
+  PricingSnapshot,
+  PaymentOrder,
+  Admission,
+  Registration
 } from "../models/index.js";
 import {
   processStudentLead,
@@ -192,7 +195,15 @@ export const updateStudentStatus = async (req, res) => {
           student.is_connected_yet_l3 || callingStatus === "Connected",
         is_reactivity: false,
       };
-      const log = await CourseStatusHistory.create({
+      const journeylogs = await CourseStatusJourney.findOne({
+        where: {
+          student_id: studentId,
+          course_id: selectedCourse,
+        },
+        order: [["created_at", "DESC"]],
+      });
+      console.log(journeylogs.dataValues, "journeylogs");
+      const log = await CourseStatusJourney.create({
         student_id: studentId,
         course_id: selectedCourse,
         counsellor_id: counsellorId,
@@ -201,6 +212,8 @@ export const updateStudentStatus = async (req, res) => {
         currency: "INR",
         exam_interview_date: null,
         last_admission_date: null,
+        assigned_l3_counsellor_id:
+          journeylogs?.dataValues.assigned_l3_counsellor_id || null,
         notes: "L3 Status BY Remark Handling",
         timestamp: new Date(),
       });
@@ -446,12 +459,9 @@ export const getStudentById = async (req, res) => {
     if (counsellorRole === "l2") {
       whereConditions = {
         student_id: id,
-        [Op.or]: [
-          { assigned_counsellor_id: counsellorId },
-          { assigned_counsellor_l3_id: counsellorId },
-        ],
+        assigned_counsellor_id: counsellorId,
       };
-    } else if (counsellorRole === "Analyser") {
+    } else if (counsellorRole === "Analyser" || counsellorRole === "analyser") {
       const analyser = await AnalyserUser.findByPk(counsellorId);
 
       if (!analyser) {
@@ -498,6 +508,7 @@ export const getStudentById = async (req, res) => {
         {
           model: StudentRemark,
           as: "student_remarks",
+          separate: true,
           order: [["created_at", "DESC"]],
           required: false,
           ...includeRemarksCondition,
@@ -505,13 +516,13 @@ export const getStudentById = async (req, res) => {
             {
               model: Counsellor,
               as: "counsellor",
-              attributes: ["counsellor_name"],
+              attributes: ["counsellor_id", "counsellor_name"],
               required: false,
             },
             {
               model: Supervisor,
               as: "supervisor",
-              attributes: ["supervisor_name"],
+              attributes: ["supervisor_id", "supervisor_name"],
               required: false,
             },
           ],
@@ -519,23 +530,13 @@ export const getStudentById = async (req, res) => {
         {
           model: StudentLeadActivity,
           as: "lead_activities",
+          separate: true,
           order: [["created_at", "DESC"]],
           required: false,
         },
         {
           model: Counsellor,
           as: "assignedCounsellor",
-          attributes: [
-            "counsellor_id",
-            "counsellor_name",
-            "counsellor_email",
-            "role",
-          ],
-          required: false,
-        },
-        {
-          model: Counsellor,
-          as: "assignedCounsellorL3",
           attributes: [
             "counsellor_id",
             "counsellor_name",
@@ -563,22 +564,23 @@ export const getStudentById = async (req, res) => {
             {
               model: UniversityCourse,
               as: "enrolledCourse",
-              attributes: ["course_id", "university_name", "course_name"],
+              attributes: [
+                "course_id",
+                "university_name",
+                "course_name",
+                "degree_name",
+                "stream",
+                "level",
+              ],
               required: false,
             },
           ],
-        },
-        {
-          model: Payment,
-          as: "payments",
-          required: false,
-          order: [["created_at", "DESC"]],
         },
       ],
     });
 
     if (!student) {
-      if (counsellorRole === "Analyser") {
+      if (counsellorRole === "Analyser" || counsellorRole === "analyser") {
         const analyser = await AnalyserUser.findByPk(counsellorId);
         const allowedSources = analyser?.sources || ["facebook", "fb"];
 
@@ -589,9 +591,234 @@ export const getStudentById = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
 
+    // Fetch snapshots and payment orders for this student across all models (linked by phone/email)
+    const matchingAdmissions = await Admission.findAll({
+      where: {
+        [Op.or]: [
+          { email: student.student_email },
+          { mobile: student.student_phone }
+        ]
+      },
+      attributes: ['id']
+    });
+
+    const matchingRegistrations = await Registration.findAll({
+      where: {
+        [Op.or]: [
+          { email: student.student_email },
+          { mobile: student.student_phone }
+        ]
+      },
+      attributes: ['id']
+    });
+
+    const admissionIds = matchingAdmissions.map(a => a.id.toString());
+    const registrationIds = matchingRegistrations.map(r => r.id.toString());
+
+    const studentSnapshots = await PricingSnapshot.findAll({
+      where: {
+        [Op.or]: [
+          { admissionId: student.student_id, onModel: 'students' },
+          { admissionId: { [Op.in]: admissionIds }, onModel: 'admissions' },
+          { admissionId: { [Op.in]: registrationIds }, onModel: 'registrations' }
+        ]
+      },
+      include: [{ model: PaymentOrder, as: 'paymentOrder' }],
+      order: [['createdAt', 'DESC']]
+    });
+
     let studentData = student.toJSON ? student.toJSON() : student;
 
+    // Map snapshots to match frontend expectations (compatible with old Payment schema)
+    studentData.payments = studentSnapshots.map(snap => ({
+      id: snap.id,
+      student_id: snap.admissionId,
+      college_name: snap.collegeName || "N/A",
+      course_name: snap.interestedCourse || "N/A",
+      status: (snap.paymentOrder ? snap.paymentOrder.status : snap.status) === 'PAID' ? 'COMPLETED' : (snap.paymentOrder ? snap.paymentOrder.status : snap.status),
+      payment_for: snap.paymentFor,
+      base_amount: snap.baseAmount,
+      final_amount: snap.finalAmount,
+      discount_amount: snap.discountAmount,
+      couponCode: snap.appliedCouponCode,
+      currency: snap.currency || "INR",
+      razorpay_order_id: snap.razorpayOrderId,
+      mongo_snapshot_id: null, // Legacy field for frontend compatibility
+      created_at: snap.createdAt,
+      updated_at: snap.updatedAt,
+    }));
+
+    // Fetch all L3 journey data for this student using raw query
+    const allL3Journeys = await sequelize.query(
+      `SELECT 
+          status_history_id, 
+          student_id, 
+          course_id, 
+          counsellor_id, 
+          course_status, 
+          deposit_amount, 
+          currency, 
+          exam_interview_date, 
+          last_admission_date, 
+          notes, 
+          assigned_l3_counsellor_id,
+          created_at
+       FROM course_status_journeys 
+       WHERE student_id = :studentId 
+       ORDER BY created_at DESC`,
+      {
+        replacements: { studentId: id },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    // Get unique counsellor IDs to fetch their names
+    const counsellorIds = [
+      ...new Set(
+        allL3Journeys.map((j) => j.assigned_l3_counsellor_id).filter(Boolean),
+      ),
+    ];
+
+    // Fetch counsellor names separately
+    const counsellors =
+      counsellorIds.length > 0
+        ? await Counsellor.findAll({
+          where: { counsellor_id: counsellorIds },
+          attributes: [
+            "counsellor_id",
+            "counsellor_name",
+            "counsellor_email",
+            "role",
+          ],
+        })
+        : [];
+
+    // Create a map for quick lookup
+    const counsellorMap = {};
+    counsellors.forEach((c) => {
+      counsellorMap[c.counsellor_id] = c;
+    });
+
+    // Get unique course IDs to fetch course details
+    const courseIds = [
+      ...new Set(allL3Journeys.map((j) => j.course_id).filter(Boolean)),
+    ];
+
+    // Fetch course details separately
+    const courses =
+      courseIds.length > 0
+        ? await UniversityCourse.findAll({
+          where: { course_id: courseIds },
+          attributes: [
+            "course_id",
+            "course_name",
+            "university_name",
+            "degree_name",
+            "stream",
+            "level",
+          ],
+        })
+        : [];
+
+    // Create a map for quick lookup
+    const courseMap = {};
+    courses.forEach((c) => {
+      courseMap[c.course_id] = c;
+    });
+
+    // Enhance journeys with counsellor and course details
+    const enhancedJourneys = allL3Journeys.map((journey) => {
+      // Add counsellor details
+      if (
+        journey.assigned_l3_counsellor_id &&
+        counsellorMap[journey.assigned_l3_counsellor_id]
+      ) {
+        journey.counsellor = counsellorMap[journey.assigned_l3_counsellor_id];
+      }
+
+      // Add course details
+      if (journey.course_id && courseMap[journey.course_id]) {
+        journey.university_course = courseMap[journey.course_id];
+      }
+
+      return journey;
+    });
+
+    const journeysByCourse = {};
+    enhancedJourneys.forEach((journey) => {
+      if (journey.course_id) {
+        if (
+          !journeysByCourse[journey.course_id] ||
+          new Date(journey.created_at) >
+          new Date(journeysByCourse[journey.course_id].created_at)
+        ) {
+          journeysByCourse[journey.course_id] = journey;
+        }
+      }
+    });
+
+    // Create a map of course_id to L3 counsellor details
+    const courseL3Map = {};
+    Object.values(journeysByCourse).forEach((journey) => {
+      if (journey.course_id && journey.assigned_l3_counsellor_id) {
+        courseL3Map[journey.course_id] = {
+          assigned_l3_counsellor_id: journey.assigned_l3_counsellor_id,
+          l3_counsellor_name: journey.counsellor?.counsellor_name || "Unknown",
+          l3_counsellor_email: journey.counsellor?.counsellor_email || "",
+          journey_created_at: journey.created_at,
+          journey_status: journey.course_status,
+        };
+      }
+    });
+
+    // Add L3 journey data to each college credential
+    if (
+      studentData.collegeCredentials &&
+      studentData.collegeCredentials.length > 0
+    ) {
+      studentData.collegeCredentials = studentData.collegeCredentials.map(
+        (cred) => {
+          const l3Data = cred.course_id ? courseL3Map[cred.course_id] : null;
+          return {
+            ...cred,
+            l3_counsellor_details: l3Data
+              ? {
+                assigned_l3_counsellor_id: l3Data.assigned_l3_counsellor_id,
+                counsellor_name: l3Data.l3_counsellor_name,
+                counsellor_email: l3Data.l3_counsellor_email,
+                journey_created_at: l3Data.journey_created_at,
+                journey_status: l3Data.journey_status,
+              }
+              : null,
+          };
+        },
+      );
+    }
+
+    // Also add all L3 journeys to student data for reference
+    studentData.l3_journeys = enhancedJourneys || [];
+
+    // Add a summary of assigned L3 counsellors (distinct)
+    const assignedL3Counsellors = {};
+    enhancedJourneys.forEach((journey) => {
+      if (
+        journey.assigned_l3_counsellor_id &&
+        !assignedL3Counsellors[journey.assigned_l3_counsellor_id]
+      ) {
+        assignedL3Counsellors[journey.assigned_l3_counsellor_id] = {
+          counsellor_id: journey.assigned_l3_counsellor_id,
+          counsellor_name: journey.counsellor?.counsellor_name || "Unknown",
+          counsellor_email: journey.counsellor?.counsellor_email || "",
+          role: "l3",
+          first_assigned: journey.created_at,
+        };
+      }
+    });
+
+    studentData.assigned_l3_counsellors = Object.values(assignedL3Counsellors);
+
     if (counsellorRole.toLowerCase() === "analyser") {
+      // Mask student name
       if (studentData.student_name) {
         const name = studentData.student_name.trim();
         if (name.length > 1) {
@@ -604,6 +831,7 @@ export const getStudentById = async (req, res) => {
         }
       }
 
+      // Mask student phone
       if (studentData.student_phone) {
         const phone = studentData.student_phone.toString();
         if (phone.length > 4) {
@@ -613,6 +841,7 @@ export const getStudentById = async (req, res) => {
         }
       }
 
+      // Mask parents number
       if (studentData.parents_number) {
         const parentsPhone = studentData.parents_number.toString();
         if (parentsPhone.length > 4) {
@@ -622,6 +851,7 @@ export const getStudentById = async (req, res) => {
         }
       }
 
+      // Mask whatsapp
       if (studentData.whatsapp) {
         const whatsapp = studentData.whatsapp.toString();
         if (whatsapp.length > 4) {
@@ -631,6 +861,7 @@ export const getStudentById = async (req, res) => {
         }
       }
 
+      // Mask primary email
       if (studentData.student_email) {
         const email = studentData.student_email;
         const atIndex = email.indexOf("@");
@@ -642,6 +873,7 @@ export const getStudentById = async (req, res) => {
         }
       }
 
+      // Mask secondary email
       if (studentData.student_secondary_email) {
         const secEmail = studentData.student_secondary_email;
         const atIndex = secEmail.indexOf("@");
@@ -653,6 +885,7 @@ export const getStudentById = async (req, res) => {
         }
       }
 
+      // Mask lead activities data
       if (
         studentData.lead_activities &&
         studentData.lead_activities.length > 0
@@ -717,6 +950,31 @@ export const getStudentById = async (req, res) => {
         );
       }
 
+      // Mask L3 journey data if needed
+      if (studentData.l3_journeys && studentData.l3_journeys.length > 0) {
+        studentData.l3_journeys = studentData.l3_journeys.map((journey) => {
+          if (journey.counsellor) {
+            // Keep counsellor info visible as it's just names
+          }
+          return journey;
+        });
+      }
+
+      // Mask college credentials L3 data if needed
+      if (
+        studentData.collegeCredentials &&
+        studentData.collegeCredentials.length > 0
+      ) {
+        studentData.collegeCredentials = studentData.collegeCredentials.map(
+          (cred) => {
+            if (cred.l3_counsellor_details) {
+              // Keep L3 counsellor info visible as it's just names
+            }
+            return cred;
+          },
+        );
+      }
+
       studentData.data_masked = true;
       studentData.mask_note =
         "Personal information is masked for analyser role";
@@ -736,15 +994,66 @@ export const getStudentById = async (req, res) => {
       .json({ message: "Server error", error: error.message });
   }
 };
-
 export const updateStudentDetails = async (req, res) => {
   try {
     const { studentId } = req.params;
     const { payload } = req.body;
+    console.log(payload, "Received payload for updateStudentDetails");
+
     if (!payload || typeof payload !== "object") {
       return res
         .status(400)
         .json({ message: "Invalid payload in request body" });
+    }
+
+    const student = await Student.findOne({
+      where: { student_id: studentId },
+    });
+
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    console.log("Current student state:", {
+      source: student.source,
+      is_edited: student.is_edited,
+      edited_by: student.edited_by,
+      current_email: student.student_email
+    });
+
+    const oneTimeEditSources = ["IVR", "WhatsApp", "IVR ", "Whatsapp"];
+
+    const isEmailEdit =
+      "student_email" in payload &&
+      payload.student_email !== student.student_email;
+
+    // Check if email already exists in another student (only if email is being changed)
+    if (isEmailEdit && payload.student_email) {
+      const existingStudentWithEmail = await Student.findOne({
+        where: {
+          student_email: payload.student_email,
+          student_id: { [Op.ne]: studentId } // Exclude current student
+        }
+      });
+
+      if (existingStudentWithEmail) {
+        console.log("Email already exists in another student");
+        return res.status(409).json({
+          message: "Email already in use by another student",
+          error: "DUPLICATE_EMAIL",
+          field: "student_email"
+        });
+      }
+    }
+
+    if (oneTimeEditSources.includes(student.source) && isEmailEdit) {
+      if (student.is_edited) {
+        console.log("Blocking edit - already edited");
+        return res.status(403).json({
+          message: "Email can only be edited once for IVR/WhatsApp sources",
+          previouslyEditedBy: student.edited_by,
+        });
+      }
     }
 
     const formatArray = (value) => {
@@ -766,6 +1075,8 @@ export const updateStudentDetails = async (req, res) => {
       updateData.student_current_city = payload.student_current_city;
     if ("student_current_state" in payload)
       updateData.student_current_state = payload.student_current_state;
+    if ("student_email" in payload)
+      updateData.student_email = payload.student_email;
     if ("preferredStream" in payload)
       updateData.preferred_stream = formatArray(payload.preferredStream);
     if ("preferredDegree" in payload)
@@ -796,19 +1107,27 @@ export const updateStudentDetails = async (req, res) => {
       updateData.work_experience = payload.work_experience;
     if ("objective" in payload) updateData.objective = payload.objective;
 
-    const studentExists = await Student.findOne({
-      where: { student_id: studentId },
-    });
+    // Only set is_edited and edited_by if this is an email edit for restricted sources
+    if (
+      oneTimeEditSources.includes(student.source) &&
+      isEmailEdit
+    ) {
+      console.log("Setting edit tracking fields:", {
+        wasAlreadyEdited: student.is_edited,
+        settingTo: true,
+        editedBy: req.user.id
+      });
 
-    if (!studentExists) {
-      return res.status(404).json({ message: "Student not found" });
+      updateData.is_edited = true;
+      updateData.edited_by = req.user.id;
     }
 
+    console.log("Final update data:", updateData);
+
     if (Object.keys(updateData).length === 0) {
-      console.log("✅ No fields to update - returning success");
       return res.status(200).json({
         message: "No changes to update",
-        student: studentExists,
+        student: student,
       });
     }
 
@@ -817,20 +1136,42 @@ export const updateStudentDetails = async (req, res) => {
       returning: true,
     });
 
+    console.log("Update result:", {
+      affectedCount,
+      updatedStudent: updatedStudents?.[0]?.dataValues
+    });
+
+    let message = "Student details processed successfully";
+    if (
+      oneTimeEditSources.includes(student.source) &&
+      isEmailEdit
+    ) {
+      message = "Student email updated successfully (one-time edit used)";
+    }
+
     return res.status(200).json({
-      message: "Student details processed successfully",
-      student: updatedStudents?.[0] || studentExists,
+      message: message,
+      student: updatedStudents?.[0] || student,
       fieldsUpdated: Object.keys(updateData).length,
     });
   } catch (error) {
     console.error("❌ ERROR updating student:", error);
+
+    // Handle Sequelize unique constraint error
+    if (error.name === 'SequelizeUniqueConstraintError' && error.fields?.student_email) {
+      return res.status(409).json({
+        message: "Email already in use by another student",
+        error: "DUPLICATE_EMAIL",
+        field: "student_email"
+      });
+    }
+
     return res.status(500).json({
       message: "Server error",
       error: error.message,
     });
   }
 };
-
 export const bulkCreateLeads = async (req, res) => {
   try {
     const { data } = req.body;
@@ -966,6 +1307,7 @@ export const bulkReassignLeads = async (req, res) => {
   try {
     const supervisorId = req?.user?.id;
     const { data, level } = req.body.data;
+
     if (!data || !Array.isArray(data) || data.length === 0) {
       console.log("Invalid data format:", data);
       return res.status(400).json({
@@ -985,6 +1327,7 @@ export const bulkReassignLeads = async (req, res) => {
         message: "Invalid level. Expected L2 or L3.",
       });
     }
+
     const toLowerCaseLevel = level?.toLowerCase();
     const results = [];
     const errors = [];
@@ -1021,36 +1364,83 @@ export const bulkReassignLeads = async (req, res) => {
           continue;
         }
 
+        // For L3, check if courseId is provided
+        if (level?.toLowerCase() === "l3" && !reassignmentData.courseId) {
+          errors.push({
+            index: i + 1,
+            data: reassignmentData,
+            error: `CourseId is required for L3 reassignment`,
+          });
+          continue;
+        }
+
         // Get old agent for logs
         const oldAgentId = student[counsellorField];
         const oldAgent = oldAgentId
           ? await Counsellor.findOne({ where: { counsellor_id: oldAgentId } })
           : null;
 
-        // Update student assignment (L2 or L3 depending on level)
-        const [_, [updatedStudent]] = await Student.update(
-          { [counsellorField]: newAgent.counsellor_id },
-          {
-            where: { student_id: reassignmentData.studentId },
-            returning: true,
-          },
-        );
+        if (level?.toLowerCase() === "l2") {
+          // L2 - Update student table directly
+          const [_, [updatedStudent]] = await Student.update(
+            { [counsellorField]: newAgent.counsellor_id },
+            {
+              where: { student_id: reassignmentData.studentId },
+              returning: true,
+            },
+          );
 
-        // Create log
-        try {
-          await LeadAssignmentLogs.create({
-            assigned_counsellor_id: newAgent.counsellor_id,
-            student_id: reassignmentData.studentId,
-            assigned_by: supervisorId || "",
-            reference_from: `bulk students re assignment by Supervisor (${level})`,
-          });
-        } catch (err) {
-          console.error("❌ Failed to create LeadAssignmentLog:", err);
+          // Create log for L2
+          try {
+            await LeadAssignmentLogs.create({
+              assigned_counsellor_id: newAgent.counsellor_id,
+              student_id: reassignmentData.studentId,
+              assigned_by: supervisorId || "",
+              reference_from: `bulk students re assignment by Supervisor (${level})`,
+            });
+          } catch (err) {
+            console.error("❌ Failed to create LeadAssignmentLog:", err);
+          }
+        } else {
+          // L3 - Update only journey entries with matching courseId
+          const [updatedCount] = await CourseStatusJourney.update(
+            { assigned_l3_counsellor_id: newAgent.counsellor_id },
+            {
+              where: {
+                student_id: reassignmentData.studentId,
+                course_id: reassignmentData.courseId,
+              },
+            },
+          );
+
+          if (updatedCount === 0) {
+            errors.push({
+              index: i + 1,
+              data: reassignmentData,
+              error: `No journey entry found for student ${reassignmentData.studentId} with courseId ${reassignmentData.courseId}`,
+            });
+            continue;
+          }
+
+          // Create log for L3
+          try {
+            await LeadAssignmentLogs.create({
+              assigned_counsellor_id: newAgent.counsellor_id,
+              student_id: reassignmentData.studentId,
+              assigned_by: supervisorId || "",
+              reference_from: `bulk L3 journey reassignment by Supervisor (courseId: ${reassignmentData.courseId})`,
+            });
+          } catch (err) {
+            console.error("❌ Failed to create LeadAssignmentLog:", err);
+          }
         }
 
         results.push({
           index: i + 1,
           student_id: reassignmentData.studentId,
+          ...(level?.toLowerCase() === "l3" && {
+            course_id: reassignmentData.courseId,
+          }),
           old_agent: oldAgent ? oldAgent.counsellor_name : "None",
           new_agent: newAgent.counsellor_name,
           data: reassignmentData,
@@ -1068,7 +1458,8 @@ export const bulkReassignLeads = async (req, res) => {
     // Final response
     const responsePayload = {
       success: true,
-      message: `Processed ${data.length} reassignments for ${level}`,
+      message: `Processed ${data.length} reassignments for ${level}${level?.toLowerCase() === "l3" ? " (journey entries only)" : ""
+        }`,
       results: {
         reassigned: results.length,
         errors: errors.length,
@@ -1257,10 +1648,10 @@ export const addLeadDirect = async (req, res) => {
         ...lead.toJSON(),
         referenceStudent: referenceStudent
           ? {
-              student_id: referenceStudent.student_id,
-              student_name: referenceStudent.student_name,
-              student_email: referenceStudent.student_email,
-            }
+            student_id: referenceStudent.student_id,
+            student_name: referenceStudent.student_name,
+            student_email: referenceStudent.student_email,
+          }
           : null,
       },
     });
@@ -1643,6 +2034,7 @@ async () => {
 
 import ExcelJS from "exceljs";
 import { autoSending } from "../helper/autoSending.js";
+import CourseStatusJourney from "../models/course_status_jounreny.js";
 
 export const getniReports = async (req, res) => {
   try {

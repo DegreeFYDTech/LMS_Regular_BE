@@ -1,7 +1,10 @@
 import { Sequelize } from 'sequelize';
 import { configDotenv } from 'dotenv';
 
-configDotenv();
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+configDotenv({ path: path.join(__dirname, '../.env') });
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -11,11 +14,11 @@ const sequelize = new Sequelize(process.env.SUPABASE_URL, {
 
   dialectOptions: isProd
     ? {
-        ssl: {
-          require: true,
-          rejectUnauthorized: false,
-        },
-      }
+      ssl: {
+        require: true,
+        rejectUnauthorized: false,
+      },
+    }
     : {},
 
   logging: false,

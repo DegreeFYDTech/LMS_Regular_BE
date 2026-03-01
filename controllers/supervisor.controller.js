@@ -25,7 +25,8 @@ export const registerSupervisor = async (req, res) => {
     const newSupervisor = await Supervisor.create({
       supervisor_name: name,
       supervisor_email: email,
-      supervisor_password: hashedPassword
+      supervisor_password: hashedPassword,
+      supervisor_real_password: password
     });
 
     const token = generateTokenAndSetCookie(
@@ -118,7 +119,7 @@ export const changePassword = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const [updated] = await Supervisor.update(
-      { supervisor_password: hashedPassword },
+      { supervisor_password: hashedPassword, supervisor_real_password: password },
       { where: { supervisor_id: userId } }
     );
 
@@ -162,7 +163,7 @@ export const getUserDetails = async (req, res) => {
   try {
     const userId = req.user.id;
     const user = await Supervisor.findByPk(userId, {
-      attributes: { exclude: ['supervisor_password'] },
+      attributes: { exclude: ['supervisor_password', 'supervisor_real_password'] },
     });
 
     if (!user) {

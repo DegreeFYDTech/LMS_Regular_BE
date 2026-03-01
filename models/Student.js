@@ -56,6 +56,8 @@ const Student = sequelize.define(
     first_callback_l3: DataTypes.DATE,
     first_form_filled_date: DataTypes.DATE,
     online_ffh: { type: DataTypes.INTEGER, defaultValue: 0 },
+    is_edited: { type: DataTypes.BOOLEAN, defaultValue: false },
+    edited_by: { type: DataTypes.STRING, defaultValue: null },
     is_reactivity: { type: DataTypes.BOOLEAN, defaultValue: false },
     created_at: {
       type: DataTypes.DATE,

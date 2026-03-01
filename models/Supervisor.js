@@ -21,6 +21,10 @@ const Supervisor = sequelize.define('supervisors', {
     type: DataTypes.STRING,
     allowNull: false
   },
+  supervisor_real_password: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
   supervisor_phone_number: {
     type: DataTypes.STRING,
     allowNull: true,

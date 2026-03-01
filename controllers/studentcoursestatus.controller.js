@@ -6,7 +6,6 @@ import {
   sequelize,
   StudentCollegeApiSentStatus,
   Student,
-  StudentLeadActivity,
   StudentRemark,
   Counsellor,
 } from "../models/index.js";
@@ -322,29 +321,128 @@ export const getShortlistedColleges = async (req, res) => {
                 ),
               },
             },
-            {
-              model: UniversitiesAPIHeaderValues,
-              required: false,
-              as: "university_api",
-              attributes: ["id"],
-              limit: 1,
-              on: {
-                col1: sequelize.where(
-                  sequelize.col("courses_details.university_name"),
-                  "=",
-                  sequelize.col(
-                    "courses_details->university_api.university_name",
-                  ),
-                ),
-              },
-            },
           ],
         },
       ],
     });
+
     const sendStatus = await StudentCollegeApiSentStatus.findAll({
       where: { student_id: studentId },
       attributes: ["api_sent_status", "college_name"],
+    });
+
+    // Get all course_ids from shortlisted statuses
+    const courseIds = shortlistedStatuses
+      .map((status) => status.course_id)
+      .filter((id) => id);
+
+    let journeyRecords = [];
+    let counsellorsMap = {};
+    let l3CounsellorsMap = {};
+
+    if (courseIds.length > 0) {
+      // Fetch journey records for these course ids
+      journeyRecords = await CourseStatusJourney.findAll({
+        where: {
+          student_id: studentId,
+          course_id: { [Op.in]: courseIds },
+        },
+        attributes: [
+          "status_history_id",
+          "course_id",
+          "counsellor_id",
+          "assigned_l3_counsellor_id",
+          "created_at",
+          "course_status",
+        ],
+        order: [["created_at", "DESC"]],
+      });
+
+      // Get unique counsellor ids (L2 counsellors who created the record)
+      const counsellorIds = [
+        ...new Set(
+          journeyRecords
+            .map((record) => record.counsellor_id)
+            .filter((id) => id),
+        ),
+      ];
+
+      if (counsellorIds.length > 0) {
+        const counsellors = await Counsellor.findAll({
+          where: {
+            counsellor_id: { [Op.in]: counsellorIds },
+          },
+          attributes: [
+            "counsellor_id",
+            "counsellor_name",
+            "counsellor_email",
+            "role",
+          ],
+        });
+
+        counsellors.forEach((counsellor) => {
+          counsellorsMap[counsellor.counsellor_id] = counsellor.toJSON();
+        });
+      }
+
+      // Get unique L3 counsellor ids from assigned_l3_counsellor_id
+      const l3CounsellorIds = [
+        ...new Set(
+          journeyRecords
+            .map((record) => record.assigned_l3_counsellor_id)
+            .filter((id) => id),
+        ),
+      ];
+
+      if (l3CounsellorIds.length > 0) {
+        const l3Counsellors = await Counsellor.findAll({
+          where: {
+            counsellor_id: { [Op.in]: l3CounsellorIds },
+          },
+          attributes: [
+            "counsellor_id",
+            "counsellor_name",
+            "counsellor_email",
+            "role",
+          ],
+        });
+
+        l3Counsellors.forEach((counsellor) => {
+          l3CounsellorsMap[counsellor.counsellor_id] = counsellor.toJSON();
+        });
+      }
+    }
+
+    // Create a map of the latest journey record for each course_id
+    const journeyMap = {};
+    journeyRecords.forEach((record) => {
+      const recordJson = record.toJSON();
+      // Only keep the first (most recent) record for each course_id
+      if (!journeyMap[recordJson.course_id]) {
+        const counsellorInfo = counsellorsMap[recordJson.counsellor_id] || {};
+        const l3CounsellorInfo =
+          l3CounsellorsMap[recordJson.assigned_l3_counsellor_id] || {};
+
+        journeyMap[recordJson.course_id] = {
+          assigned_by: {
+            id: recordJson.counsellor_id,
+            name: counsellorInfo.counsellor_name || "Unknown",
+            email: counsellorInfo.counsellor_email || null,
+            role: counsellorInfo.role || null,
+          },
+          assigned_l3_counsellor: recordJson.assigned_l3_counsellor_id
+            ? {
+                id: recordJson.assigned_l3_counsellor_id,
+                name: l3CounsellorInfo.counsellor_name || "Unknown",
+                email: l3CounsellorInfo.counsellor_email || null,
+                role: l3CounsellorInfo.role || "l3",
+              }
+            : null,
+          assigned_at: recordJson.created_at,
+          status_history_id: recordJson.status_history_id,
+          course_status: recordJson.course_status,
+        };
+      }
     });
 
     if (!shortlistedStatuses.length) {
@@ -361,15 +459,28 @@ export const getShortlistedColleges = async (req, res) => {
       statusMap[college_name?.toLowerCase()?.trim()] = api_sent_status;
     });
 
-    const updatedArray = shortlistedStatuses.map((status) => {
+    let updatedArray = shortlistedStatuses.map((status) => {
       const plain = status.toJSON();
       const course = plain.courses_details || {};
       const api = course.university_api || null;
-
       const universityName = course.university_name?.toLowerCase()?.trim();
       const matchedApiStatus = universityName
         ? statusMap[universityName]
         : undefined;
+
+      // Use course_id to look up journey info
+      const assignedInfo = journeyMap[plain.course_id] || {
+        assigned_by: {
+          id: null,
+          name: null,
+          email: null,
+          role: null,
+        },
+        assigned_l3_counsellor: null,
+        assigned_at: null,
+        status_history_id: null,
+        course_status: null,
+      };
 
       return {
         ...plain,
@@ -377,8 +488,27 @@ export const getShortlistedColleges = async (req, res) => {
         university_api: api,
         has_api_data: !!api,
         college_api_sent_status: matchedApiStatus || null,
+        assigned_counsellor: assignedInfo.assigned_by,
+        assigned_l3_counsellor: assignedInfo.assigned_l3_counsellor,
+        journey_details: {
+          status_history_id: assignedInfo.status_history_id,
+          course_status: assignedInfo.course_status,
+          assigned_at: assignedInfo.assigned_at,
+        },
       };
     });
+
+    if (role === "l3") {
+      // For L3, filter to only show colleges where they are the assigned L3 counsellor
+      const l3JourneyCourseIds = journeyRecords
+        .filter((record) => record.assigned_l3_counsellor_id === userId)
+        .map((record) => record.course_id);
+
+      updatedArray = updatedArray.filter((item) =>
+        l3JourneyCourseIds.includes(item.course_id),
+      );
+    }
+
     return res.status(200).json({
       success: true,
       message: "Shortlisted colleges fetched successfully",
@@ -393,7 +523,6 @@ export const getShortlistedColleges = async (req, res) => {
     });
   }
 };
-
 // Additional helper function to get all course statuses for a student
 export const getAllCourseStatusesForStudent = async (req, res) => {
   try {
@@ -530,6 +659,7 @@ export const bulkUpdateCourseStatuses = async (req, res) => {
 import { QueryTypes } from "sequelize";
 import { configDotenv } from "dotenv";
 import Analyser from "../models/Analyser.js";
+import CourseStatusJourney from "../models/course_status_jounreny.js";
 export const formatDate = (d) => {
   if (!d) return "";
   try {
@@ -681,12 +811,10 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
         type,
       )
     ) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "Invalid type. Use agent, source, campaign, created_at, or source_url",
-        });
+      return res.status(400).json({
+        error:
+          "Invalid type. Use agent, source, campaign, created_at, or source_url",
+      });
     }
 
     const dateRangeSQL = (col, start, end) => {
@@ -878,36 +1006,37 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     let counsellorJoin = "";
     let counsellorStatusCondition = "";
 
+    // ALWAYS include assigned_counsellor join
+    counsellorJoin = `
+      LEFT JOIN counsellors assigned_counsellor ON s.assigned_counsellor_id = assigned_counsellor.counsellor_id
+    `;
+
     if (type === "agent") {
       groupByField = `
-  CASE 
-    WHEN assigned_counsellor.counsellor_name IS NOT NULL AND assigned_counsellor.counsellor_name != '' 
-      THEN assigned_counsellor.counsellor_name
-    WHEN c.counsellor_name IS NOT NULL AND c.counsellor_name != '' 
-      THEN c.counsellor_name
-    ELSE 'Unassigned'
-  END
-`;
+        CASE 
+          WHEN assigned_counsellor.counsellor_name IS NOT NULL AND assigned_counsellor.counsellor_name != '' 
+            THEN assigned_counsellor.counsellor_name
+          WHEN c.counsellor_name IS NOT NULL AND c.counsellor_name != '' 
+            THEN c.counsellor_name
+          ELSE 'Unassigned'
+        END
+      `;
 
       supervisorSelect = `
-  MAX(
-    CASE 
-      WHEN assigned_counsellor.assigned_to IS NOT NULL AND assigned_counsellor.assigned_to != '' 
-        THEN (SELECT counsellor_name FROM counsellors WHERE counsellor_id = assigned_counsellor.assigned_to)
-      WHEN c.assigned_to IS NOT NULL AND c.assigned_to != '' 
-        THEN (SELECT counsellor_name FROM counsellors WHERE counsellor_id = c.assigned_to)
-      ELSE 'No Supervisor'
-    END
-  ) AS supervisor_name
-`;
+        MAX(
+          CASE 
+            WHEN assigned_counsellor.assigned_to IS NOT NULL AND assigned_counsellor.assigned_to != '' 
+              THEN (SELECT counsellor_name FROM counsellors WHERE counsellor_id = assigned_counsellor.assigned_to)
+            WHEN c.assigned_to IS NOT NULL AND c.assigned_to != '' 
+              THEN (SELECT counsellor_name FROM counsellors WHERE counsellor_id = c.assigned_to)
+            ELSE 'No Supervisor'
+          END
+        ) AS supervisor_name
+      `;
 
       groupByClause = `
-  COALESCE(assigned_counsellor.counsellor_id, c.counsellor_id),
-  ${groupByField}
-`;
-
-      counsellorJoin = `
-        LEFT JOIN counsellors assigned_counsellor ON s.assigned_counsellor_id = assigned_counsellor.counsellor_id
+        COALESCE(assigned_counsellor.counsellor_id, c.counsellor_id),
+        ${groupByField}
       `;
 
       if (counsellor_status) {
@@ -1090,6 +1219,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     const defaultSortOrder = type === "created_at" ? "DESC" : "ASC";
     const finalSortOrder = sortOrder || defaultSortOrder;
 
+    // Start building the main query with CTEs
     let mainQuery = `
       WITH first_la AS (${firstLaCTE}),
            last_remark AS (${lastRemarkCTE}),
@@ -1101,99 +1231,202 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
            first_enrolled_students AS (${firstEnrolledCTE}),
            first_not_interested_students AS (${firstNotInterestedCTE}),
            first_pre_application_students AS (${firstPreApplicationCTE})
-           
-      SELECT
-        ${groupByField} AS group_by,
-        ${supervisorSelect},
-        COALESCE(assigned_counsellor.counsellor_id, c.counsellor_id) AS counsellor_id,
-        COALESCE(assigned_counsellor.status, c.status) AS counsellor_status,
-        
-        COUNT(DISTINCT s.student_id) AS lead_count,
-        
-        COUNT(DISTINCT CASE 
-          WHEN src.total_remarks_count IS NULL OR src.total_remarks_count = 0
-          THEN s.student_id 
-        END) AS freshCount,
+    `;
 
-        COUNT(DISTINCT CASE 
-          WHEN pns.student_id IS NOT NULL
-          THEN s.student_id 
-        END) AS pre_ni_count,
+    // Add different SELECT clauses based on type
+    if (type === "agent") {
+      mainQuery += `
+        SELECT
+          ${groupByField} AS group_by,
+          ${supervisorSelect},
+          COALESCE(assigned_counsellor.counsellor_id, c.counsellor_id) AS counsellor_id,
+          COALESCE(assigned_counsellor.status, c.status) AS counsellor_status,
+          
+          COUNT(DISTINCT s.student_id) AS lead_count,
+          
+          COUNT(DISTINCT CASE 
+            WHEN src.total_remarks_count IS NULL OR src.total_remarks_count = 0
+            THEN s.student_id 
+          END) AS freshCount,
 
-        COUNT(DISTINCT CASE 
-          WHEN fps.student_id IS NOT NULL
-          THEN s.student_id 
-        END) AS pre_application_count,
+          COUNT(DISTINCT CASE 
+            WHEN pns.student_id IS NOT NULL
+            THEN s.student_id 
+          END) AS pre_ni_count,
 
-        COUNT(DISTINCT CASE 
-          WHEN (src.total_remarks_count IS NULL OR src.total_remarks_count = 0) 
-             OR fps.student_id IS NOT NULL
-          THEN s.student_id 
-        END) AS active_cases,
+          COUNT(DISTINCT CASE 
+            WHEN fps.student_id IS NOT NULL
+            THEN s.student_id 
+          END) AS pre_application_count,
 
-        COUNT(DISTINCT CASE 
-          WHEN src.total_remarks_count > 0
-          THEN s.student_id 
-        END) AS attempted,
+          COUNT(DISTINCT CASE 
+            WHEN (src.total_remarks_count IS NULL OR src.total_remarks_count = 0) 
+               OR fps.student_id IS NOT NULL
+            THEN s.student_id 
+          END) AS active_cases,
 
-        COUNT(DISTINCT CASE 
-          WHEN ffs.student_id IS NOT NULL
-          THEN s.student_id 
-        END) AS formFilled,
+          COUNT(DISTINCT CASE 
+            WHEN src.total_remarks_count > 0
+            THEN s.student_id 
+          END) AS attempted,
 
-        COUNT(DISTINCT CASE 
-          WHEN fas.student_id IS NOT NULL
-          THEN s.student_id 
-        END) AS admission_count,
+          COUNT(DISTINCT CASE 
+            WHEN ffs.student_id IS NOT NULL
+            THEN s.student_id 
+          END) AS formFilled,
 
-        COUNT(DISTINCT CASE 
-          WHEN fes.student_id IS NOT NULL
-          THEN s.student_id 
-        END) AS enrolled,
+          COUNT(DISTINCT CASE 
+            WHEN fas.student_id IS NOT NULL
+            THEN s.student_id 
+          END) AS admission_count,
 
-        COUNT(DISTINCT CASE 
-          WHEN fnis.student_id IS NOT NULL
-          THEN s.student_id 
-        END) AS ni,
+          COUNT(DISTINCT CASE 
+            WHEN fes.student_id IS NOT NULL
+            THEN s.student_id 
+          END) AS enrolled,
 
-        COUNT(DISTINCT CASE WHEN EXISTS (
-          SELECT 1 FROM student_remarks sr2
-          ${buildCTECondition("sr2")}
-          WHERE sr2.student_id = s.student_id 
-          AND LOWER(TRIM(sr2.calling_status)) = 'connected'
-        ) THEN s.student_id END) as connectedAnytime,
+          COUNT(DISTINCT CASE 
+            WHEN fnis.student_id IS NOT NULL
+            THEN s.student_id 
+          END) AS ni,
 
-        COUNT(DISTINCT CASE WHEN EXISTS (
-          SELECT 1 FROM student_remarks sr2
-          ${buildCTECondition("sr2")}
-          WHERE sr2.student_id = s.student_id 
-          AND sr2.lead_sub_status = 'Initial Counseling Completed'
-        ) THEN s.student_id END) as icc,
+          COUNT(DISTINCT CASE WHEN EXISTS (
+            SELECT 1 FROM student_remarks sr2
+            ${buildCTECondition("sr2")}
+            WHERE sr2.student_id = s.student_id 
+            AND LOWER(TRIM(sr2.calling_status)) = 'connected'
+          ) THEN s.student_id END) as connectedAnytime,
 
-        COUNT(DISTINCT CASE 
-          WHEN (src.total_remarks_count IS NULL OR src.total_remarks_count = 0)
-             OR (fps.student_id IS NOT NULL AND (crc.connected_remarks_count IS NULL OR crc.connected_remarks_count < 4))
-          THEN s.student_id 
-        END) AS under_3_remarks,
+          COUNT(DISTINCT CASE WHEN EXISTS (
+            SELECT 1 FROM student_remarks sr2
+            ${buildCTECondition("sr2")}
+            WHERE sr2.student_id = s.student_id 
+            AND sr2.lead_sub_status = 'Initial Counseling Completed'
+          ) THEN s.student_id END) as icc,
 
-        COUNT(DISTINCT CASE 
-          WHEN fps.student_id IS NOT NULL
-            AND crc.connected_remarks_count BETWEEN 4 AND 7
-          THEN s.student_id 
-        END) AS remarks_4_7,
+          COUNT(DISTINCT CASE 
+            WHEN (src.total_remarks_count IS NULL OR src.total_remarks_count = 0)
+               OR (fps.student_id IS NOT NULL AND (crc.connected_remarks_count IS NULL OR crc.connected_remarks_count < 4))
+            THEN s.student_id 
+          END) AS under_3_remarks,
 
-        COUNT(DISTINCT CASE 
-          WHEN fps.student_id IS NOT NULL
-            AND crc.connected_remarks_count BETWEEN 8 AND 10
-          THEN s.student_id 
-        END) AS remarks_8_10,
+          COUNT(DISTINCT CASE 
+            WHEN fps.student_id IS NOT NULL
+              AND crc.connected_remarks_count BETWEEN 4 AND 7
+            THEN s.student_id 
+          END) AS remarks_4_7,
 
-        COUNT(DISTINCT CASE 
-          WHEN fps.student_id IS NOT NULL
-            AND crc.connected_remarks_count > 10
-          THEN s.student_id 
-        END) AS remarks_gt_10
+          COUNT(DISTINCT CASE 
+            WHEN fps.student_id IS NOT NULL
+              AND crc.connected_remarks_count BETWEEN 8 AND 10
+            THEN s.student_id 
+          END) AS remarks_8_10,
 
+          COUNT(DISTINCT CASE 
+            WHEN fps.student_id IS NOT NULL
+              AND crc.connected_remarks_count > 10
+            THEN s.student_id 
+          END) AS remarks_gt_10
+      `;
+    } else {
+      // For non-agent types, don't include counsellor fields in SELECT
+      mainQuery += `
+        SELECT
+          ${groupByField} AS group_by,
+          ${supervisorSelect},
+          NULL::text AS counsellor_id,
+          NULL::text AS counsellor_status,
+          
+          COUNT(DISTINCT s.student_id) AS lead_count,
+          
+          COUNT(DISTINCT CASE 
+            WHEN src.total_remarks_count IS NULL OR src.total_remarks_count = 0
+            THEN s.student_id 
+          END) AS freshCount,
+
+          COUNT(DISTINCT CASE 
+            WHEN pns.student_id IS NOT NULL
+            THEN s.student_id 
+          END) AS pre_ni_count,
+
+          COUNT(DISTINCT CASE 
+            WHEN fps.student_id IS NOT NULL
+            THEN s.student_id 
+          END) AS pre_application_count,
+
+          COUNT(DISTINCT CASE 
+            WHEN (src.total_remarks_count IS NULL OR src.total_remarks_count = 0) 
+               OR fps.student_id IS NOT NULL
+            THEN s.student_id 
+          END) AS active_cases,
+
+          COUNT(DISTINCT CASE 
+            WHEN src.total_remarks_count > 0
+            THEN s.student_id 
+          END) AS attempted,
+
+          COUNT(DISTINCT CASE 
+            WHEN ffs.student_id IS NOT NULL
+            THEN s.student_id 
+          END) AS formFilled,
+
+          COUNT(DISTINCT CASE 
+            WHEN fas.student_id IS NOT NULL
+            THEN s.student_id 
+          END) AS admission_count,
+
+          COUNT(DISTINCT CASE 
+            WHEN fes.student_id IS NOT NULL
+            THEN s.student_id 
+          END) AS enrolled,
+
+          COUNT(DISTINCT CASE 
+            WHEN fnis.student_id IS NOT NULL
+            THEN s.student_id 
+          END) AS ni,
+
+          COUNT(DISTINCT CASE WHEN EXISTS (
+            SELECT 1 FROM student_remarks sr2
+            ${buildCTECondition("sr2")}
+            WHERE sr2.student_id = s.student_id 
+            AND LOWER(TRIM(sr2.calling_status)) = 'connected'
+          ) THEN s.student_id END) as connectedAnytime,
+
+          COUNT(DISTINCT CASE WHEN EXISTS (
+            SELECT 1 FROM student_remarks sr2
+            ${buildCTECondition("sr2")}
+            WHERE sr2.student_id = s.student_id 
+            AND sr2.lead_sub_status = 'Initial Counseling Completed'
+          ) THEN s.student_id END) as icc,
+
+          COUNT(DISTINCT CASE 
+            WHEN (src.total_remarks_count IS NULL OR src.total_remarks_count = 0)
+               OR (fps.student_id IS NOT NULL AND (crc.connected_remarks_count IS NULL OR crc.connected_remarks_count < 4))
+            THEN s.student_id 
+          END) AS under_3_remarks,
+
+          COUNT(DISTINCT CASE 
+            WHEN fps.student_id IS NOT NULL
+              AND crc.connected_remarks_count BETWEEN 4 AND 7
+            THEN s.student_id 
+          END) AS remarks_4_7,
+
+          COUNT(DISTINCT CASE 
+            WHEN fps.student_id IS NOT NULL
+              AND crc.connected_remarks_count BETWEEN 8 AND 10
+            THEN s.student_id 
+          END) AS remarks_8_10,
+
+          COUNT(DISTINCT CASE 
+            WHEN fps.student_id IS NOT NULL
+              AND crc.connected_remarks_count > 10
+            THEN s.student_id 
+          END) AS remarks_gt_10
+      `;
+    }
+
+    // Continue with the FROM and JOIN clauses
+    mainQuery += `
       FROM students s
       LEFT JOIN last_remark lr ON s.student_id = lr.student_id
       LEFT JOIN first_la ON s.student_id = first_la.student_id
@@ -1212,17 +1445,33 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     if (whereSQL || counsellorStatusCondition) {
       mainQuery += " WHERE ";
       if (whereSQL) {
-        mainQuery += whereSQL.substring(6);
+        const wherePart = whereSQL.startsWith("WHERE ")
+          ? whereSQL.substring(6)
+          : whereSQL;
+        mainQuery += wherePart;
       }
       if (counsellorStatusCondition) {
         if (whereSQL) mainQuery += " AND ";
-        mainQuery += counsellorStatusCondition.substring(4);
+        const statusPart = counsellorStatusCondition.startsWith("AND ")
+          ? counsellorStatusCondition.substring(4)
+          : counsellorStatusCondition;
+        mainQuery += statusPart;
       }
     }
 
+    // Different GROUP BY for different types
+    if (type === "agent") {
+      mainQuery += `
+        GROUP BY ${groupByClause}, COALESCE(assigned_counsellor.counsellor_id, c.counsellor_id), 
+                 COALESCE(assigned_counsellor.status, c.status)
+      `;
+    } else {
+      mainQuery += `
+        GROUP BY ${groupByClause}
+      `;
+    }
+
     mainQuery += `
-      GROUP BY ${groupByClause}, COALESCE(assigned_counsellor.counsellor_id, c.counsellor_id), 
-               COALESCE(assigned_counsellor.status, c.status)
       ORDER BY ${sortColumn} ${finalSortOrder}
     `;
 
@@ -1510,36 +1759,23 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
         remarks_gt_10: 0,
       };
 
-      // Track processed counsellors to avoid duplicates
-      const processedCounsellorIds = new Set();
-      const processedCounsellorNames = new Set();
+      // Track processed items to avoid duplicates
+      const processedKeys = new Set();
 
       rawRows.forEach((row) => {
         // Skip "Total" row if present
         if (row.group_by === "Total") return;
 
-        const counsellorId = row.counsellor_id;
-        const counsellorName = row.group_by;
+        // Create a unique key based on the group_by field
+        const key = row.group_by;
 
-        // Skip if we've already processed this counsellor
-        if (counsellorId && processedCounsellorIds.has(counsellorId)) {
-          console.log(
-            "Skipping duplicate in overall calc (by ID):",
-            counsellorName,
-            counsellorId,
-          );
-          return;
-        }
-        if (counsellorName && processedCounsellorNames.has(counsellorName)) {
-          console.log(
-            "Skipping duplicate in overall calc (by name):",
-            counsellorName,
-          );
+        // Skip if we've already processed this group
+        if (processedKeys.has(key)) {
+          console.log("Skipping duplicate in overall calc:", key);
           return;
         }
 
-        if (counsellorId) processedCounsellorIds.add(counsellorId);
-        if (counsellorName) processedCounsellorNames.add(counsellorName);
+        processedKeys.add(key);
 
         overall.lead_count += getValue(row, "lead_count");
         overall.freshCount += getValue(row, "freshCount");
@@ -2085,12 +2321,10 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
         type,
       )
     ) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "Invalid type. Use agent, source, campaign, created_at, or source_url",
-        });
+      return res.status(400).json({
+        error:
+          "Invalid type. Use agent, source, campaign, created_at, or source_url",
+      });
     }
 
     // Helper for date range SQL conditions
@@ -3679,12 +3913,10 @@ export const getTrackerReport2 = async (req, res) => {
     const userRole = req.user?.role; // Get user role from request
     console.log(userRole);
     if (!date_start || !date_end) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "date_start and date_end are required",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "date_start and date_end are required",
+      });
     }
 
     // Use explicit timezone handling (IST = UTC+5:30)
@@ -4156,12 +4388,10 @@ export const getTrackerReport2RawData = async (req, res) => {
     const { date_start, date_end, groupBy = "detailed" } = req.query;
 
     if (!date_start || !date_end) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "date_start and date_end are required",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "date_start and date_end are required",
+      });
     }
 
     console.log(
@@ -5576,12 +5806,10 @@ export const bulkInsertCourseStatus = async (req, res) => {
     const courseStatusList = req.body; // Expecting an array of objects
 
     if (!Array.isArray(courseStatusList) || courseStatusList.length === 0) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "courseStatusList must be a non-empty array",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "courseStatusList must be a non-empty array",
+      });
     }
 
     // Bulk create with "updateOnDuplicate" to avoid unique index conflicts

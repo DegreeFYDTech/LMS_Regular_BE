@@ -32,6 +32,8 @@ import StudentReassignmentLogic from './student_reassignment_logic.route.js';
 import secondaryStudentRoutes from './studentInfo.route.js';
 import dbRuleSetRoutes from '../router/regularRulesetRoutes.js';
 import paymentRoutes from './payment.route.js';
+import couponRoutes from './coupon.route.js';
+import pricingRuleRoutes from './pricingRule.route.js';
 
 const router = express.Router();
 
@@ -69,5 +71,7 @@ router.use('/api/meta-ads', metaAdsRoutes);
 router.use('/api/meta-ads', metaAdsRoutes);
 router.use('/dbRuleset', dbRuleSetRoutes);
 router.use('/payment', paymentRoutes);
+router.use('/coupons', couponRoutes);
+router.use('/pricing-rules', pricingRuleRoutes);
 
 export default router;

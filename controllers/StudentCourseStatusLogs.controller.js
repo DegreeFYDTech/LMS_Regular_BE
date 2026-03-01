@@ -10,9 +10,313 @@ import {
 import { Op, QueryTypes, Sequelize } from "sequelize";
 import CourseStatusJourney from "../models/course_status_jounreny.js";
 
-// Add these functions to your counsellor controller
+export const getCounsellorStats = async (req, res) => {
+  try {
+    const { start_date, end_date, counsellor_id } = req.query;
+    
+    let dateFilter = '';
+    if (start_date && end_date) {
+      dateFilter = `
+        AND (lr.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date 
+        BETWEEN '${start_date}' AND '${end_date}'
+      `;
+    }
 
-// Get detailed journey information for students
+    let counsellorFilter = '';
+    if (counsellor_id) {
+      counsellorFilter = ` AND s.assigned_counsellor_l3_id = ${counsellor_id} `;
+    }
+
+    const stats = await sequelize.query(`
+      WITH lr AS (
+        SELECT DISTINCT ON (student_id)
+            student_id,
+            remarks,
+            created_at,
+            counsellor_id
+        FROM student_remarks 
+        ORDER BY student_id, created_at DESC
+      ),
+
+      lr_with_counsellor_role AS (
+        SELECT 
+            lr.*,
+            c.role AS counsellor_role
+        FROM lr
+        LEFT JOIN counsellors c ON lr.counsellor_id = c.counsellor_id
+      ),
+
+      base AS (
+        SELECT 
+            csj.student_id,
+            csj.course_id,
+            csj.latest_course_status,
+            CASE 
+                WHEN lr.counsellor_role = 'l3'
+                THEN (lr.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')
+                ELSE (csj.updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')
+            END AS last_action_ist,
+            s.assigned_counsellor_l3_id,
+            c.counsellor_name,
+            CASE 
+                WHEN lr.counsellor_role = 'l2' THEN 1
+                ELSE 0
+            END AS is_initiated
+        FROM latest_course_statuses csj
+        JOIN students s ON csj.student_id = s.student_id
+        JOIN counsellors c ON s.assigned_counsellor_l3_id = c.counsellor_id
+        LEFT JOIN lr_with_counsellor_role lr ON lr.student_id = csj.student_id
+        WHERE csj.latest_course_status <> 'Shortlisted'
+        ${dateFilter}
+        ${counsellorFilter}
+      ),
+
+      active_forms AS (
+        SELECT *
+        FROM base
+        WHERE latest_course_status <> 'Registration done'
+      )
+
+      SELECT 
+          b.assigned_counsellor_l3_id,
+          b.counsellor_name,
+          COUNT(b.student_id) AS total_forms,
+          COUNT(a.student_id) AS active_forms,
+          COUNT(*) FILTER (WHERE b.is_initiated = 1) AS not_initiated_count,
+          COUNT(*) FILTER (
+              WHERE a.last_action_ist >= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') - INTERVAL '3 days'
+          ) AS called_within_3_days,
+          COUNT(*) FILTER (
+              WHERE a.last_action_ist < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') - INTERVAL '3 days'
+              AND a.last_action_ist >= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') - INTERVAL '6 days'
+          ) AS called_4_to_6_days,
+          COUNT(*) FILTER (
+              WHERE a.last_action_ist < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') - INTERVAL '6 days'
+          ) AS called_7_plus_days
+      FROM base b
+      LEFT JOIN active_forms a ON b.student_id = a.student_id AND b.course_id = a.course_id
+      GROUP BY b.assigned_counsellor_l3_id, b.counsellor_name
+      ORDER BY total_forms DESC;
+    `, {
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: stats,
+      message: "Counsellor statistics fetched successfully",
+      filters: { start_date, end_date, counsellor_id }
+    });
+
+  } catch (error) {
+    console.error("Error fetching counsellor stats:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch counsellor statistics",
+      error: error.message
+    });
+  }
+};
+
+export const getFormToAdmissionsReport = async (req, res) => {
+  try {
+    const { till_date } = req.query;
+    
+    if (!till_date) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide till_date parameter (YYYY-MM-DD)"
+      });
+    }
+
+    const selectedDate = new Date(till_date);
+    const year = selectedDate.getFullYear();
+    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    
+    // Calculate date ranges
+    const ytdStartDate = `${year}-01-01`;
+    const mtdStartDate = `${year}-${month}-01`;
+    const ftdDate = till_date;
+
+    // First, get the first occurrence of each student-course combination
+    const query = `
+      WITH form_statuses AS (
+        SELECT unnest(ARRAY[
+          'Form Submitted – Portal Pending',
+          'Form Submitted – Completed',
+          'Walkin Completed',
+          'Exam Interview Pending',
+          'Offer Letter/Results Pending',
+          'Offer Letter/Results Released'
+        ]) AS status
+      ),
+      admission_statuses AS (
+        SELECT unnest(ARRAY[
+          'Registration done',
+          'Semester fee paid',
+          'Partially Paid'
+        ]) AS status
+      ),
+      -- Get the first occurrence for each student-course combination
+      first_occurrences AS (
+        SELECT DISTINCT ON (student_id, course_id)
+          student_id,
+          course_id,
+          course_status,
+          created_at::date AS occurrence_date
+        FROM course_status_journeys
+        WHERE created_at::date <= :tillDate::date
+        ORDER BY student_id, course_id, created_at ASC
+      ),
+      college_metrics AS (
+        SELECT 
+          c.university_name AS college_name,
+          
+          -- YTD Forms (first occurrence between YTD start and till date)
+          COUNT(DISTINCT CASE 
+            WHEN fo.course_status IN (SELECT status FROM form_statuses)
+              AND fo.occurrence_date >= :ytdStartDate::date
+              AND fo.occurrence_date <= :tillDate::date
+            THEN fo.student_id || '-' || fo.course_id
+          END) AS ytd_forms,
+          
+          -- YTD Admissions (first occurrence between YTD start and till date)
+          COUNT(DISTINCT CASE 
+            WHEN fo.course_status IN (SELECT status FROM admission_statuses)
+              AND fo.occurrence_date >= :ytdStartDate::date
+              AND fo.occurrence_date <= :tillDate::date
+            THEN fo.student_id || '-' || fo.course_id
+          END) AS ytd_admissions,
+          
+          -- MTD Forms (first occurrence between MTD start and till date)
+          COUNT(DISTINCT CASE 
+            WHEN fo.course_status IN (SELECT status FROM form_statuses)
+              AND fo.occurrence_date >= :mtdStartDate::date
+              AND fo.occurrence_date <= :tillDate::date
+            THEN fo.student_id || '-' || fo.course_id
+          END) AS mtd_forms,
+          
+          -- MTD Admissions (first occurrence between MTD start and till date)
+          COUNT(DISTINCT CASE 
+            WHEN fo.course_status IN (SELECT status FROM admission_statuses)
+              AND fo.occurrence_date >= :mtdStartDate::date
+              AND fo.occurrence_date <= :tillDate::date
+            THEN fo.student_id || '-' || fo.course_id
+          END) AS mtd_admissions,
+          
+          -- FTD Forms (first occurrence exactly on till date)
+          COUNT(DISTINCT CASE 
+            WHEN fo.course_status IN (SELECT status FROM form_statuses)
+              AND fo.occurrence_date = :ftdDate::date
+            THEN fo.student_id || '-' || fo.course_id
+          END) AS ftd_forms,
+          
+          -- FTD Admissions (first occurrence exactly on till date)
+          COUNT(DISTINCT CASE 
+            WHEN fo.course_status IN (SELECT status FROM admission_statuses)
+              AND fo.occurrence_date = :ftdDate::date
+            THEN fo.student_id || '-' || fo.course_id
+          END) AS ftd_admissions
+          
+        FROM first_occurrences fo
+        JOIN university_courses c ON fo.course_id = c.course_id
+        GROUP BY c.university_name
+      )
+      
+      SELECT 
+        college_name,
+        ytd_forms,
+        ytd_admissions,
+        CASE 
+          WHEN ytd_forms > 0 THEN ROUND((ytd_admissions * 100.0 / ytd_forms), 1)
+          ELSE 0 
+        END AS ytd_f2a,
+        mtd_forms,
+        mtd_admissions,
+        CASE 
+          WHEN mtd_forms > 0 THEN ROUND((mtd_admissions * 100.0 / mtd_forms), 1)
+          ELSE 0 
+        END AS mtd_f2a,
+        ftd_forms,
+        ftd_admissions,
+        CASE 
+          WHEN ftd_forms > 0 THEN ROUND((ftd_admissions * 100.0 / ftd_forms), 1)
+          ELSE 0 
+        END AS ftd_f2a
+      FROM college_metrics
+      WHERE ytd_forms > 0 OR mtd_forms > 0 OR ftd_forms > 0
+      ORDER BY ytd_forms DESC;
+    `;
+
+    const results = await sequelize.query(query, {
+      replacements: {
+        ytdStartDate,
+        mtdStartDate,
+        ftdDate,
+        tillDate: till_date
+      },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    // Calculate totals
+    const totals = results.reduce((acc, curr) => ({
+      ytd_forms: acc.ytd_forms + (parseInt(curr.ytd_forms) || 0),
+      ytd_admissions: acc.ytd_admissions + (parseInt(curr.ytd_admissions) || 0),
+      mtd_forms: acc.mtd_forms + (parseInt(curr.mtd_forms) || 0),
+      mtd_admissions: acc.mtd_admissions + (parseInt(curr.mtd_admissions) || 0),
+      ftd_forms: acc.ftd_forms + (parseInt(curr.ftd_forms) || 0),
+      ftd_admissions: acc.ftd_admissions + (parseInt(curr.ftd_admissions) || 0),
+    }), {
+      ytd_forms: 0, ytd_admissions: 0,
+      mtd_forms: 0, mtd_admissions: 0,
+      ftd_forms: 0, ftd_admissions: 0,
+    });
+
+    // Add totals row
+    const responseData = [
+      ...results,
+      {
+        college_name: "Total",
+        ytd_forms: totals.ytd_forms,
+        ytd_admissions: totals.ytd_admissions,
+        ytd_f2a: totals.ytd_forms > 0 
+          ? Number(((totals.ytd_admissions / totals.ytd_forms) * 100).toFixed(1))
+          : 0,
+        mtd_forms: totals.mtd_forms,
+        mtd_admissions: totals.mtd_admissions,
+        mtd_f2a: totals.mtd_forms > 0
+          ? Number(((totals.mtd_admissions / totals.mtd_forms) * 100).toFixed(1))
+          : 0,
+        ftd_forms: totals.ftd_forms,
+        ftd_admissions: totals.ftd_admissions,
+        ftd_f2a: totals.ftd_forms > 0
+          ? Number(((totals.ftd_admissions / totals.ftd_forms) * 100).toFixed(1))
+          : 0,
+      }
+    ];
+
+    return res.status(200).json({
+      success: true,
+      data: responseData,
+      filters: {
+        till_date,
+        ytd_range: `${ytdStartDate} to ${till_date}`,
+        mtd_range: `${mtdStartDate} to ${till_date}`,
+        ftd_date: till_date
+      },
+      message: "Form to Admissions report fetched successfully"
+    });
+
+  } catch (error) {
+    console.error("Error fetching form to admissions report:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch form to admissions report",
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
 export const getStudentJourneyDetails = async (req, res) => {
   try {
     const { studentIds } = req.body;
@@ -20,11 +324,11 @@ export const getStudentJourneyDetails = async (req, res) => {
     if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Please provide an array of student IDs"
+        message: "Please provide an array of student IDs",
       });
     }
 
-    const escapedIds = studentIds.map(id => `'${id}'`).join(',');
+    const escapedIds = studentIds.map((id) => `'${id}'`).join(",");
 
     const query = `
             SELECT 
@@ -47,21 +351,20 @@ export const getStudentJourneyDetails = async (req, res) => {
         `;
 
     const journeys = await sequelize.query(query, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
 
     return res.status(200).json({
       success: true,
       data: journeys,
-      message: "Student journey details fetched successfully"
+      message: "Student journey details fetched successfully",
     });
-
   } catch (error) {
     console.error("Error fetching student journey details:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch student journey details",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -78,7 +381,7 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        message: "Please provide an array of student IDs"
+        message: "Please provide an array of student IDs",
       });
     }
 
@@ -86,7 +389,7 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        message: "Please provide the source counsellor ID to replace"
+        message: "Please provide the source counsellor ID to replace",
       });
     }
 
@@ -94,7 +397,7 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        message: "Please provide the target counsellor ID"
+        message: "Please provide the target counsellor ID",
       });
     }
 
@@ -105,32 +408,35 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
       {
         bind: [toCounsellorId],
         type: QueryTypes.SELECT,
-        transaction
-      }
+        transaction,
+      },
     );
 
     if (!targetCounsellor || targetCounsellor.length === 0) {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        message: "Target counsellor not found or is not an L3 counsellor"
+        message: "Target counsellor not found or is not an L3 counsellor",
       });
     }
 
     // Check if fromCounsellorId exists (optional, for validation)
-    if (fromCounsellorId !== 'any') { // Allow 'any' as a special value to replace regardless of current
+    if (fromCounsellorId !== "any") {
+      // Allow 'any' as a special value to replace regardless of current
       const fromCounsellor = await sequelize.query(
         `SELECT counsellor_id FROM counsellors 
          WHERE counsellor_id = $1 AND role = 'l3'`,
         {
           bind: [fromCounsellorId],
           type: QueryTypes.SELECT,
-          transaction
-        }
+          transaction,
+        },
       );
 
       if (!fromCounsellor || fromCounsellor.length === 0) {
-        console.warn(`Source counsellor ${fromCounsellorId} not found, but continuing with replacement`);
+        console.warn(
+          `Source counsellor ${fromCounsellorId} not found, but continuing with replacement`,
+        );
       }
     }
 
@@ -143,8 +449,8 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
       {
         bind: [studentIds, fromCounsellorId],
         type: QueryTypes.SELECT,
-        transaction
-      }
+        transaction,
+      },
     );
 
     const recordsToUpdate = parseInt(countResult[0]?.count || 0);
@@ -153,7 +459,8 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
       await transaction.rollback();
       return res.status(404).json({
         success: false,
-        message: "No journey entries found with the specified counsellor for these students"
+        message:
+          "No journey entries found with the specified counsellor for these students",
       });
     }
 
@@ -166,8 +473,8 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
       {
         bind: [toCounsellorId, studentIds, fromCounsellorId],
         type: QueryTypes.UPDATE,
-        transaction
-      }
+        transaction,
+      },
     );
 
     // Commit transaction
@@ -180,10 +487,9 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
         studentIds,
         fromCounsellorId,
         toCounsellorId,
-        recordsUpdated: recordsToUpdate
-      }
+        recordsUpdated: recordsToUpdate,
+      },
     });
-
   } catch (error) {
     try {
       await transaction.rollback();
@@ -194,18 +500,18 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
     console.error("Error replacing L3 counsellor:", error);
 
     // Check for connection errors
-    if (error.code === 'ECONNRESET' || error.parent?.code === 'ECONNRESET') {
+    if (error.code === "ECONNRESET" || error.parent?.code === "ECONNRESET") {
       return res.status(503).json({
         success: false,
         message: "Database connection error. Please try again.",
-        error: "Connection reset"
+        error: "Connection reset",
       });
     }
 
     return res.status(500).json({
       success: false,
       message: "Failed to replace L3 counsellor",
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -222,7 +528,7 @@ export const replaceL3CounsellorForSpecificJourney = async (req, res) => {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        message: "Please provide studentId, courseId, and toCounsellorId"
+        message: "Please provide studentId, courseId, and toCounsellorId",
       });
     }
 
@@ -233,15 +539,15 @@ export const replaceL3CounsellorForSpecificJourney = async (req, res) => {
       {
         bind: [toCounsellorId],
         type: QueryTypes.SELECT,
-        transaction
-      }
+        transaction,
+      },
     );
 
     if (!targetCounsellor || targetCounsellor.length === 0) {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        message: "Target counsellor not found or is not an L3 counsellor"
+        message: "Target counsellor not found or is not an L3 counsellor",
       });
     }
 
@@ -254,8 +560,8 @@ export const replaceL3CounsellorForSpecificJourney = async (req, res) => {
       {
         bind: [toCounsellorId, studentId, courseId],
         type: QueryTypes.UPDATE,
-        transaction
-      }
+        transaction,
+      },
     );
 
     await transaction.commit();
@@ -267,10 +573,9 @@ export const replaceL3CounsellorForSpecificJourney = async (req, res) => {
         studentId,
         courseId,
         toCounsellorId,
-        updated: true
-      }
+        updated: true,
+      },
     });
-
   } catch (error) {
     try {
       await transaction.rollback();
@@ -280,22 +585,21 @@ export const replaceL3CounsellorForSpecificJourney = async (req, res) => {
 
     console.error("Error replacing L3 counsellor for specific journey:", error);
 
-    if (error.code === 'ECONNRESET' || error.parent?.code === 'ECONNRESET') {
+    if (error.code === "ECONNRESET" || error.parent?.code === "ECONNRESET") {
       return res.status(503).json({
         success: false,
         message: "Database connection error. Please try again.",
-        error: "Connection reset"
+        error: "Connection reset",
       });
     }
 
     return res.status(500).json({
       success: false,
       message: "Failed to replace L3 counsellor",
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
-
 
 export const createStatusLog = async (req, res) => {
   try {
@@ -738,7 +1042,9 @@ const getCounsellorPivotReport = async (
           studentCounsellorMap[key] = counsellorId;
         } else {
           studentCounsellorMap[key] = null;
-          unassignedStudents.push(`${entry.student_id} (Course: ${entry.course_id})`);
+          unassignedStudents.push(
+            `${entry.student_id} (Course: ${entry.course_id})`,
+          );
         }
       });
     }
@@ -866,7 +1172,10 @@ const getCounsellorPivotReport = async (
       statusTotals,
       grandTotal,
     },
-    note: level === "l3" ? "L3 counsellors mapped from journey table (student-course level)" : undefined,
+    note:
+      level === "l3"
+        ? "L3 counsellors mapped from journey table (student-course level)"
+        : undefined,
   };
 };
 
@@ -891,20 +1200,22 @@ export const getCollegesList = async (req, res) => {
   }
 };
 
-
 export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
   try {
     const { studentIds } = req.body;
-    console.log("Received student IDs for distinct L3 counsellors:", studentIds);
+    console.log(
+      "Received student IDs for distinct L3 counsellors:",
+      studentIds,
+    );
 
     if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Please provide an array of student IDs"
+        message: "Please provide an array of student IDs",
       });
     }
 
-    const escapedIds = studentIds.map(id => `'${id}'`).join(',');
+    const escapedIds = studentIds.map((id) => `'${id}'`).join(",");
 
     // First query: Get distinct counsellors
     const counsellorsQuery = `
@@ -923,7 +1234,7 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
     `;
 
     const counsellors = await sequelize.query(counsellorsQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
 
     // Get ONLY the latest journey entry for each student-course combination
@@ -963,7 +1274,7 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
     `;
 
     const journeyDetails = await sequelize.query(journeyDetailsQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
 
     // NEW: Query to count course_status that include "Form"
@@ -981,7 +1292,7 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
     `;
 
     const formStatusCounts = await sequelize.query(formStatusCountQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
 
     // NEW: Get total count of all statuses that include "Form"
@@ -992,9 +1303,12 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
         AND course_status ILIKE '%Form%';
     `;
 
-    const totalFormStatusResult = await sequelize.query(totalFormStatusCountQuery, {
-      type: QueryTypes.SELECT
-    });
+    const totalFormStatusResult = await sequelize.query(
+      totalFormStatusCountQuery,
+      {
+        type: QueryTypes.SELECT,
+      },
+    );
 
     const totalFormStatusCount = totalFormStatusResult[0]?.total || 0;
 
@@ -1006,22 +1320,25 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
       // NEW: Add form status statistics
       formStatusStats: {
         totalFormStatusCount: totalFormStatusCount,
-        studentsWithFormStatus: formStatusCounts.length > 0 ? formStatusCounts[0]?.students_with_form_status || 0 : 0,
-        formStatusBreakdown: formStatusCounts.map(item => ({
+        studentsWithFormStatus:
+          formStatusCounts.length > 0
+            ? formStatusCounts[0]?.students_with_form_status || 0
+            : 0,
+        formStatusBreakdown: formStatusCounts.map((item) => ({
           status: item.course_status,
-          count: parseInt(item.status_count)
-        }))
-      }
+          count: parseInt(item.status_count),
+        })),
+      },
     };
 
     // Group journeys by student and count them
     const journeyMap = {};
-    journeyDetails.forEach(journey => {
+    journeyDetails.forEach((journey) => {
       if (!journeyMap[journey.student_id]) {
         journeyMap[journey.student_id] = {
           student_id: journey.student_id,
           journey_count: 0,
-          journeys: []
+          journeys: [],
         };
       }
       journeyMap[journey.student_id].journey_count++;
@@ -1029,7 +1346,7 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
     });
 
     // Count students with multiple journeys
-    Object.values(journeyMap).forEach(student => {
+    Object.values(journeyMap).forEach((student) => {
       if (student.journey_count > 1) {
         journeyStats.studentsWithMultipleJourneys++;
       }
@@ -1037,7 +1354,7 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
 
     // Check if any student has multiple journeys
     const hasMultipleJourneys = Object.values(journeyMap).some(
-      student => student.journey_count > 1
+      (student) => student.journey_count > 1,
     );
 
     return res.status(200).json({
@@ -1051,22 +1368,24 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
         // NEW: Add form status summary at the top level for easy access
         formStatusSummary: {
           totalCount: totalFormStatusCount,
-          studentsWithFormStatus: formStatusCounts.length > 0 ? formStatusCounts[0]?.students_with_form_status || 0 : 0,
-          breakdown: formStatusCounts.map(item => ({
+          studentsWithFormStatus:
+            formStatusCounts.length > 0
+              ? formStatusCounts[0]?.students_with_form_status || 0
+              : 0,
+          breakdown: formStatusCounts.map((item) => ({
             status: item.course_status,
-            count: parseInt(item.status_count)
-          }))
-        }
+            count: parseInt(item.status_count),
+          })),
+        },
       },
-      message: "L3 counsellors and latest journey details fetched successfully"
+      message: "L3 counsellors and latest journey details fetched successfully",
     });
-
   } catch (error) {
     console.error("Error fetching distinct L3 counsellors:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch L3 counsellors data",
-      error: error.message
+      error: error.message,
     });
   }
 };

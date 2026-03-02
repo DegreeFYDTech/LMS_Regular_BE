@@ -955,7 +955,7 @@ async function handleShooliniOnline(
 
   const values = courseHeaderValue.values;
   const baseApiUrl = values.API_URL;
-  const accessKey = "u$rd53cce72e496bc20ac70147b0b1e78b9"; 
+  const accessKey = "u$rd53cce72e496bc20ac70147b0b1e78b9";
   const secretKey = values.secretKey;
   const leadUpdateBehavior = values.LeadUpdateBehavior;
 
@@ -1950,7 +1950,7 @@ async function handleGalgotiasOnline(
     email:
       !isPrimary && studentEmail ? studentEmail : userResponse.student_email,
   });
-console.log(apiUrl,headers,transformedPayload,"harsh")
+  console.log(apiUrl, headers, transformedPayload, "harsh");
   try {
     const apiResponse = await axios({
       method: "POST",
@@ -2244,8 +2244,6 @@ async function CgcLandran(
     isPartnerPortal,
   );
 
-
-
   const defaultValues = {
     name: `${userResponse.student_name || ""} ${""}`.trim(),
     email:
@@ -2260,7 +2258,7 @@ async function CgcLandran(
     source: "nuvora",
     state: "Punjab",
     city: "Mohali",
-    course: "B.Tech - CSE",
+    course: courseHeaderValue.dataValues.values.course || "Btech",
     secret_key: "b30c9bcd9fb18a82e41a505fae8490b2",
   };
   const values = courseHeaderValue?.values || defaultValues;
@@ -2270,8 +2268,6 @@ async function CgcLandran(
   if (!baseApiUrl) {
     throw new Error("API URL not found in the course header values");
   }
-
-
 
   const headers = {
     "Content-Type": "application/json",

@@ -138,7 +138,6 @@ export const getFormToAdmissionsReport = async (req, res) => {
     const mtdStartDate = `${year}-${month}-01`;
     const ftdDate = till_date;
 
-    // First, get the first occurrence of each student-course combination
     const query = `
       WITH form_statuses AS (
         SELECT unnest(ARRAY[
@@ -157,69 +156,75 @@ export const getFormToAdmissionsReport = async (req, res) => {
           'Partially Paid'
         ]) AS status
       ),
-      -- Get the first occurrence for each student-course combination
-      first_occurrences AS (
+      -- Get FIRST form date for each student-course
+      first_form_dates AS (
         SELECT DISTINCT ON (student_id, course_id)
           student_id,
           course_id,
-          course_status,
-          created_at::date AS occurrence_date
+          created_at::date AS form_date
         FROM course_status_journeys
-        WHERE created_at::date <= :tillDate::date
+        WHERE course_status IN (SELECT status FROM form_statuses)
+          AND created_at::date <= :tillDate::date
+        ORDER BY student_id, course_id, created_at ASC
+      ),
+      -- Get FIRST admission date for each student-course
+      first_admission_dates AS (
+        SELECT DISTINCT ON (student_id, course_id)
+          student_id,
+          course_id,
+          created_at::date AS admission_date
+        FROM course_status_journeys
+        WHERE course_status IN (SELECT status FROM admission_statuses)
+          AND created_at::date <= :tillDate::date
         ORDER BY student_id, course_id, created_at ASC
       ),
       college_metrics AS (
         SELECT 
           c.university_name AS college_name,
           
-          -- YTD Forms (first occurrence between YTD start and till date)
+          -- YTD Forms (based on first form date)
           COUNT(DISTINCT CASE 
-            WHEN fo.course_status IN (SELECT status FROM form_statuses)
-              AND fo.occurrence_date >= :ytdStartDate::date
-              AND fo.occurrence_date <= :tillDate::date
-            THEN fo.student_id || '-' || fo.course_id
+            WHEN ffd.form_date >= :ytdStartDate::date
+              AND ffd.form_date <= :tillDate::date
+            THEN ffd.student_id || '-' || ffd.course_id
           END) AS ytd_forms,
           
-          -- YTD Admissions (first occurrence between YTD start and till date)
+          -- YTD Admissions (based on first admission date)
           COUNT(DISTINCT CASE 
-            WHEN fo.course_status IN (SELECT status FROM admission_statuses)
-              AND fo.occurrence_date >= :ytdStartDate::date
-              AND fo.occurrence_date <= :tillDate::date
-            THEN fo.student_id || '-' || fo.course_id
+            WHEN fad.admission_date >= :ytdStartDate::date
+              AND fad.admission_date <= :tillDate::date
+            THEN fad.student_id || '-' || fad.course_id
           END) AS ytd_admissions,
           
-          -- MTD Forms (first occurrence between MTD start and till date)
+          -- MTD Forms
           COUNT(DISTINCT CASE 
-            WHEN fo.course_status IN (SELECT status FROM form_statuses)
-              AND fo.occurrence_date >= :mtdStartDate::date
-              AND fo.occurrence_date <= :tillDate::date
-            THEN fo.student_id || '-' || fo.course_id
+            WHEN ffd.form_date >= :mtdStartDate::date
+              AND ffd.form_date <= :tillDate::date
+            THEN ffd.student_id || '-' || ffd.course_id
           END) AS mtd_forms,
           
-          -- MTD Admissions (first occurrence between MTD start and till date)
+          -- MTD Admissions
           COUNT(DISTINCT CASE 
-            WHEN fo.course_status IN (SELECT status FROM admission_statuses)
-              AND fo.occurrence_date >= :mtdStartDate::date
-              AND fo.occurrence_date <= :tillDate::date
-            THEN fo.student_id || '-' || fo.course_id
+            WHEN fad.admission_date >= :mtdStartDate::date
+              AND fad.admission_date <= :tillDate::date
+            THEN fad.student_id || '-' || fad.course_id
           END) AS mtd_admissions,
           
-          -- FTD Forms (first occurrence exactly on till date)
+          -- FTD Forms
           COUNT(DISTINCT CASE 
-            WHEN fo.course_status IN (SELECT status FROM form_statuses)
-              AND fo.occurrence_date = :ftdDate::date
-            THEN fo.student_id || '-' || fo.course_id
+            WHEN ffd.form_date = :ftdDate::date
+            THEN ffd.student_id || '-' || ffd.course_id
           END) AS ftd_forms,
           
-          -- FTD Admissions (first occurrence exactly on till date)
+          -- FTD Admissions
           COUNT(DISTINCT CASE 
-            WHEN fo.course_status IN (SELECT status FROM admission_statuses)
-              AND fo.occurrence_date = :ftdDate::date
-            THEN fo.student_id || '-' || fo.course_id
+            WHEN fad.admission_date = :ftdDate::date
+            THEN fad.student_id || '-' || fad.course_id
           END) AS ftd_admissions
           
-        FROM first_occurrences fo
-        JOIN university_courses c ON fo.course_id = c.course_id
+        FROM university_courses c
+        LEFT JOIN first_form_dates ffd ON c.course_id = ffd.course_id
+        LEFT JOIN first_admission_dates fad ON c.course_id = fad.course_id AND fad.student_id = ffd.student_id
         GROUP BY c.university_name
       )
       

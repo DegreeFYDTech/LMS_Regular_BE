@@ -1403,7 +1403,7 @@ async function handleSpecialUniversity(
       data: specialPayload,
       timeout: 15000,
     });
-
+console.log(apiResponse, "api.response");
     const statusResult = processSpecialUniversityApiResponse(
       apiResponse,
       collegeName,

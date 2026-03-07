@@ -224,7 +224,7 @@ export const getFormToAdmissionsReport = async (req, res) => {
           
         FROM university_courses c
         LEFT JOIN first_form_dates ffd ON c.course_id = ffd.course_id
-        LEFT JOIN first_admission_dates fad ON c.course_id = fad.course_id AND fad.student_id = ffd.student_id
+        LEFT JOIN first_admission_dates fad ON c.course_id = fad.course_id 
         GROUP BY c.university_name
       )
       

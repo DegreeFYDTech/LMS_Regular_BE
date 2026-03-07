@@ -141,8 +141,8 @@ export const getFormToAdmissionsReport = async (req, res) => {
     const query = `
       WITH form_statuses AS (
         SELECT unnest(ARRAY[
-          'Form Submitted â€“ Portal Pending',
-          'Form Submitted â€“ Completed',
+          'Form Submitted – Portal Pending',
+          'Form Submitted – Completed',
           'Walkin Completed',
           'Exam Interview Pending',
           'Offer Letter/Results Pending',

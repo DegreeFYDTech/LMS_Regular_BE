@@ -817,10 +817,22 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         ? "WHERE " + whereClauses.filter(Boolean).join(" AND ")
         : "";
 
-    // BASE SELECT FIELDS (for analyser only - masked)
-    const baseSelectFields = `
+    // MASKED SELECT FIELDS - Applied to ALL roles (no more separate baseSelectFields)
+    const maskedSelectFields = `
       s.student_id,
       s.student_name,
+      s.number_of_unread_messages,
+      s.total_remarks_l3,
+      s.created_at,
+      s.assigned_l3_date,
+      s.last_call_date_l3,
+      s.next_call_time_l3,
+      s.is_reactivity,
+      s.next_call_date_l3,
+      s.remarks_count,
+      s.mode,
+      s.source,
+      s.assigned_team_owner_date,
       CASE 
         WHEN s.student_email IS NOT NULL AND s.student_email != '' AND POSITION('@' IN s.student_email) > 0
         THEN SUBSTRING(s.student_email, 1, LEAST(POSITION('@' IN s.student_email) - 1, 3)) || '***@xxxxxx.com'
@@ -831,39 +843,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         THEN SUBSTRING(s.student_phone, 1, 4) || 'XXXXXX'
         ELSE 'XXXXXX'
       END as student_phone,
-      s.total_remarks_l3,
-      s.created_at,
-      s.assigned_l3_date,
-      s.last_call_date_l3,
-      s.next_call_time_l3,
-      s.is_reactivity,
-      s.next_call_date_l3,
-      s.remarks_count,
-      s.mode,
-      s.source,
-      s.assigned_team_owner_date,
-    `;
-
-    // NORMAL SELECT FIELDS (for non-analyser - unmasked)
-    const normalSelectFields = isAnalyser
-      ? baseSelectFields
-      : `
-      s.student_id,
-      s.student_name,
-      s.number_of_unread_messages,
-      s.student_email,
-      s.student_phone,
-      s.total_remarks_l3,
-      s.created_at,
-      s.assigned_l3_date,
-      s.last_call_date_l3,
-      s.next_call_time_l3,
-      s.is_reactivity,
-      s.next_call_date_l3,
-      s.remarks_count,
-      s.mode,
-      s.source,
-      s.assigned_team_owner_date,
     `;
 
     // DOWNLOAD-ONLY SELECT FIELDS
@@ -915,7 +894,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       ${ctesSQL}
       SELECT
         ${isDownload ? downloadSelectFields : ""}
-        ${normalSelectFields}
+        ${maskedSelectFields}
         -- Use first journey entry timestamp as created_at_l3 and assigned_l3_date
         fje.first_journey_timestamp as created_at_l3,
         fje.first_journey_timestamp as assigned_l3_date_from_journey,
@@ -980,7 +959,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       ${ctesSQL}
       SELECT
         ${isDownload ? downloadSelectFields : ""}
-        ${normalSelectFields}
+        ${maskedSelectFields}
         c1.counsellor_id as counsellor_id,
         c1.counsellor_name as counsellor_name,
         c1.counsellor_email as counsellor_email,
@@ -1184,8 +1163,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
             student_id: item.student_id,
             student_name: item.student_name,
             number_of_unread_messages: item.number_of_unread_messages,
-            student_email: item.student_email,
-            student_phone: item.student_phone,
+            student_email: item.student_email, // Already masked in SQL
+            student_phone: item.student_phone, // Already masked in SQL
             total_remarks_l3: item.total_remarks_l3,
             next_call_date_l3: item?.next_call_date_l3,
             last_call_date_l3: item?.last_call_date_l3,
@@ -1200,6 +1179,10 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
             assigned_team_owner_date: item?.assigned_team_owner_date,
             mode: item.mode,
             source: item.source,
+
+            // Data masking note for all users
+            data_masked: true,
+            mask_note: "Phone and email information is masked for privacy",
 
             // L3 Counsellor (from journey)
             assignedCounsellorL3: {
@@ -1216,11 +1199,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
               counsellor_email: item.counsellor_email,
               role: item.counsellor_role,
             },
-
-            ...(isAnalyser && {
-              data_masked: true,
-              mask_note: "Phone and email information is masked for analyser role",
-            }),
 
             student_remarks: item.remark_id
               ? [
@@ -1301,8 +1279,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
             student_id: item.student_id,
             student_name: item.student_name,
             number_of_unread_messages: item.number_of_unread_messages,
-            student_email: item.student_email,
-            student_phone: item.student_phone,
+            student_email: item.student_email, // Already masked in SQL
+            student_phone: item.student_phone, // Already masked in SQL
             total_remarks_l3: item.total_remarks_l3,
             next_call_date_l3: item?.next_call_date_l3,
             last_call_date_l3: item?.last_call_date_l3,
@@ -1315,11 +1293,11 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
             assigned_team_owner_date: item?.assigned_team_owner_date,
             mode: item.mode,
             source: item.source,
-            ...(isAnalyser && {
-              data_masked: true,
-              mask_note:
-                "Phone and email information is masked for analyser role",
-            }),
+            
+            // Data masking note for all users
+            data_masked: true,
+            mask_note: "Phone and email information is masked for privacy",
+            
             assignedCounsellor: {
               counsellor_id: item.counsellor_id,
               counsellor_name: item.counsellor_name,
@@ -1451,17 +1429,13 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           note: "Team Owner view - showing leads based on role and filters",
         }),
       },
-    };
-
-    if (isAnalyser) {
-      response.mask_note =
-        "Phone numbers and emails are masked for analyser role";
-      response.mask_details = {
+      // Add masking information for all users
+      mask_note: "Phone numbers and emails are masked for privacy across all roles",
+      mask_details: {
         phone: "Shows first 4 digits followed by XXXXXX",
-        email:
-          "Shows first 3 characters of username followed by ***@xxxxxx.com",
-      };
-    }
+        email: "Shows first 3 characters of username followed by ***@xxxxxx.com",
+      },
+    };
 
     return response;
   } catch (error) {

@@ -652,8 +652,8 @@ export const createStatusLog = async (req, res) => {
     console.log("Journey entry created:", journeyEntry.status_history_id);
 
     if (
-      status == "Form Submitted â€“ Portal Pending" ||
-      status == "Form Submitted â€“ Completed" ||
+      status == "Form Submitted – Portal Pending" ||
+      status == "Form Submitted – Completed" ||
       status == "Walkin Completed" ||
       status == "Exam Interview Pending" ||
       status == "Offer Letter/Results Pending" ||

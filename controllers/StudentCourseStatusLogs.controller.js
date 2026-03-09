@@ -1,4 +1,4 @@
-import axios from "axios";
+﻿import axios from "axios";
 import {
   UniversityCourse,
   CourseStatusHistory,
@@ -13,7 +13,7 @@ import CourseStatusJourney from "../models/course_status_jounreny.js";
 export const getCounsellorStats = async (req, res) => {
   try {
     const { start_date, end_date, counsellor_id } = req.query;
-    
+
     let dateFilter = '';
     if (start_date && end_date) {
       dateFilter = `
@@ -121,7 +121,7 @@ export const getCounsellorStats = async (req, res) => {
 export const getFormToAdmissionsReport = async (req, res) => {
   try {
     const { till_date } = req.query;
-    
+
     if (!till_date) {
       return res.status(400).json({
         success: false,
@@ -132,7 +132,7 @@ export const getFormToAdmissionsReport = async (req, res) => {
     const selectedDate = new Date(till_date);
     const year = selectedDate.getFullYear();
     const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
-    
+
     // Calculate date ranges
     const ytdStartDate = `${year}-01-01`;
     const mtdStartDate = `${year}-${month}-01`;
@@ -284,7 +284,7 @@ export const getFormToAdmissionsReport = async (req, res) => {
         college_name: "Total",
         ytd_forms: totals.ytd_forms,
         ytd_admissions: totals.ytd_admissions,
-        ytd_f2a: totals.ytd_forms > 0 
+        ytd_f2a: totals.ytd_forms > 0
           ? Number(((totals.ytd_admissions / totals.ytd_forms) * 100).toFixed(1))
           : 0,
         mtd_forms: totals.mtd_forms,
@@ -798,335 +798,120 @@ const getCollegesPivotReport = async (
   firstTimeFrom,
   firstTimeTo,
 ) => {
-  console.log('========== COLLEGES PIVOT REPORT DEBUG ==========');
-  console.log('Filters:', { startDate, endDate, firstTimeFrom, firstTimeTo });
-  
-  // Build the where clause for first occurrence filtering
-  const firstOccurrenceWhere = {};
-  
-  // Add first time date range filter if provided
-  if (firstTimeFrom || firstTimeTo) {
-    firstOccurrenceWhere.created_at = {};
+  const isFirstTimeDateFilter = !!(firstTimeFrom || firstTimeTo);
+  const isMainDateFilter = !!(startDate || endDate);
+  const aggFn = isFirstTimeDateFilter ? 'MIN' : 'MAX';
+
+  // Build single raw SQL query
+  let innerWhere = '';
+  const replacements = {};
+
+  if (isFirstTimeDateFilter) {
+    const conditions = [];
     if (firstTimeFrom) {
-      const fromDateObj = new Date(firstTimeFrom + 'T00:00:00Z'); // UTC
-      firstOccurrenceWhere.created_at[Op.gte] = fromDateObj;
-      console.log('First time from:', fromDateObj.toISOString());
+      conditions.push(`csh_inner.created_at >= :firstTimeFrom`);
+      replacements.firstTimeFrom = firstTimeFrom + 'T00:00:00Z';
     }
     if (firstTimeTo) {
-      const toDateObj = new Date(firstTimeTo + 'T23:59:59.999Z'); // UTC end of day
-      firstOccurrenceWhere.created_at[Op.lte] = toDateObj;
-      console.log('First time to:', toDateObj.toISOString());
+      conditions.push(`csh_inner.created_at <= :firstTimeTo`);
+      replacements.firstTimeTo = firstTimeTo + 'T23:59:59.999Z';
     }
+    innerWhere = `WHERE ${conditions.join(' AND ')}`;
   }
 
-  // Get the FIRST occurrence for each student-course combination
-  console.log('Getting first occurrences...');
-  const subquery = await CourseStatusHistory.findAll({
-    where: firstOccurrenceWhere,
-    attributes: [
-      "student_id",
-      "course_id",
-      [Sequelize.fn("MIN", Sequelize.col("created_at")), "first_date"],
-    ],
-    group: ["student_id", "course_id"],
-    raw: true,
-  });
-
-  console.log(`Found ${subquery.length} total student-course combinations before date filtering`);
-
-  // Convert all dates to UTC strings to avoid timezone conversion
-  const subqueryWithUTC = subquery.map(item => {
-    const utcDate = new Date(item.first_date);
-    return {
-      ...item,
-      first_date_utc: utcDate.toISOString(), // Full UTC timestamp
-      first_date_only: utcDate.toISOString().split('T')[0] // YYYY-MM-DD only
-    };
-  });
-
-  // Log all subquery results with UTC timestamps
-  console.log('\n--- ALL SUBQUERY RESULTS (UTC) ---');
-  subqueryWithUTC.forEach((item, index) => {
-    console.log(`${index + 1}. Student: ${item.student_id}, Course: ${item.course_id}, UTC Date: ${item.first_date_utc}, Date Only: ${item.first_date_only}`);
-  });
-
-  if (subqueryWithUTC.length === 0) {
-    console.log('No combinations found, returning empty result');
-    return {
-      view: "colleges-pivot",
-      rows: [],
-      columns: ["college", "total"],
-      statuses: [],
-      totals: {
-        statusTotals: {},
-        grandTotal: 0,
-      },
-    };
+  let havingClause = '';
+  if (isMainDateFilter) {
+    const havingConditions = [];
+    if (startDate) {
+      havingConditions.push(`DATE(${aggFn}(csh_inner.created_at)) >= :startDate`);
+      replacements.startDate = startDate;
+    }
+    if (endDate) {
+      havingConditions.push(`DATE(${aggFn}(csh_inner.created_at)) <= :endDate`);
+      replacements.endDate = endDate;
+    }
+    havingClause = `HAVING ${havingConditions.join(' AND ')}`;
   }
 
-  // Apply main date range filter if provided (filter on UTC date)
-  let filteredSubquery = subqueryWithUTC;
-  if (startDate || endDate) {
-    console.log('\n--- APPLYING DATE FILTER (UTC) ---');
-    console.log('Filter criteria:', { startDate, endDate });
-    
-    filteredSubquery = subqueryWithUTC.filter(item => {
-      const datePart = item.first_date_only;
-      let include = true;
-      
-      console.log(`\nChecking Student ${item.student_id}:`);
-      console.log(`  UTC Date: ${item.first_date_utc}`);
-      console.log(`  Date Part: ${datePart}`);
-      
-      if (startDate) {
-        console.log(`  Start Date: ${startDate}`);
-        console.log(`  Is ${datePart} >= ${startDate}? ${datePart >= startDate}`);
-        if (datePart < startDate) {
-          console.log(`  ❌ EXCLUDED: UTC date ${datePart} is before start date ${startDate}`);
-          include = false;
-        }
-      }
-      
-      if (endDate && include) {
-        console.log(`  End Date: ${endDate}`);
-        console.log(`  Is ${datePart} <= ${endDate}? ${datePart <= endDate}`);
-        if (datePart > endDate) {
-          console.log(`  ❌ EXCLUDED: UTC date ${datePart} is after end date ${endDate}`);
-          include = false;
-        }
-      }
-      
-      if (include) {
-        console.log(`  ✅ INCLUDED: Student ${item.student_id} passes date filter`);
-      }
-      
-      return include;
-    });
-    
-    console.log(`\n--- DATE FILTER RESULTS ---`);
-    console.log(`After date filtering: ${filteredSubquery.length} combinations`);
-    console.log(`Filtered out ${subqueryWithUTC.length - filteredSubquery.length} combinations`);
-    
-    // Log which students passed/failed
-    const passedIds = filteredSubquery.map(item => item.student_id);
-    const failedIds = subqueryWithUTC
-      .filter(item => !passedIds.includes(item.student_id))
-      .map(item => item.student_id);
-    
-    console.log('Students PASSED:', passedIds);
-    console.log('Students FAILED:', failedIds);
+  let courseFilter = '';
+  if (courseWhereClause.course_id) {
+    courseFilter = `AND uc.course_id = :courseId`;
+    replacements.courseId = courseWhereClause.course_id;
   }
 
-  if (filteredSubquery.length === 0) {
-    console.log('No combinations after date filtering, returning empty');
+  const sql = `
+    SELECT 
+      csh.student_id,
+      csh.course_id,
+      csh.course_status,
+      uc.university_name AS college
+    FROM course_status_journeys csh
+    INNER JOIN (
+      SELECT 
+        csh_inner.student_id, 
+        csh_inner.course_id, 
+        ${aggFn}(csh_inner.created_at) AS target_date
+      FROM course_status_journeys csh_inner
+      ${innerWhere}
+      GROUP BY csh_inner.student_id, csh_inner.course_id
+      ${havingClause}
+    ) sub ON csh.student_id = sub.student_id 
+         AND csh.course_id = sub.course_id 
+         AND csh.created_at = sub.target_date
+    INNER JOIN university_courses uc ON csh.course_id = uc.course_id ${courseFilter}
+  `;
+
+  const records = await sequelize.query(sql, {
+    replacements,
+    type: QueryTypes.SELECT,
+  });
+
+  if (records.length === 0) {
     return {
       view: "colleges-pivot",
       rows: [],
       columns: ["college", "total"],
       statuses: [],
-      totals: {
-        statusTotals: {},
-        grandTotal: 0,
-      },
+      totals: { statusTotals: {}, grandTotal: 0 },
     };
   }
 
-  // Get the first status records - ONE RECORD PER STUDENT-COURSE COMBINATION
-  console.log('\n--- FETCHING FIRST STATUS RECORDS ---');
-  console.log('Looking for records with:');
-  filteredSubquery.forEach((item, index) => {
-    console.log(`  ${index + 1}. Student: ${item.student_id}, Course: ${item.course_id}, UTC Date: ${item.first_date_utc}`);
-  });
-
-  const firstRecords = await CourseStatusHistory.findAll({
-    where: {
-      [Op.or]: filteredSubquery.map((item) => ({
-        student_id: item.student_id,
-        course_id: item.course_id,
-        created_at: item.first_date,
-      })),
-    },
-    include: [
-      {
-        model: UniversityCourse,
-        as: "university_course",
-        required: true,
-        where: courseWhereClause,
-        attributes: ["university_name"],
-      },
-    ],
-    attributes: [
-      "student_id",
-      "course_id",
-      "course_status",
-      "created_at",
-      [Sequelize.col("university_course.university_name"), "college"],
-    ],
-    raw: true,
-  });
-
-  console.log(`\nRetrieved ${firstRecords.length} first status records`);
-
-  // Convert to UTC for display
-  const firstRecordsWithUTC = firstRecords.map(record => {
-    const utcDate = new Date(record.created_at);
-    return {
-      ...record,
-      created_at_utc: utcDate.toISOString(),
-      created_at_date_only: utcDate.toISOString().split('T')[0]
-    };
-  });
-
-  // Log all records with UTC timestamps
-  console.log('\n--- ALL FIRST RECORDS WITH UTC TIMESTAMPS ---');
-  const studentIdsList = [];
-  firstRecordsWithUTC.forEach((record, index) => {
-    console.log(`${index + 1}. Student: ${record.student_id}`);
-    console.log(`   Course: ${record.course_id}`);
-    console.log(`   College: "${record.college}"`);
-    console.log(`   Status: "${record.course_status}"`);
-    console.log(`   UTC Timestamp: ${record.created_at_utc}`);
-    console.log(`   UTC Date Only: ${record.created_at_date_only}`);
-    console.log('---');
-    studentIdsList.push(record.student_id);
-  });
-  
-  console.log('\n--- ALL STUDENT IDs INCLUDED IN COUNT ---');
-  console.log(studentIdsList);
-  console.log(`Total unique students: ${new Set(studentIdsList).size}`);
-
-  // Process the data - count each student-course combination ONCE using UTC dates
+  // Aggregate by college
   const collegeMap = new Map();
   const statusTotals = {};
-  const studentCourseMap = new Map();
 
-  firstRecordsWithUTC.forEach(record => {
-    const college = record.college;
-    const status = record.course_status;
-    const studentCourseKey = `${record.student_id}_${record.course_id}`;
-    const utcDate = record.created_at_date_only;
-    const utcTimestamp = record.created_at_utc;
-
-    // Track this student-course combination with UTC timestamp
-    studentCourseMap.set(studentCourseKey, {
-      student_id: record.student_id,
-      course_id: record.course_id,
-      college: college,
-      status: status,
-      utc_date: utcDate,
-      utc_timestamp: utcTimestamp
-    });
+  records.forEach(record => {
+    const { college, course_status: status } = record;
 
     if (!collegeMap.has(college)) {
-      collegeMap.set(college, {
-        college: college,
-        total: 0,
-        statuses: {},
-        studentIds: [],
-        studentUtcDates: {}
-      });
+      collegeMap.set(college, { college, total: 0, statuses: {} });
     }
 
-    const collegeData = collegeMap.get(college);
-    
-    // Count this student-course combination only once
-    if (!collegeData.statuses[status]) {
-      collegeData.statuses[status] = 0;
-    }
-    collegeData.statuses[status]++;
-    collegeData.total++;
-    collegeData.studentIds.push(record.student_id);
-    collegeData.studentUtcDates[record.student_id] = {
-      date: utcDate,
-      timestamp: utcTimestamp
-    };
-
-    // Update status totals
-    if (!statusTotals[status]) {
-      statusTotals[status] = 0;
-    }
-    statusTotals[status]++;
+    const data = collegeMap.get(college);
+    data.statuses[status] = (data.statuses[status] || 0) + 1;
+    data.total++;
+    statusTotals[status] = (statusTotals[status] || 0) + 1;
   });
 
-  // Log all student-course combinations counted with UTC dates
-  console.log('\n--- ALL STUDENT-COURSE COMBINATIONS COUNTED (UTC) ---');
-  console.log('Total combinations:', studentCourseMap.size);
-  studentCourseMap.forEach((value, key) => {
-    console.log(`Student-Course: ${key}`);
-    console.log(`  College: ${value.college}`);
-    console.log(`  Status: ${value.status}`);
-    console.log(`  UTC Date: ${value.utc_date}`);
-    console.log(`  UTC Timestamp: ${value.utc_timestamp}`);
-  });
-
-  // Log college-wise counts with student IDs and their UTC dates
-  console.log('\n--- COLLEGE WISE COUNTS WITH STUDENT IDs AND UTC DATES ---');
-  for (const [college, data] of collegeMap.entries()) {
-    console.log(`College: "${college}"`);
-    console.log(`  Total: ${data.total}`);
-    console.log(`  Students with UTC Dates:`);
-    data.studentIds.forEach(studentId => {
-      const studentData = data.studentUtcDates[studentId];
-      console.log(`    - ${studentId} @ ${studentData.date} (${studentData.timestamp})`);
-    });
-    console.log(`  Statuses:`, data.statuses);
-  }
-
-  // Log status totals
-  console.log('\n--- STATUS TOTALS ---');
-  console.log(statusTotals);
-
-  // Get all unique statuses
   const allStatuses = Object.keys(statusTotals);
-
-  // Convert to array format
-  const rows = Array.from(collegeMap.values()).map(collegeData => {
-    const row = {
-      college: collegeData.college,
-      total: collegeData.total
-    };
-    
-    allStatuses.forEach(status => {
-      row[status] = collegeData.statuses[status] || 0;
-    });
-    
+  const rows = Array.from(collegeMap.values()).map(d => {
+    const row = { college: d.college, total: d.total };
+    allStatuses.forEach(s => { row[s] = d.statuses[s] || 0; });
     return row;
   });
 
-  // Sort by college name
   rows.sort((a, b) => a.college.localeCompare(b.college));
-
   const grandTotal = rows.reduce((sum, row) => sum + row.total, 0);
-  
-  // Verify status totals sum equals grand total
-  const statusSum = Object.values(statusTotals).reduce((sum, val) => sum + val, 0);
-  console.log('\n--- FINAL VERIFICATION ---');
-  console.log('Grand Total:', grandTotal);
-  console.log('Sum of status totals:', statusSum);
-  console.log('Match:', grandTotal === statusSum ? 'YES ✓' : 'NO ✗');
-  
-  if (grandTotal !== statusSum) {
-    console.log('❌ MISMATCH DETECTED!');
-    console.log('Status totals:', statusTotals);
-  }
-
-  console.log('========== END DEBUG ==========\n');
 
   return {
     view: "colleges-pivot",
-    rows: rows,
+    rows,
     columns: ["college", ...allStatuses, "total"],
     statuses: allStatuses,
-    totals: {
-      statusTotals,
-      grandTotal,
-    },
-    debug: {
-      studentCourseCombinations: Array.from(studentCourseMap.values()),
-      totalCombinations: studentCourseMap.size
-    }
+    totals: { statusTotals, grandTotal },
   };
 };
+
 const getCounsellorPivotReport = async (
   whereClause,
   startDate,
@@ -1136,294 +921,167 @@ const getCounsellorPivotReport = async (
   firstTimeFrom,
   firstTimeTo,
 ) => {
-  console.log(`========== COUNSELLOR PIVOT REPORT DEBUG (${level}) ==========`);
-  console.log('Filters:', { startDate, endDate, firstTimeFrom, firstTimeTo });
-  
-  // Build the where clause for first occurrence filtering
-  const firstOccurrenceWhere = {};
-  
-  // Add first time date range filter if provided (using UTC)
-  if (firstTimeFrom || firstTimeTo) {
-    firstOccurrenceWhere.created_at = {};
+  const isFirstTimeDateFilter = !!(firstTimeFrom || firstTimeTo);
+  const isMainDateFilter = !!(startDate || endDate);
+  const aggFn = isFirstTimeDateFilter ? 'MIN' : 'MAX';
+
+  // Build single raw SQL query
+  let innerWhere = '';
+  const replacements = {};
+
+  if (isFirstTimeDateFilter) {
+    const conditions = [];
     if (firstTimeFrom) {
-      const fromDateObj = new Date(firstTimeFrom + 'T00:00:00Z'); // UTC
-      firstOccurrenceWhere.created_at[Op.gte] = fromDateObj;
-      console.log('First time from:', fromDateObj.toISOString());
+      conditions.push(`csh_inner.created_at >= :firstTimeFrom`);
+      replacements.firstTimeFrom = firstTimeFrom + 'T00:00:00Z';
     }
     if (firstTimeTo) {
-      const toDateObj = new Date(firstTimeTo + 'T23:59:59.999Z'); // UTC end of day
-      firstOccurrenceWhere.created_at[Op.lte] = toDateObj;
-      console.log('First time to:', toDateObj.toISOString());
+      conditions.push(`csh_inner.created_at <= :firstTimeTo`);
+      replacements.firstTimeTo = firstTimeTo + 'T23:59:59.999Z';
     }
+    innerWhere = `WHERE ${conditions.join(' AND ')}`;
   }
 
-  // Get the FIRST occurrence for each student-course combination
-  console.log('Getting first occurrences...');
-  const subquery = await CourseStatusHistory.findAll({
-    where: firstOccurrenceWhere,
-    attributes: [
-      "student_id",
-      "course_id",
-      [Sequelize.fn("MIN", Sequelize.col("created_at")), "first_date"],
-    ],
-    group: ["student_id", "course_id"],
-    raw: true,
+  let havingClause = '';
+  if (isMainDateFilter) {
+    const havingConditions = [];
+    if (startDate) {
+      havingConditions.push(`DATE(${aggFn}(csh_inner.created_at)) >= :startDate`);
+      replacements.startDate = startDate;
+    }
+    if (endDate) {
+      havingConditions.push(`DATE(${aggFn}(csh_inner.created_at)) <= :endDate`);
+      replacements.endDate = endDate;
+    }
+    havingClause = `HAVING ${havingConditions.join(' AND ')}`;
+  }
+
+  let courseFilter = '';
+  if (courseWhereClause.course_id) {
+    courseFilter = `AND uc.course_id = :courseId`;
+    replacements.courseId = courseWhereClause.course_id;
+  }
+
+  const sql = `
+    SELECT 
+      csh.student_id,
+      csh.course_id,
+      csh.course_status,
+      csh.created_at
+    FROM course_status_journeys csh
+    INNER JOIN (
+      SELECT 
+        csh_inner.student_id, 
+        csh_inner.course_id, 
+        ${aggFn}(csh_inner.created_at) AS target_date
+      FROM course_status_journeys csh_inner
+      ${innerWhere}
+      GROUP BY csh_inner.student_id, csh_inner.course_id
+      ${havingClause}
+    ) sub ON csh.student_id = sub.student_id 
+         AND csh.course_id = sub.course_id 
+         AND csh.created_at = sub.target_date
+    INNER JOIN university_courses uc ON csh.course_id = uc.course_id ${courseFilter}
+  `;
+
+  const records = await sequelize.query(sql, {
+    replacements,
+    type: QueryTypes.SELECT,
   });
 
-  console.log(`Found ${subquery.length} total student-course combinations before date filtering`);
-
-  // Convert all dates to UTC strings to avoid timezone conversion
-  const subqueryWithUTC = subquery.map(item => {
-    const utcDate = new Date(item.first_date);
-    return {
-      ...item,
-      first_date_utc: utcDate.toISOString(), // Full UTC timestamp
-      first_date_only: utcDate.toISOString().split('T')[0] // YYYY-MM-DD only
-    };
-  });
-
-  if (subqueryWithUTC.length === 0) {
-    console.log('No combinations found, returning empty result');
-    return {
-      view: `${level}-pivot`,
-      rows: [],
-      columns: ["counsellor", "total"],
-      statuses: [],
-      level: level,
-      totals: {
-        statusTotals: {},
-        grandTotal: 0,
-      },
-    };
-  }
-
-  // Apply main date range filter if provided (using UTC dates)
-  let filteredSubquery = subqueryWithUTC;
-  if (startDate || endDate) {
-    console.log('\n--- APPLYING DATE FILTER (UTC) ---');
-    console.log('Filter criteria:', { startDate, endDate });
-    
-    filteredSubquery = subqueryWithUTC.filter(item => {
-      const datePart = item.first_date_only;
-      let include = true;
-      
-      if (startDate) {
-        if (datePart < startDate) include = false;
-      }
-      
-      if (endDate && include) {
-        if (datePart > endDate) include = false;
-      }
-      
-      return include;
-    });
-    
-    console.log(`After date filtering: ${filteredSubquery.length} combinations`);
-    console.log(`Filtered out ${subqueryWithUTC.length - filteredSubquery.length} combinations`);
-  }
-
-  if (filteredSubquery.length === 0) {
-    console.log('No combinations after date filtering, returning empty');
+  if (records.length === 0) {
     return {
       view: `${level}-pivot`,
       rows: [],
       columns: ["counsellor", "total"],
       statuses: [],
-      level: level,
-      totals: {
-        statusTotals: {},
-        grandTotal: 0,
-      },
+      level,
+      totals: { statusTotals: {}, grandTotal: 0 },
     };
   }
 
-  // Get the first status records - ONE PER STUDENT-COURSE COMBINATION
-  console.log('\n--- FETCHING FIRST STATUS RECORDS ---');
-  
-  const firstRecords = await CourseStatusHistory.findAll({
-    where: {
-      [Op.or]: filteredSubquery.map((item) => ({
-        student_id: item.student_id,
-        course_id: item.course_id,
-        created_at: item.first_date,
-      })),
-    },
-    include: [
-      {
-        model: UniversityCourse,
-        as: "university_course",
-        required: true,
-        where: courseWhereClause,
-        attributes: [],
-      },
-    ],
-    attributes: ["student_id", "course_id", "course_status", "created_at"],
-    raw: true,
-  });
-
-  console.log(`Retrieved ${firstRecords.length} first status records`);
-
-  // Convert to UTC for processing
-  const firstRecordsWithUTC = firstRecords.map(record => {
-    const utcDate = new Date(record.created_at);
-    return {
-      ...record,
-      created_at_utc: utcDate.toISOString(),
-      created_at_date_only: utcDate.toISOString().split('T')[0]
-    };
-  });
-
-  // Get student IDs from first records
-  const studentIds = [...new Set(firstRecordsWithUTC.map((r) => r.student_id))];
-
+  // Get student IDs from records
+  const studentIds = [...new Set(records.map(r => r.student_id))];
   const studentCounsellorMap = {};
 
   if (level === "l2") {
-    // For L2, use student table's assigned_counsellor_id
     const students = await Student.findAll({
-      where: {
-        student_id: studentIds,
-      },
+      where: { student_id: studentIds },
       attributes: ["student_id", "assigned_counsellor_id"],
       raw: true,
     });
-
-    students.forEach((student) => {
-      const counsellorId = student.assigned_counsellor_id;
-      studentCounsellorMap[student.student_id] = counsellorId && counsellorId.trim() !== "" 
-        ? counsellorId 
-        : "unassigned";
+    students.forEach(student => {
+      const cId = student.assigned_counsellor_id;
+      studentCounsellorMap[student.student_id] = cId && cId.trim() !== "" ? cId : "unassigned";
     });
   } else {
     // For L3, get counsellor from journey table
-    const journeyFirstRecords = await CourseStatusJourney.findAll({
+    const journeyRecords = await CourseStatusJourney.findAll({
       where: {
         student_id: studentIds,
-        created_at: {
-          [Op.in]: firstRecordsWithUTC.map(r => r.created_at)
-        }
+        created_at: { [Op.in]: records.map(r => r.created_at) },
       },
       attributes: ["student_id", "course_id", "assigned_l3_counsellor_id"],
       raw: true,
     });
-
     const journeyMap = {};
-    journeyFirstRecords.forEach(record => {
-      const key = `${record.student_id}_${record.course_id}`;
-      journeyMap[key] = record.assigned_l3_counsellor_id && record.assigned_l3_counsellor_id.trim() !== ""
-        ? record.assigned_l3_counsellor_id
-        : "unassigned";
+    journeyRecords.forEach(r => {
+      const key = `${r.student_id}_${r.course_id}`;
+      journeyMap[key] = r.assigned_l3_counsellor_id && r.assigned_l3_counsellor_id.trim() !== ""
+        ? r.assigned_l3_counsellor_id : "unassigned";
     });
-
-    firstRecordsWithUTC.forEach(record => {
-      const key = `${record.student_id}_${record.course_id}`;
+    records.forEach(r => {
+      const key = `${r.student_id}_${r.course_id}`;
       studentCounsellorMap[key] = journeyMap[key] || "unassigned";
     });
   }
 
-  // Process the data - count each student-course combination ONCE using UTC dates
+  // Aggregate by counsellor
   const counsellorMap = new Map();
   const statusTotals = {};
-  const studentCourseMap = new Map();
 
-  firstRecordsWithUTC.forEach((record) => {
+  records.forEach(record => {
     let counsellorId;
-
     if (level === "l2") {
       counsellorId = studentCounsellorMap[record.student_id] || "unassigned";
     } else {
-      const key = `${record.student_id}_${record.course_id}`;
-      counsellorId = studentCounsellorMap[key] || "unassigned";
+      counsellorId = studentCounsellorMap[`${record.student_id}_${record.course_id}`] || "unassigned";
     }
 
     const status = record.course_status;
-    const studentCourseKey = `${record.student_id}_${record.course_id}`;
-    const utcDate = record.created_at_date_only;
-    const utcTimestamp = record.created_at_utc;
-
-    // Track this student-course combination with UTC timestamp
-    studentCourseMap.set(studentCourseKey, {
-      student_id: record.student_id,
-      course_id: record.course_id,
-      counsellorId: counsellorId,
-      status: status,
-      utc_date: utcDate,
-      utc_timestamp: utcTimestamp
-    });
 
     if (!counsellorMap.has(counsellorId)) {
-      counsellorMap.set(counsellorId, {
-        counsellorId: counsellorId,
-        total: 0,
-        statuses: {},
-        studentIds: [],
-        studentUtcDates: {}
-      });
+      counsellorMap.set(counsellorId, { counsellorId, total: 0, statuses: {} });
     }
 
-    const counsellorData = counsellorMap.get(counsellorId);
-    
-    // Count this student-course combination only once
-    if (!counsellorData.statuses[status]) {
-      counsellorData.statuses[status] = 0;
-    }
-    counsellorData.statuses[status]++;
-    counsellorData.total++;
-    counsellorData.studentIds.push(record.student_id);
-    counsellorData.studentUtcDates[record.student_id] = {
-      date: utcDate,
-      timestamp: utcTimestamp,
-      status: status
-    };
-
-    // Update status totals
-    if (!statusTotals[status]) {
-      statusTotals[status] = 0;
-    }
-    statusTotals[status]++;
+    const data = counsellorMap.get(counsellorId);
+    data.statuses[status] = (data.statuses[status] || 0) + 1;
+    data.total++;
+    statusTotals[status] = (statusTotals[status] || 0) + 1;
   });
 
-  // Log for debugging (optional)
-  console.log(`\n--- ${level.toUpperCase()} COUNSELLOR COUNTS ---`);
-  console.log('Total combinations:', studentCourseMap.size);
-  
   // Get counsellor names
   const counsellorIds = Array.from(counsellorMap.keys()).filter(id => id !== "unassigned");
   const counsellorNameMap = {};
 
   if (counsellorIds.length > 0) {
     const counsellors = await Counsellor.findAll({
-      where: {
-        counsellor_id: counsellorIds,
-      },
+      where: { counsellor_id: counsellorIds },
       attributes: ["counsellor_id", "counsellor_name"],
       raw: true,
     });
-
-    counsellors.forEach((counsellor) => {
-      counsellorNameMap[counsellor.counsellor_id] = counsellor.counsellor_name;
-    });
+    counsellors.forEach(c => { counsellorNameMap[c.counsellor_id] = c.counsellor_name; });
   }
 
   const allStatuses = Object.keys(statusTotals);
 
-  const rows = Array.from(counsellorMap.values()).map((item) => {
-    let counsellorName;
-    if (item.counsellorId === "unassigned") {
-      counsellorName = "Unassigned";
-    } else {
-      counsellorName = counsellorNameMap[item.counsellorId] || `Unknown (${item.counsellorId})`;
-    }
+  const rows = Array.from(counsellorMap.values()).map(item => {
+    const counsellorName = item.counsellorId === "unassigned"
+      ? "Unassigned"
+      : counsellorNameMap[item.counsellorId] || `Unknown (${item.counsellorId})`;
 
-    const row = {
-      counsellor: counsellorName,
-      total: item.total,
-    };
-
-    allStatuses.forEach((status) => {
-      row[status] = item.statuses[status] || 0;
-    });
-
+    const row = { counsellor: counsellorName, total: item.total };
+    allStatuses.forEach(s => { row[s] = item.statuses[s] || 0; });
     return row;
   });
 
@@ -1435,27 +1093,17 @@ const getCounsellorPivotReport = async (
 
   const grandTotal = rows.reduce((sum, row) => sum + row.total, 0);
 
-  console.log(`\n--- ${level.toUpperCase()} FINAL TOTALS ---`);
-  console.log('Grand Total:', grandTotal);
-  console.log('Status Totals:', statusTotals);
-  console.log(`========== END COUNSELLOR ${level} DEBUG ==========\n`);
-
   return {
     view: `${level}-pivot`,
-    rows: rows,
+    rows,
     columns: ["counsellor", ...allStatuses, "total"],
     statuses: allStatuses,
-    level: level,
-    totals: {
-      statusTotals,
-      grandTotal,
-    },
-    debug: {
-      studentCourseCombinations: Array.from(studentCourseMap.values()),
-      totalCombinations: studentCourseMap.size
-    }
+    level,
+    totals: { statusTotals, grandTotal },
   };
 };
+
+
 
 
 

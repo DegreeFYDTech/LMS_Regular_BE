@@ -49,22 +49,6 @@ export const exportStudentsCSV = async (req, res) => {
       return trimmedName.charAt(0) + '***';
     };
 
-    const maskEmail = (email) => {
-      if (!email || typeof email !== 'string') return '***@xxxxxx.com';
-      const trimmedEmail = email.trim();
-      if (!trimmedEmail.includes('@')) return '***@xxxxxx.com';
-      const atIndex = trimmedEmail.indexOf('@');
-      const username = trimmedEmail.substring(0, Math.min(atIndex, 3));
-      return username + '***@xxxxxx.com';
-    };
-
-    const maskPhone = (phone) => {
-      if (!phone || typeof phone !== 'string') return 'XXXXXX';
-      const trimmedPhone = phone.trim();
-      if (trimmedPhone.length <= 4) return 'XXXXXX';
-      return trimmedPhone.substring(0, 4) + 'XXXXXX';
-    };
-
     const validDetails = students.map((s) => {
       const counsellorNameL2 = s?.assignedCounsellor?.counsellor_name || '';
       const counsellorNameL3 = s?.assignedCounsellorL3?.counsellor_name || '';
@@ -72,20 +56,14 @@ export const exportStudentsCSV = async (req, res) => {
       const leadActivities = s?.lead_activities?.[0] || {};
 
       let studentName = s?.student_name || '';
-      let studentEmail = s?.student_email || '';
-      let studentPhone = s?.student_phone || '';
 
       if (isAnalyser) {
         studentName = maskStudentName(studentName);
-        studentEmail = maskEmail(studentEmail);
-        studentPhone = maskPhone(studentPhone);
       }
 
       return {
         student_id: s?.student_id || '',
         student_name: studentName,
-        student_email: studentEmail,
-        student_phone: studentPhone,
         highest_degree: s?.highest_degree || '',
         completion_year: s?.completion_year || '',
         current_profession: s?.current_profession || '',
@@ -148,8 +126,6 @@ export const exportStudentsCSV = async (req, res) => {
     const validFields = [
       'student_id',
       'student_name',
-      'student_email',
-      'student_phone',
       'highest_degree',
       'completion_year',
       'current_profession',
@@ -211,8 +187,6 @@ export const exportStudentsCSV = async (req, res) => {
     const fieldDisplayNames = {
       student_id: 'Student ID',
       student_name: isAnalyser ? 'Student Name (Masked)' : 'Student Name',
-      student_email: isAnalyser ? 'Student Email (Masked)' : 'Student Email',
-      student_phone: isAnalyser ? 'Student Phone (Masked)' : 'Student Phone',
       highest_degree: 'Highest Degree',
       completion_year: 'Completion Year',
       current_profession: 'Current Profession',

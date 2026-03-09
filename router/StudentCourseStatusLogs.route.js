@@ -9,13 +9,14 @@ import {
   getStudentJourneyDetails,
   replaceL3CounsellorForSpecificJourney,
   replaceL3CounsellorForStudents,
+  getFormData,
 } from "../controllers/StudentCourseStatusLogs.controller.js";
 import { sentStatustoCollege } from "../controllers/Colleges_sending_logic.js";
 
 const router = express.Router();
 
 router.post("/sentStatustoCollege", sentStatustoCollege);
-
+router.get("/get-forms-data", getFormData);
 router.post(
   "/distinct-by-students",
   authorize(["Supervisor", "to"]),

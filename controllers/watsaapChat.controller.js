@@ -762,8 +762,13 @@ export const markMessagesAsRead = async (req, res) => {
   console.log("hi");
   try {
     const { otherParticipantNumber } = req.body;
-
-    if (!otherParticipantNumber) {
+    const studentDetails = await Student.findOne({
+      where: {
+        student_id: otherParticipantNumber,
+      },
+      attributes: ["student_id", "student_phone", "number_of_unread_messages"],
+    });
+    if (!studentDetails) {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
@@ -771,8 +776,7 @@ export const markMessagesAsRead = async (req, res) => {
       });
     }
 
-    const formattedParticipantNumber = FROM_NUMBER;
-    const formattedOtherNumber = ensureCountryCode(otherParticipantNumber);
+    const formattedOtherNumber = ensureCountryCode(studentDetails.student_phone);
     console.log("trigger22");
     // const chat = await findChatBetween(formattedParticipantNumber, formattedOtherNumber);
 

@@ -29,7 +29,8 @@ export const createRemark = async (data) => {
       remarks: data.remarks,
       callback_date: data.callback_date || null,
       callback_time: data.callback_time || null,
-      feesAmount:data.feesAmount
+      feesAmount:data.feesAmount,
+      enrollmentDocumentUrl:data.enrollmentDocumentUrl
     });
 
     return newRemark;

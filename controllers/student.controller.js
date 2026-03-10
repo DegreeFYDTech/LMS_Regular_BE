@@ -318,15 +318,16 @@ export const updateStudentStatus = async (req, res) => {
       where: { student_id: studentId },
       returning: true,
     });
-
-    if (
-      leadStatus === "Enrolled" &&
-      req.files &&
-      req.files.enrollmentDocument
-    ) {
-      const file = req.files.enrollmentDocument;
-      enrolledDocumentUrl = await uploadToCloudinary(file.data, file.name);
+    let enrolledDocumentUrl1;
+    // console.log("Updated student fields:", leadStatus, enrolledDocumentUrl);
+    if (leadStatus === "Enrolled" && enrolledDocumentUrl) {
+      console.log("hello from cloudinary");
+      enrolledDocumentUrl1 = await uploadToCloudinary(
+        enrolledDocumentUrl,
+        `enrollementDocument-${studentId}`,
+      );
     }
+    console.log("enrolledDocumentUrl", enrolledDocumentUrl1);
     const remarkData = {
       student_id: studentId,
       counsellor_id: counsellorRole !== "Supervisor" ? counsellorId : null,
@@ -338,12 +339,12 @@ export const updateStudentStatus = async (req, res) => {
       sub_calling_status: subCallingStatus,
       remarks: remark,
       callback_date: callbackDate,
-      enrolledDocumentUrl: enrolledDocumentUrl || null,
+      enrolledDocumentUrl: enrolledDocumentUrl1 || null,
       callback_time: callbackTime,
     };
-
+    console.log("Remark data to be created:", remarkData);
     const newRemark = await createRemark(remarkData);
-    // console.log("New remark created:", leadStatus, leadSubStatus, remarkData);
+    console.log("New remark created:", remarkData);
     if (
       leadStatus === "NotInterested" &&
       leadSubStatus === "Only_Online course"

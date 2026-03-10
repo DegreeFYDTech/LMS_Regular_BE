@@ -231,7 +231,7 @@ export const updateStudentStatus = async (req, res) => {
               stream: courseDetails.stream,
             },
           );
-          console.log(l3data.data)
+          console.log(l3data.data);
         }
         const log = await CourseStatusJourney.create({
           student_id: studentId,
@@ -259,6 +259,7 @@ export const updateStudentStatus = async (req, res) => {
       }
     } else if (
       leadStatus === "Admission" ||
+      leadStatus === "Enrolled" ||
       leadStatus === "Application" ||
       (leadStatus === "Pre Application" && leadSubStatus === "Walkin marked")
     ) {
@@ -318,6 +319,14 @@ export const updateStudentStatus = async (req, res) => {
       returning: true,
     });
 
+    if (
+      leadStatus === "enrolled" &&
+      req.files &&
+      req.files.enrollmentDocument
+    ) {
+      const file = req.files.enrollmentDocument;
+      enrolledDocumentUrl = await uploadToCloudinary(file.data, file.name);
+    }
     const remarkData = {
       student_id: studentId,
       counsellor_id: counsellorRole !== "Supervisor" ? counsellorId : null,
@@ -329,6 +338,7 @@ export const updateStudentStatus = async (req, res) => {
       sub_calling_status: subCallingStatus,
       remarks: remark,
       callback_date: callbackDate,
+      enrolledDocumentUrl: enrolledDocumentUrl || null,
       callback_time: callbackTime,
     };
 

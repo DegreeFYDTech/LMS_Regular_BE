@@ -320,7 +320,7 @@ export const updateStudentStatus = async (req, res) => {
     });
 
     if (
-      leadStatus === "enrolled" &&
+      leadStatus === "Enrolled" &&
       req.files &&
       req.files.enrollmentDocument
     ) {

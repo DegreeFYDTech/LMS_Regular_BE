@@ -17,86 +17,139 @@ export const getCounsellorStats = async (req, res) => {
     let dateFilter = "";
     if (start_date && end_date) {
       dateFilter = `
-        AND (lr.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date 
+        AND (fs.first_status_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date 
         BETWEEN '${start_date}' AND '${end_date}'
       `;
     }
 
     let counsellorFilter = "";
     if (counsellor_id) {
-      counsellorFilter = ` AND s.assigned_counsellor_l3_id = ${counsellor_id} `;
+      counsellorFilter = ` AND fs.assigned_l3_counsellor_id = '${counsellor_id}' `;
     }
 
     const stats = await sequelize.query(
       `
-      WITH lr AS (
-        SELECT DISTINCT ON (student_id)
+      WITH 
+      -- ALL distinct student-course combinations
+      all_combinations AS (
+        SELECT DISTINCT 
+            student_id, 
+            course_id
+        FROM course_status_journeys
+      ),
+
+      -- Get first status details for each combination
+      first_status AS (
+        SELECT DISTINCT ON (student_id, course_id)
             student_id,
-            remarks,
-            created_at,
-            counsellor_id
-        FROM student_remarks 
-        ORDER BY student_id, created_at DESC
+            course_id,
+            course_status,
+            created_at AS first_status_date,
+            counsellor_id AS status_created_by,
+            assigned_l3_counsellor_id  -- The L3 counsellor assigned to this student-course
+        FROM course_status_journeys
+        ORDER BY student_id, course_id, created_at ASC
       ),
 
-      lr_with_counsellor_role AS (
-        SELECT 
-            lr.*,
-            c.role AS counsellor_role
-        FROM lr
-        LEFT JOIN counsellors c ON lr.counsellor_id = c.counsellor_id
+      -- Get FIRST remark by the ASSIGNED L3 COUNSELLOR for each student-course
+      first_remark_by_l3 AS (
+        SELECT DISTINCT ON (fs.student_id, fs.course_id)
+            fs.student_id,
+            fs.course_id,
+            sr.created_at AS first_remark_date
+        FROM first_status fs
+        LEFT JOIN student_remarks sr 
+            ON sr.student_id = fs.student_id 
+            AND sr.counsellor_id = fs.assigned_l3_counsellor_id  -- Only remarks by the assigned L3 counsellor
+        ORDER BY fs.student_id, fs.course_id, sr.created_at ASC
       ),
 
+      -- Get latest status for active check
+      latest_status AS (
+        SELECT DISTINCT ON (student_id, course_id)
+            student_id,
+            course_id,
+            course_status AS latest_status
+        FROM course_status_journeys
+        ORDER BY student_id, course_id, created_at DESC
+      ),
+
+      -- Base table with ALL combinations
       base AS (
         SELECT 
-            csj.student_id,
-            csj.course_id,
-            csj.latest_course_status,
+            ac.student_id,
+            ac.course_id,
+            fs.first_status_date,
+            fs.status_created_by,
+            fs.assigned_l3_counsellor_id,
+            fr.first_remark_date,  -- First remark by assigned L3 counsellor (NULL if no remark)
+            ls.latest_status,
+            -- Calculate days difference ONLY if remark exists
             CASE 
-                WHEN lr.counsellor_role = 'l3'
-                THEN (lr.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')
-                ELSE (csj.updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')
-            END AS last_action_ist,
-            s.assigned_counsellor_l3_id,
+                WHEN fr.first_remark_date IS NOT NULL 
+                THEN GREATEST(0, EXTRACT(DAY FROM (fr.first_remark_date - fs.first_status_date)))
+                ELSE NULL
+            END AS days_to_first_action,
             c.counsellor_name,
-            CASE 
-                WHEN lr.counsellor_role = 'l2' THEN 1
-                ELSE 0
-            END AS is_initiated
-        FROM latest_course_statuses csj
-        JOIN students s ON csj.student_id = s.student_id
-        JOIN counsellors c ON s.assigned_counsellor_l3_id = c.counsellor_id
-        LEFT JOIN lr_with_counsellor_role lr ON lr.student_id = csj.student_id
-        WHERE csj.latest_course_status <> 'Shortlisted'
+            CONCAT(ac.student_id, '_', ac.course_id) AS student_course_key
+        FROM all_combinations ac
+        JOIN first_status fs ON ac.student_id = fs.student_id AND ac.course_id = fs.course_id
+        LEFT JOIN first_remark_by_l3 fr ON ac.student_id = fr.student_id AND ac.course_id = fr.course_id
+        LEFT JOIN latest_status ls ON ac.student_id = ls.student_id AND ac.course_id = ls.course_id
+        LEFT JOIN counsellors c ON fs.assigned_l3_counsellor_id = c.counsellor_id
+        WHERE fs.course_status <> 'Shortlisted'
         ${dateFilter}
         ${counsellorFilter}
-      ),
-
-      active_forms AS (
-        SELECT *
-        FROM base
-        WHERE latest_course_status <> 'Registration done'
       )
 
       SELECT 
-          b.assigned_counsellor_l3_id,
-          b.counsellor_name,
-          COUNT(b.student_id) AS total_forms,
-          COUNT(a.student_id) AS active_forms,
-          COUNT(*) FILTER (WHERE b.is_initiated = 1) AS not_initiated_count,
-          COUNT(*) FILTER (
-              WHERE a.last_action_ist >= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') - INTERVAL '3 days'
-          ) AS called_within_3_days,
-          COUNT(*) FILTER (
-              WHERE a.last_action_ist < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') - INTERVAL '3 days'
-              AND a.last_action_ist >= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') - INTERVAL '6 days'
-          ) AS called_4_to_6_days,
-          COUNT(*) FILTER (
-              WHERE a.last_action_ist < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') - INTERVAL '6 days'
-          ) AS called_7_plus_days
+          COALESCE(b.assigned_l3_counsellor_id, 'Unassigned') AS assigned_l3_counsellor_id,
+          COALESCE(b.counsellor_name, 'Unassigned') AS counsellor_name,
+          
+          -- TOTAL FORMS: All combinations for this L3 counsellor
+          COUNT(DISTINCT b.student_course_key) AS total_forms,
+          
+          -- ACTIVE FORMS: Where latest status is not completed
+          COUNT(DISTINCT CASE 
+              WHEN b.latest_status NOT IN (
+                'Registration done',
+                'Partially Paid',
+                'Semester Paid',
+                'Enrollment in Process',
+                'Enrolled'
+              ) OR b.latest_status IS NULL
+              THEN b.student_course_key 
+          END) AS active_forms,
+          
+          -- NOT INITIATED: NO remark from assigned L3 counsellor
+          COUNT(DISTINCT CASE 
+              WHEN b.first_remark_date IS NULL 
+              THEN b.student_course_key 
+          END) AS not_initiated_count,
+          
+          -- CALLED WITHIN 3 DAYS: First remark by L3 counsellor within 3 days (including before status)
+          COUNT(DISTINCT CASE 
+              WHEN b.first_remark_date IS NOT NULL 
+              AND b.days_to_first_action BETWEEN 0 AND 3
+              THEN b.student_course_key 
+          END) AS called_within_3_days,
+          
+          -- CALLED 4-6 DAYS: First remark by L3 counsellor 4-6 days after status
+          COUNT(DISTINCT CASE 
+              WHEN b.first_remark_date IS NOT NULL 
+              AND b.days_to_first_action BETWEEN 4 AND 6
+              THEN b.student_course_key 
+          END) AS called_4_to_6_days,
+          
+          -- CALLED 7+ DAYS: First remark by L3 counsellor 7+ days after status
+          COUNT(DISTINCT CASE 
+              WHEN b.first_remark_date IS NOT NULL 
+              AND b.days_to_first_action >= 7
+              THEN b.student_course_key 
+          END) AS called_7_plus_days
+          
       FROM base b
-      LEFT JOIN active_forms a ON b.student_id = a.student_id AND b.course_id = a.course_id
-      GROUP BY b.assigned_counsellor_l3_id, b.counsellor_name
+      GROUP BY b.assigned_l3_counsellor_id, b.counsellor_name
       ORDER BY total_forms DESC;
     `,
       {
@@ -119,7 +172,6 @@ export const getCounsellorStats = async (req, res) => {
     });
   }
 };
-
 
 export const getFormData = async (req, res) => {
   try {

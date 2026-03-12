@@ -2243,7 +2243,7 @@ async function CgcLandran(
     studentId,
     isPartnerPortal,
   );
-
+console.log(courseHeaderValue, "course.header.value");
   const defaultValues = {
     name: `${userResponse.student_name || ""} ${""}`.trim(),
     email:

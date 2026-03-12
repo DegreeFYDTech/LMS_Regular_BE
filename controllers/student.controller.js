@@ -90,12 +90,11 @@ export const createStudent = async (req, res) => {
           result.student?.first_source_url || leadData.SourceUrl,
         source: result.student?.source || leadData.source,
       };
-
+      processedLeads.push(result);
       console.log("Sending to autoSending with data:", studentWithUTM);
-      // return
       await autoSending(studentWithUTM);
     }
-
+    console.log(processedLeads, "processedLeads in controller");
     res.status(201).json({
       message: "Leads processed",
       leads: processedLeads,

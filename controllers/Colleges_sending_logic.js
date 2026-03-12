@@ -2237,13 +2237,18 @@ async function CgcLandran(
   courseId,
   isPartnerPortal,
 ) {
+  console.log(
+    `🎯 Handling CGC Landran: ${collegeName}`,
+    { courseId },
+    { isPrimary },
+  );
   const courseHeaderValue = await findHeaderValue(
     collegeName,
     courseId,
     studentId,
     isPartnerPortal,
   );
-console.log(courseHeaderValue, "course.header.value");
+  console.log(courseHeaderValue, "course.header.value");
   const defaultValues = {
     name: `${userResponse.student_name || ""} ${""}`.trim(),
     email:
@@ -2278,7 +2283,7 @@ console.log(courseHeaderValue, "course.header.value");
       headers,
       timeout: 15000,
     });
-console.log(apiResponse, "api.response.cgc");
+    console.log(apiResponse, "api.response.cgc");
     const statusResult = CgcApiResponse(apiResponse, collegeName);
 
     if (studentId) {

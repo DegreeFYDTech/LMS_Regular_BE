@@ -406,7 +406,7 @@ export const updateStudentStatus = async (req, res) => {
 
     if (student.source == "CP_Ref") {
       let a = await axios.put(
-        "https://referral-partner-test.degreefyd.com/api/prospect/update-status",
+        "https://referral-api-prod.degreefyd.com/api/prospect/update-status-lms",
         {
           funnel_1: leadStatus,
           funnel_2: leadSubStatus,

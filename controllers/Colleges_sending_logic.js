@@ -2263,7 +2263,7 @@ async function CgcLandran(
     source: "nuvora",
     state: "Punjab",
     city: "Mohali",
-    course: courseHeaderValue.dataValues.values.course || "Btech",
+    course: courseHeaderValue.dataValues.values.course || "B.Tech - CSE - Leet",
     secret_key: "b30c9bcd9fb18a82e41a505fae8490b2",
   };
   const values = courseHeaderValue?.values || defaultValues;

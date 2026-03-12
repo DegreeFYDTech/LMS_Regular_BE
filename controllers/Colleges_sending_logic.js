@@ -2278,7 +2278,7 @@ async function CgcLandran(
       headers,
       timeout: 15000,
     });
-
+console.log(apiResponse, "api.response.cgc");
     const statusResult = CgcApiResponse(apiResponse, collegeName);
 
     if (studentId) {

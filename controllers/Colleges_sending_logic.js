@@ -883,7 +883,7 @@ async function processStandardUniversity(
       data: finalPayload,
       timeout: 15000,
     });
-
+    console.log(apiResponse, "api.response");
     const statusResult = processApiResponse(apiResponse, collegeName);
 
     if (studentId) {
@@ -1403,7 +1403,7 @@ async function handleSpecialUniversity(
       data: specialPayload,
       timeout: 15000,
     });
-console.log(apiResponse, "api.response");
+    console.log(apiResponse, "api.response");
     const statusResult = processSpecialUniversityApiResponse(
       apiResponse,
       collegeName,

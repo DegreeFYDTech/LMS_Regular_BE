@@ -1670,8 +1670,8 @@ async function handleLPUOnline(
       !isPrimary && studentPhone
         ? studentPhone
         : userResponse.student_phone || "",
-    state: "Punjab",
-    city: "Chandigarh",
+     state: "delhi",
+    city: "West Delhi",
     field_new_specialization_for_new_widgets: "BBA",
     field_new_specialization: "BBA",
   };

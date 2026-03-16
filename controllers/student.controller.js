@@ -260,6 +260,7 @@ export const updateStudentStatus = async (req, res) => {
       leadStatus === "Admission" ||
       leadStatus === "Enrolled" ||
       leadStatus === "Application" ||
+      leadStatus === "NotInterested" ||
       (leadStatus === "Pre Application" && leadSubStatus === "Walkin marked")
     ) {
       console.log("Updating as L3 counsellor");

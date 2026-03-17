@@ -1345,7 +1345,7 @@ console.log(courseHeaderValue, "courseHeaderValue");
     },
     {
       Attribute: "mx_Discipline_New",
-      Value: courseHeaderValue.values?.mx_Program_New || "Engineering",
+      Value: courseHeaderValue.values?.mx_Discipline_New || "Engineering",
     },
     {
       Attribute: "Campus",

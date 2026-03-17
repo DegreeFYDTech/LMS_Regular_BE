@@ -1310,11 +1310,12 @@ async function handleSpecialUniversity(
   courseId,
   isPartnerPortal,
 ) {
-  console.log(`🎯 Handling special university: ${collegeName}`, {
-    isPrimary,
-    studentEmail,
-    studentPhone,
-  });
+    const courseHeaderValue = await findHeaderValue(
+    collegeName,
+    courseId,
+    studentId,
+    isPartnerPortal,
+  );
 
   const specialPayload = [
     { Attribute: "FirstName", Value: userResponse.student_name || "" },
@@ -1335,16 +1336,19 @@ async function handleSpecialUniversity(
     },
     { Attribute: "Source", Value: "nuvora" },
     { Attribute: "SourceCampaign", Value: "" },
+    { Attribute: "mx_Discipline_New", Value: courseHeaderValue.values?.mx_Discipline_New || "Engineering" },
+    { Attribute: "mx_Program_Code_New", Value: courseHeaderValue.values?.mx_Program_Code_New || "IT201" },
+    { Attribute: "mx_Program_New", Value: courseHeaderValue.values?.mx_Program_New || "BE Information Technology" },
     { Attribute: "SourceMedium", Value: "" },
     {
-      Attribute: "mx_Campus",
+      Attribute: "Campus",
       Value: collegeName.includes("Chandigarh University")
         ? "Mohali"
         : "Gurgaon",
     },
     { Attribute: "mx_Course2", Value: "Btech" },
     {
-      Attribute: "mx_State",
+      Attribute: "State",
       Value: collegeName.includes("Chandigarh University") ? "Punjab" : "Delhi",
     },
     {
@@ -1355,12 +1359,7 @@ async function handleSpecialUniversity(
     },
   ];
 
-  const courseHeaderValue = await findHeaderValue(
-    collegeName,
-    courseId,
-    studentId,
-    isPartnerPortal,
-  );
+ 
   const apiUrl =
     courseHeaderValue?.values?.API_URL ||
     courseHeaderValue?.values?.["api-url"];

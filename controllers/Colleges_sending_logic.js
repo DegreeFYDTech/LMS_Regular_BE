@@ -1336,16 +1336,16 @@ console.log(courseHeaderValue, "courseHeaderValue");
     { Attribute: "Source", Value: "nuvora" },
     {
       Attribute: "mx_Program_Code_New",
-      Value: courseHeaderValue.values?.mx_Program_Code_New || "AS201",
+      Value:  "AS201",
     },
     {
       Attribute: "mx_Program_New",
       Value:
-        courseHeaderValue.values?.mx_Program_New || "Bachelor of Engineering",
+         "Bachelor of Engineering",
     },
     {
       Attribute: "mx_Discipline_New",
-      Value: courseHeaderValue.values?.mx_Discipline_New || "Engineering",
+      Value:  "Engineering",
     },
     {
       Attribute: "Campus",

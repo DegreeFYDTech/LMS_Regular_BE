@@ -1310,16 +1310,15 @@ async function handleSpecialUniversity(
   courseId,
   isPartnerPortal,
 ) {
-    const courseHeaderValue = await findHeaderValue(
+  const courseHeaderValue = await findHeaderValue(
     collegeName,
     courseId,
     studentId,
     isPartnerPortal,
   );
-
+console.log(courseHeaderValue, "courseHeaderValue");
   const specialPayload = [
     { Attribute: "FirstName", Value: userResponse.student_name || "" },
-    { Attribute: "LastName", value: "" },
     {
       Attribute: "EmailAddress",
       Value:
@@ -1335,31 +1334,41 @@ async function handleSpecialUniversity(
           : userResponse.student_phone || "",
     },
     { Attribute: "Source", Value: "nuvora" },
-    { Attribute: "SourceCampaign", Value: "" },
-    { Attribute: "mx_Discipline_New", Value: courseHeaderValue.values?.mx_Discipline_New || "Engineering" },
-    { Attribute: "mx_Program_Code_New", Value: courseHeaderValue.values?.mx_Program_Code_New || "IT201" },
-    { Attribute: "mx_Program_New", Value: courseHeaderValue.values?.mx_Program_New || "BE Information Technology" },
-    { Attribute: "SourceMedium", Value: "" },
+    {
+      Attribute: "mx_Program_Code_New",
+      Value: courseHeaderValue.values?.mx_Program_Code_New || "AS201",
+    },
+    {
+      Attribute: "mx_Program_New",
+      Value:
+        courseHeaderValue.values?.mx_Program_New || "Bachelor of Engineering",
+    },
+    {
+      Attribute: "mx_Discipline_New",
+      Value: courseHeaderValue.values?.mx_Program_New || "Engineering",
+    },
     {
       Attribute: "Campus",
       Value: collegeName.includes("Chandigarh University")
         ? "Mohali"
         : "Gurgaon",
     },
-    { Attribute: "mx_Course2", Value: "Btech" },
     {
       Attribute: "State",
       Value: collegeName.includes("Chandigarh University") ? "Punjab" : "Delhi",
     },
     {
-      Attribute: "mx_City",
+      Attribute: "City",
       Value: collegeName.includes("Chandigarh University")
         ? "Chandigarh"
         : "West Delhi",
     },
+    {
+      Attribute: "Date of Birth",
+      Value: "1990/10/10",
+    },
   ];
 
- 
   const apiUrl =
     courseHeaderValue?.values?.API_URL ||
     courseHeaderValue?.values?.["api-url"];
@@ -1669,7 +1678,7 @@ async function handleLPUOnline(
       !isPrimary && studentPhone
         ? studentPhone
         : userResponse.student_phone || "",
-     state: "delhi",
+    state: "delhi",
     city: "West Delhi",
     field_new_specialization_for_new_widgets: "BBA",
     field_new_specialization: "BBA",

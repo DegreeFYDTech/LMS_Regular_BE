@@ -1316,7 +1316,7 @@ async function handleSpecialUniversity(
     studentId,
     isPartnerPortal,
   );
-console.log(courseHeaderValue, "courseHeaderValue");
+console.log(courseHeaderValue)
   const specialPayload = [
     { Attribute: "FirstName", Value: userResponse.student_name || "" },
     {
@@ -1336,22 +1336,20 @@ console.log(courseHeaderValue, "courseHeaderValue");
     { Attribute: "Source", Value: "nuvora" },
     {
       Attribute: "mx_Program_Code_New",
-      Value:  "AS201",
+      Value: courseHeaderValue.values?.mx_Program_Code_New || "AS201",
     },
     {
       Attribute: "mx_Program_New",
       Value:
-         "Bachelor of Engineering",
+        courseHeaderValue.values?.mx_Program_New || "Bachelor of Engineering",
     },
     {
       Attribute: "mx_Discipline_New",
-      Value:  "Engineering",
+      Value: courseHeaderValue.values?.mx_Discipline_New || "Engineering",
     },
     {
       Attribute: "Campus",
-      Value: collegeName.includes("Chandigarh University")
-        ? "Mohali"
-        : "Gurgaon",
+      Value: courseHeaderValue.values?.Campus || "Mohali",
     },
     {
       Attribute: "State",

@@ -17,7 +17,7 @@ import {
   PricingSnapshot,
   PaymentOrder,
   Admission,
-  Registration
+  Registration,
 } from "../models/index.js";
 import {
   processStudentLead,
@@ -90,12 +90,11 @@ export const createStudent = async (req, res) => {
           result.student?.first_source_url || leadData.SourceUrl,
         source: result.student?.source || leadData.source,
       };
-
+      processedLeads.push(result);
       console.log("Sending to autoSending with data:", studentWithUTM);
-      // return
       await autoSending(studentWithUTM);
     }
-
+    console.log(processedLeads, "processedLeads in controller");
     res.status(201).json({
       message: "Leads processed",
       leads: processedLeads,
@@ -144,7 +143,13 @@ export const updateStudentStatus = async (req, res) => {
     const student = await Student.findOne({
       where: { student_id: studentId },
     });
-
+    console.log(
+      leadStatus,
+      leadSubStatus,
+      leadStatus === "Admission" ||
+        leadStatus === "Application" ||
+        (leadStatus === "Pre Application" && leadSubStatus === "Walkin marked"),
+    );
     if (!student) {
       return res.status(404).json({ message: "Student not found" });
     }
@@ -180,8 +185,85 @@ export const updateStudentStatus = async (req, res) => {
           updateFields.assigned_team_owner_date = new Date();
           updateFields.assigned_team_owner_id = assignedTeamOwner.assigned_to;
         }
+      } else if (
+        leadStatus === "Application" ||
+        (leadStatus === "Pre Application" && leadSubStatus === "Walkin marked")
+      ) {
+        updateFields = {
+          calling_status_l3: callingStatus,
+          sub_calling_status_l3: subCallingStatus,
+          remarks_l3: remark,
+          next_call_date_l3: callbackDate,
+          next_call_time_l3: callbackTime,
+          last_call_date_l3: new Date(),
+          total_remarks_l3: (student.total_remarks_l3 || 0) + 1,
+          remarks_count: (student.remarks_count || 0) + 1,
+          is_connected_yet_l3:
+            student.is_connected_yet_l3 || callingStatus === "Connected",
+          is_reactivity: false,
+        };
+        const journeylogs = await CourseStatusJourney.findOne({
+          where: {
+            student_id: studentId,
+            course_id: selectedCourse,
+          },
+          order: [["created_at", "DESC"]],
+        });
+        let l3data;
+        if (
+          !journeylogs?.dataValues?.assigned_l3_counsellor_id &&
+          leadStatus == "Application"
+        ) {
+          const courseDetails = await UniversityCourse.findOne({
+            where: { course_id: selectedCourse },
+          });
+          l3data = await axios.post(
+            "http://localhost:3031/v1/leadassignmentl3/assign",
+            {
+              studentId,
+              collegeName: courseDetails.university_name,
+              Course: courseDetails.course_name,
+              Degree: courseDetails.degree_name,
+              Specialization: courseDetails.specialization,
+              level: courseDetails.level,
+              source: courseDetails.level,
+              stream: courseDetails.stream,
+            },
+          );
+          console.log(l3data.data);
+        }
+        const log = await CourseStatusJourney.create({
+          student_id: studentId,
+          course_id: selectedCourse,
+          counsellor_id: counsellorId,
+          course_status: collegeCourseStatus,
+          deposit_amount: 0,
+          currency: "INR",
+          exam_interview_date: null,
+          last_admission_date: null,
+          assigned_l3_counsellor_id: journeylogs?.dataValues
+            .assigned_l3_counsellor_id
+            ? journeylogs?.dataValues.assigned_l3_counsellor_id
+            : l3data?.data?.assigned_l3_counsellor_id || null,
+          notes: "L3 Status BY Remark Handling",
+          timestamp: new Date(),
+        });
+        const updated = await CourseStatus.update(
+          {
+            latest_course_status: collegeCourseStatus,
+            created_by: counsellorId,
+          },
+          { where: { course_id: selectedCourse, student_id: studentId } },
+        );
       }
-    } else if (counsellorRole === "l3") {
+    } else if (
+      leadStatus === "Admission" ||
+      leadStatus === "Enrolled" ||
+      leadStatus === "Application" ||
+      leadStatus === "NotInterested" ||
+      (leadStatus === "Pre Application" && leadSubStatus === "Walkin marked")
+    ) {
+      console.log("Updating as L3 counsellor");
       updateFields = {
         calling_status_l3: callingStatus,
         sub_calling_status_l3: subCallingStatus,
@@ -236,7 +318,16 @@ export const updateStudentStatus = async (req, res) => {
       where: { student_id: studentId },
       returning: true,
     });
-
+    let enrolledDocumentUrl1;
+    // console.log("Updated student fields:", leadStatus, enrolledDocumentUrl);
+    if (leadStatus === "Enrolled" && enrolledDocumentUrl) {
+      console.log("hello from cloudinary");
+      enrolledDocumentUrl1 = await uploadToCloudinary(
+        enrolledDocumentUrl,
+        `enrollementDocument-${studentId}`,
+      );
+    }
+    console.log("enrolledDocumentUrl", enrolledDocumentUrl1);
     const remarkData = {
       student_id: studentId,
       counsellor_id: counsellorRole !== "Supervisor" ? counsellorId : null,
@@ -248,11 +339,12 @@ export const updateStudentStatus = async (req, res) => {
       sub_calling_status: subCallingStatus,
       remarks: remark,
       callback_date: callbackDate,
+      enrolledDocumentUrl: enrolledDocumentUrl1 || null,
       callback_time: callbackTime,
     };
-
+    console.log("Remark data to be created:", remarkData);
     const newRemark = await createRemark(remarkData);
-    // console.log("New remark created:", leadStatus, leadSubStatus, remarkData);
+    console.log("New remark created:", remarkData);
     if (
       leadStatus === "NotInterested" &&
       leadSubStatus === "Only_Online course"
@@ -315,7 +407,7 @@ export const updateStudentStatus = async (req, res) => {
 
     if (student.source == "CP_Ref") {
       let a = await axios.put(
-        "https://referral-partner-test.degreefyd.com/api/prospect/update-status",
+        "https://referral-api-prod.degreefyd.com/api/prospect/update-status-lms",
         {
           funnel_1: leadStatus,
           funnel_2: leadSubStatus,
@@ -596,46 +688,54 @@ export const getStudentById = async (req, res) => {
       where: {
         [Op.or]: [
           { email: student.student_email },
-          { mobile: student.student_phone }
-        ]
+          { mobile: student.student_phone },
+        ],
       },
-      attributes: ['id']
+      attributes: ["id"],
     });
 
     const matchingRegistrations = await Registration.findAll({
       where: {
         [Op.or]: [
           { email: student.student_email },
-          { mobile: student.student_phone }
-        ]
+          { mobile: student.student_phone },
+        ],
       },
-      attributes: ['id']
+      attributes: ["id"],
     });
 
-    const admissionIds = matchingAdmissions.map(a => a.id.toString());
-    const registrationIds = matchingRegistrations.map(r => r.id.toString());
+    const admissionIds = matchingAdmissions.map((a) => a.id.toString());
+    const registrationIds = matchingRegistrations.map((r) => r.id.toString());
 
     const studentSnapshots = await PricingSnapshot.findAll({
       where: {
         [Op.or]: [
-          { admissionId: student.student_id, onModel: 'students' },
-          { admissionId: { [Op.in]: admissionIds }, onModel: 'admissions' },
-          { admissionId: { [Op.in]: registrationIds }, onModel: 'registrations' }
-        ]
+          { admissionId: student.student_id, onModel: "students" },
+          { admissionId: { [Op.in]: admissionIds }, onModel: "admissions" },
+          {
+            admissionId: { [Op.in]: registrationIds },
+            onModel: "registrations",
+          },
+        ],
       },
-      include: [{ model: PaymentOrder, as: 'paymentOrder' }],
-      order: [['createdAt', 'DESC']]
+      include: [{ model: PaymentOrder, as: "paymentOrder" }],
+      order: [["createdAt", "DESC"]],
     });
 
     let studentData = student.toJSON ? student.toJSON() : student;
 
     // Map snapshots to match frontend expectations (compatible with old Payment schema)
-    studentData.payments = studentSnapshots.map(snap => ({
+    studentData.payments = studentSnapshots.map((snap) => ({
       id: snap.id,
       student_id: snap.admissionId,
       college_name: snap.collegeName || "N/A",
       course_name: snap.interestedCourse || "N/A",
-      status: (snap.paymentOrder ? snap.paymentOrder.status : snap.status) === 'PAID' ? 'COMPLETED' : (snap.paymentOrder ? snap.paymentOrder.status : snap.status),
+      status:
+        (snap.paymentOrder ? snap.paymentOrder.status : snap.status) === "PAID"
+          ? "COMPLETED"
+          : snap.paymentOrder
+            ? snap.paymentOrder.status
+            : snap.status,
       payment_for: snap.paymentFor,
       base_amount: snap.baseAmount,
       final_amount: snap.finalAmount,
@@ -683,14 +783,14 @@ export const getStudentById = async (req, res) => {
     const counsellors =
       counsellorIds.length > 0
         ? await Counsellor.findAll({
-          where: { counsellor_id: counsellorIds },
-          attributes: [
-            "counsellor_id",
-            "counsellor_name",
-            "counsellor_email",
-            "role",
-          ],
-        })
+            where: { counsellor_id: counsellorIds },
+            attributes: [
+              "counsellor_id",
+              "counsellor_name",
+              "counsellor_email",
+              "role",
+            ],
+          })
         : [];
 
     // Create a map for quick lookup
@@ -708,16 +808,16 @@ export const getStudentById = async (req, res) => {
     const courses =
       courseIds.length > 0
         ? await UniversityCourse.findAll({
-          where: { course_id: courseIds },
-          attributes: [
-            "course_id",
-            "course_name",
-            "university_name",
-            "degree_name",
-            "stream",
-            "level",
-          ],
-        })
+            where: { course_id: courseIds },
+            attributes: [
+              "course_id",
+              "course_name",
+              "university_name",
+              "degree_name",
+              "stream",
+              "level",
+            ],
+          })
         : [];
 
     // Create a map for quick lookup
@@ -750,7 +850,7 @@ export const getStudentById = async (req, res) => {
         if (
           !journeysByCourse[journey.course_id] ||
           new Date(journey.created_at) >
-          new Date(journeysByCourse[journey.course_id].created_at)
+            new Date(journeysByCourse[journey.course_id].created_at)
         ) {
           journeysByCourse[journey.course_id] = journey;
         }
@@ -783,12 +883,12 @@ export const getStudentById = async (req, res) => {
             ...cred,
             l3_counsellor_details: l3Data
               ? {
-                assigned_l3_counsellor_id: l3Data.assigned_l3_counsellor_id,
-                counsellor_name: l3Data.l3_counsellor_name,
-                counsellor_email: l3Data.l3_counsellor_email,
-                journey_created_at: l3Data.journey_created_at,
-                journey_status: l3Data.journey_status,
-              }
+                  assigned_l3_counsellor_id: l3Data.assigned_l3_counsellor_id,
+                  counsellor_name: l3Data.l3_counsellor_name,
+                  counsellor_email: l3Data.l3_counsellor_email,
+                  journey_created_at: l3Data.journey_created_at,
+                  journey_status: l3Data.journey_status,
+                }
               : null,
           };
         },
@@ -1018,7 +1118,7 @@ export const updateStudentDetails = async (req, res) => {
       source: student.source,
       is_edited: student.is_edited,
       edited_by: student.edited_by,
-      current_email: student.student_email
+      current_email: student.student_email,
     });
 
     const oneTimeEditSources = ["IVR", "WhatsApp", "IVR ", "Whatsapp"];
@@ -1032,8 +1132,8 @@ export const updateStudentDetails = async (req, res) => {
       const existingStudentWithEmail = await Student.findOne({
         where: {
           student_email: payload.student_email,
-          student_id: { [Op.ne]: studentId } // Exclude current student
-        }
+          student_id: { [Op.ne]: studentId }, // Exclude current student
+        },
       });
 
       if (existingStudentWithEmail) {
@@ -1041,7 +1141,7 @@ export const updateStudentDetails = async (req, res) => {
         return res.status(409).json({
           message: "Email already in use by another student",
           error: "DUPLICATE_EMAIL",
-          field: "student_email"
+          field: "student_email",
         });
       }
     }
@@ -1108,14 +1208,11 @@ export const updateStudentDetails = async (req, res) => {
     if ("objective" in payload) updateData.objective = payload.objective;
 
     // Only set is_edited and edited_by if this is an email edit for restricted sources
-    if (
-      oneTimeEditSources.includes(student.source) &&
-      isEmailEdit
-    ) {
+    if (oneTimeEditSources.includes(student.source) && isEmailEdit) {
       console.log("Setting edit tracking fields:", {
         wasAlreadyEdited: student.is_edited,
         settingTo: true,
-        editedBy: req.user.id
+        editedBy: req.user.id,
       });
 
       updateData.is_edited = true;
@@ -1138,14 +1235,11 @@ export const updateStudentDetails = async (req, res) => {
 
     console.log("Update result:", {
       affectedCount,
-      updatedStudent: updatedStudents?.[0]?.dataValues
+      updatedStudent: updatedStudents?.[0]?.dataValues,
     });
 
     let message = "Student details processed successfully";
-    if (
-      oneTimeEditSources.includes(student.source) &&
-      isEmailEdit
-    ) {
+    if (oneTimeEditSources.includes(student.source) && isEmailEdit) {
       message = "Student email updated successfully (one-time edit used)";
     }
 
@@ -1158,11 +1252,14 @@ export const updateStudentDetails = async (req, res) => {
     console.error("❌ ERROR updating student:", error);
 
     // Handle Sequelize unique constraint error
-    if (error.name === 'SequelizeUniqueConstraintError' && error.fields?.student_email) {
+    if (
+      error.name === "SequelizeUniqueConstraintError" &&
+      error.fields?.student_email
+    ) {
       return res.status(409).json({
         message: "Email already in use by another student",
         error: "DUPLICATE_EMAIL",
-        field: "student_email"
+        field: "student_email",
       });
     }
 
@@ -1458,8 +1555,9 @@ export const bulkReassignLeads = async (req, res) => {
     // Final response
     const responsePayload = {
       success: true,
-      message: `Processed ${data.length} reassignments for ${level}${level?.toLowerCase() === "l3" ? " (journey entries only)" : ""
-        }`,
+      message: `Processed ${data.length} reassignments for ${level}${
+        level?.toLowerCase() === "l3" ? " (journey entries only)" : ""
+      }`,
       results: {
         reassigned: results.length,
         errors: errors.length,
@@ -1648,10 +1746,10 @@ export const addLeadDirect = async (req, res) => {
         ...lead.toJSON(),
         referenceStudent: referenceStudent
           ? {
-            student_id: referenceStudent.student_id,
-            student_name: referenceStudent.student_name,
-            student_email: referenceStudent.student_email,
-          }
+              student_id: referenceStudent.student_id,
+              student_name: referenceStudent.student_name,
+              student_email: referenceStudent.student_email,
+            }
           : null,
       },
     });

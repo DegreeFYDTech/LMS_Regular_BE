@@ -490,8 +490,8 @@ export const getShortlistedColleges = async (req, res) => {
         ...course,
         university_api: api,
         has_api_data: !!api,
-        college_api_sent_status: matchedApiData.api_sent_status || null,
-        response_from_api: matchedApiData.response_from_api || null,
+        college_api_sent_status: matchedApiData?.api_sent_status || null,
+        response_from_api: matchedApiData?.response_from_api || null,
         assigned_counsellor: assignedInfo.assigned_by,
         assigned_l3_counsellor: assignedInfo.assigned_l3_counsellor,
         journey_details: {

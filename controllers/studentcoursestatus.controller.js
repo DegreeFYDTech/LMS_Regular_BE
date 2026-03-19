@@ -328,7 +328,7 @@ export const getShortlistedColleges = async (req, res) => {
 
     const sendStatus = await StudentCollegeApiSentStatus.findAll({
       where: { student_id: studentId },
-      attributes: ["api_sent_status", "college_name"],
+      attributes: ["api_sent_status", "college_name", "response_from_api"],
     });
 
     // Get all course_ids from shortlisted statuses
@@ -455,8 +455,11 @@ export const getShortlistedColleges = async (req, res) => {
 
     const statusMap = {};
     sendStatus.forEach((item) => {
-      const { college_name, api_sent_status } = item.toJSON();
-      statusMap[college_name?.toLowerCase()?.trim()] = api_sent_status;
+      const { college_name, api_sent_status, response_from_api } = item.toJSON();
+      statusMap[college_name?.toLowerCase()?.trim()] = {
+        api_sent_status,
+        response_from_api,
+      };
     });
 
     let updatedArray = shortlistedStatuses.map((status) => {
@@ -464,9 +467,9 @@ export const getShortlistedColleges = async (req, res) => {
       const course = plain.courses_details || {};
       const api = course.university_api || null;
       const universityName = course.university_name?.toLowerCase()?.trim();
-      const matchedApiStatus = universityName
+      const matchedApiData = universityName
         ? statusMap[universityName]
-        : undefined;
+        : {};
 
       // Use course_id to look up journey info
       const assignedInfo = journeyMap[plain.course_id] || {
@@ -487,7 +490,8 @@ export const getShortlistedColleges = async (req, res) => {
         ...course,
         university_api: api,
         has_api_data: !!api,
-        college_api_sent_status: matchedApiStatus || null,
+        college_api_sent_status: matchedApiData.api_sent_status || null,
+        response_from_api: matchedApiData.response_from_api || null,
         assigned_counsellor: assignedInfo.assigned_by,
         assigned_l3_counsellor: assignedInfo.assigned_l3_counsellor,
         journey_details: {

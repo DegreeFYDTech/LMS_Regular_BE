@@ -4,9 +4,20 @@ import { createCollegeApiSentStatus } from "./collegeApiSentStatus.controller.js
 import CourseHeaderValue from "../models/university_header_values.js";
 import { Op, fn, col, where } from "sequelize";
 import { getEligibleCourseIds } from "./getEligibleCourseIds.js";
-import sendMail from "../config/SendEmail.js";
+import sendMail from "../config/SendTechIssueMail.js";
 
-async function handleTechnicalFailure(studentId, collegeName, error, payload, headers, sendType, studentEmail, studentPhone, isPrimary, isPartnerPortal) {
+async function handleTechnicalFailure(
+  studentId,
+  collegeName,
+  error,
+  payload,
+  headers,
+  sendType,
+  studentEmail,
+  studentPhone,
+  isPrimary,
+  isPartnerPortal,
+) {
   console.error(`❌ Technical failure for ${collegeName}:`, {
     message: error.message,
     studentId: studentId,
@@ -14,7 +25,10 @@ async function handleTechnicalFailure(studentId, collegeName, error, payload, he
   });
 
   const errorStatus = "Failed due to Technical Issues";
-  const responseData = error.response?.data || { error: error.message, location: "college_sending_logic" };
+  const responseData = error.response?.data || {
+    error: error.message,
+    location: "college_sending_logic",
+  };
 
   if (studentId) {
     await updateStudentShortlistStatus(
@@ -28,7 +42,7 @@ async function handleTechnicalFailure(studentId, collegeName, error, payload, he
       studentEmail,
       studentPhone,
       isPrimary,
-      isPartnerPortal
+      isPartnerPortal,
     );
 
     try {
@@ -36,19 +50,20 @@ async function handleTechnicalFailure(studentId, collegeName, error, payload, he
         {
           timestamp: new Date().toLocaleString(),
           name: `Student ID: ${studentId}`,
-          email: studentEmail || 'N/A',
-          phone: studentPhone || 'N/A',
+          phone: studentPhone || "N/A",
           stream: collegeName,
-          source: 'College API Failure',
-          sourceUrl: 'N/A',
-          utm_keyword: 'N/A',
-          utm_campaign: 'N/A',
+          responseData: JSON.stringify(responseData),
         },
-        'harsh.s@nuvora.in' // Recipient email address
+        "harsh.pandey@degreefyd.com",
       );
-      console.log(`✅ Failure notification email sent for student ${studentId}`);
+      console.log(
+        `✅ Failure notification email sent for student ${studentId}`,
+      );
     } catch (emailError) {
-      console.error(`❌ Failed to send failure notification email:`, emailError);
+      console.error(
+        `❌ Failed to send failure notification email:`,
+        emailError,
+      );
     }
   }
 
@@ -110,7 +125,18 @@ async function findHeaderValue(
       ` Error fetching course header values for ${collegeName}:`,
       error,
     );
-    return await handleTechnicalFailure(studentId, collegeName, error, Object.fromEntries(formData), headers, sendType, studentEmail, userResponse.student_phone, isPrimary, isPartnerPortal);
+    return await handleTechnicalFailure(
+      studentId,
+      collegeName,
+      error,
+      Object.fromEntries(formData),
+      headers,
+      sendType,
+      studentEmail,
+      userResponse.student_phone,
+      isPrimary,
+      isPartnerPortal,
+    );
   }
 }
 
@@ -1191,7 +1217,18 @@ async function handleShooliniOnline(
       return statusResult;
     }
 
-    return await handleTechnicalFailure(studentId, collegeName, error, shooliniPayload, headers, sendType, studentEmail, userResponse.student_phone, isPrimary, isPartnerPortal);
+    return await handleTechnicalFailure(
+      studentId,
+      collegeName,
+      error,
+      shooliniPayload,
+      headers,
+      sendType,
+      studentEmail,
+      userResponse.student_phone,
+      isPrimary,
+      isPartnerPortal,
+    );
   }
 }
 async function handleJaypeeNoPaperForms(
@@ -1367,7 +1404,7 @@ async function handleSpecialUniversity(
     studentId,
     isPartnerPortal,
   );
-console.log(courseHeaderValue)
+  console.log(courseHeaderValue);
   const specialPayload = [
     { Attribute: "FirstName", Value: userResponse.student_name || "" },
     {
@@ -1486,8 +1523,14 @@ console.log(courseHeaderValue)
     const errorData = error.response?.data;
     const errorMessage = errorData?.error || "";
 
-    if (errorMessage.includes("Field value of 'mx_Program_New' is invalid. Invalid Dropdown field option.")) {
-      console.log("⚠️ Initial attempt failed with invalid program error. Retrying with fallback program...");
+    if (
+      errorMessage.includes(
+        "Field value of 'mx_Program_New' is invalid. Invalid Dropdown field option.",
+      )
+    ) {
+      console.log(
+        "⚠️ Initial attempt failed with invalid program error. Retrying with fallback program...",
+      );
 
       // 1. Mark the first attempt as Failed due to Technical Issues
       if (studentId) {
@@ -1506,7 +1549,7 @@ console.log(courseHeaderValue)
       }
 
       // 2. Prepare retry payload
-      const retryPayload = specialPayload.map(attr => {
+      const retryPayload = specialPayload.map((attr) => {
         if (attr.Attribute === "mx_Program_New") {
           return { ...attr, Value: "Bachelor of Engineering (Mechatronics)" };
         }
@@ -1530,7 +1573,10 @@ console.log(courseHeaderValue)
           timeout: 15000,
         });
 
-        const retryStatusResult = processSpecialUniversityApiResponse(retryResponse, collegeName);
+        const retryStatusResult = processSpecialUniversityApiResponse(
+          retryResponse,
+          collegeName,
+        );
 
         if (studentId) {
           await updateStudentShortlistStatus(
@@ -1560,12 +1606,23 @@ console.log(courseHeaderValue)
           studentEmail,
           userResponse.student_phone,
           isPrimary,
-          isPartnerPortal
+          isPartnerPortal,
         );
       }
     }
 
-    return await handleTechnicalFailure(studentId, collegeName, error, specialPayload, headers, sendType, studentEmail, userResponse.student_phone, isPrimary, isPartnerPortal);
+    return await handleTechnicalFailure(
+      studentId,
+      collegeName,
+      error,
+      specialPayload,
+      headers,
+      sendType,
+      studentEmail,
+      userResponse.student_phone,
+      isPrimary,
+      isPartnerPortal,
+    );
   }
 }
 
@@ -1671,7 +1728,18 @@ async function handleManipalOnline(
 
     return statusResult;
   } catch (error) {
-    return await handleTechnicalFailure(studentId, collegeName, error, manipalPayload, headers, sendType, studentEmail, userResponse.student_phone, isPrimary, isPartnerPortal);
+    return await handleTechnicalFailure(
+      studentId,
+      collegeName,
+      error,
+      manipalPayload,
+      headers,
+      sendType,
+      studentEmail,
+      userResponse.student_phone,
+      isPrimary,
+      isPartnerPortal,
+    );
   }
 }
 
@@ -1778,7 +1846,18 @@ async function handleVivekanandGlobal(
 
     return statusResult;
   } catch (error) {
-    return await handleTechnicalFailure(studentId, collegeName, error, vivekanandPayload, headers, sendType, studentEmail, userResponse.student_phone, isPrimary, isPartnerPortal);
+    return await handleTechnicalFailure(
+      studentId,
+      collegeName,
+      error,
+      vivekanandPayload,
+      headers,
+      sendType,
+      studentEmail,
+      userResponse.student_phone,
+      isPrimary,
+      isPartnerPortal,
+    );
   }
 }
 
@@ -1872,7 +1951,18 @@ async function handleLPUOnline(
 
     return statusResult;
   } catch (error) {
-    return await handleTechnicalFailure(studentId, collegeName, error, lpuOnlinePayload, headers, sendType, studentEmail, userResponse.student_phone, isPrimary, isPartnerPortal);
+    return await handleTechnicalFailure(
+      studentId,
+      collegeName,
+      error,
+      lpuOnlinePayload,
+      headers,
+      sendType,
+      studentEmail,
+      userResponse.student_phone,
+      isPrimary,
+      isPartnerPortal,
+    );
   }
 }
 
@@ -1955,7 +2045,18 @@ async function handleGLAOnline(
 
     return statusResult;
   } catch (error) {
-    return await handleTechnicalFailure(studentId, collegeName, error, { url: fullApiUrl, method: "GET" }, headers, sendType, studentEmail, userResponse.student_phone, isPrimary, isPartnerPortal);
+    return await handleTechnicalFailure(
+      studentId,
+      collegeName,
+      error,
+      { url: fullApiUrl, method: "GET" },
+      headers,
+      sendType,
+      studentEmail,
+      userResponse.student_phone,
+      isPrimary,
+      isPartnerPortal,
+    );
   }
 }
 function sanitizeStudentName(name) {
@@ -2113,7 +2214,18 @@ async function handleGalgotiasOnline(
 
     return statusResult;
   } catch (error) {
-    return await handleTechnicalFailure(studentId, collegeName, error, transformedPayload, headers, sendType, studentEmail, userResponse.student_phone, isPrimary, isPartnerPortal);
+    return await handleTechnicalFailure(
+      studentId,
+      collegeName,
+      error,
+      transformedPayload,
+      headers,
+      sendType,
+      studentEmail,
+      userResponse.student_phone,
+      isPrimary,
+      isPartnerPortal,
+    );
   }
 }
 
@@ -2232,7 +2344,18 @@ async function handleAmityOnline(
 
     return statusResult;
   } catch (error) {
-    return await handleTechnicalFailure(studentId, collegeName, error, transformedPayload, headers, sendType, studentEmail, userResponse.student_phone, isPrimary, isPartnerPortal);
+    return await handleTechnicalFailure(
+      studentId,
+      collegeName,
+      error,
+      transformedPayload,
+      headers,
+      sendType,
+      studentEmail,
+      userResponse.student_phone,
+      isPrimary,
+      isPartnerPortal,
+    );
   }
 }
 
@@ -2354,7 +2477,18 @@ async function handleMangalayatanOnline(
 
     return statusResult;
   } catch (error) {
-    return await handleTechnicalFailure(studentId, collegeName, error, mangalayatanPayload, headers, sendType, studentEmail, userResponse.student_phone, isPrimary, isPartnerPortal);
+    return await handleTechnicalFailure(
+      studentId,
+      collegeName,
+      error,
+      mangalayatanPayload,
+      headers,
+      sendType,
+      studentEmail,
+      userResponse.student_phone,
+      isPrimary,
+      isPartnerPortal,
+    );
   }
 }
 async function CgcLandran(
@@ -2434,7 +2568,18 @@ async function CgcLandran(
 
     return statusResult;
   } catch (error) {
-    return await handleTechnicalFailure(studentId, collegeName, error, defaultValues, headers, sendType, studentEmail, userResponse.student_phone, isPrimary, isPartnerPortal);
+    return await handleTechnicalFailure(
+      studentId,
+      collegeName,
+      error,
+      defaultValues,
+      headers,
+      sendType,
+      studentEmail,
+      userResponse.student_phone,
+      isPrimary,
+      isPartnerPortal,
+    );
   }
 }
 export const sentStatustoCollege = async (req, res) => {

@@ -183,7 +183,11 @@ export const getAllCounsellors = async (req, res) => {
     let whereClause = {};
 
     if (role) {
-      whereClause.role = role;
+      if (role === "to") {
+        whereClause.role = { [Op.in]: ['to', 'to_l3'] };
+      } else {
+        whereClause.role = role;
+      }
     } else {
       whereClause.role = { [Op.ne]: 'to' };
     }
@@ -811,16 +815,16 @@ export async function getCounsellor_break_stats(req, res) {
 
 export const changeSupervisor = async (req, res) => {
   const { counsellor_id, supervisor_id } = req.body;
-
+  console.log(counsellor_id, supervisor_id)
   try {
     if (supervisor_id) {
       const supervisor = await Counsellor.findOne({
         where: {
           counsellor_id: supervisor_id,
-          role: 'to'
+          role: { [Op.in]: ['to', 'to_l3'] }
         }
       });
-
+      console.log(supervisor)
       if (!supervisor) {
         return res.status(404).json({
           message: 'Supervisor not found or not a valid supervisor (role must be "to")'

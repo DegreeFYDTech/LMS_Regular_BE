@@ -44,27 +44,6 @@ async function handleTechnicalFailure(
       isPrimary,
       isPartnerPortal,
     );
-
-    try {
-      await sendMail(
-        {
-          timestamp: new Date().toLocaleString(),
-          name: `Student ID: ${studentId}`,
-          phone: studentPhone || "N/A",
-          stream: collegeName,
-          responseData: JSON.stringify(responseData),
-        },
-        "harsh.pandey@degreefyd.com",
-      );
-      console.log(
-        `✅ Failure notification email sent for student ${studentId}`,
-      );
-    } catch (emailError) {
-      console.error(
-        `❌ Failed to send failure notification email:`,
-        emailError,
-      );
-    }
   }
 
   return {
@@ -180,6 +159,25 @@ async function updateStudentShortlistStatus(
       isPrimary,
       isPartnerPortal,
     });
+    console.log(status, "hello ok")
+    // 📧 Trigger notification email for technical failures
+    if (status === "Failed due to Technical Issues" || status === "TEch issues") {
+      try {
+        await sendMail(
+          {
+            timestamp: new Date().toLocaleString(),
+            name: `Student ID: ${studentId}`,
+            phone: studentPhone || "N/A",
+            stream: collegeName,
+            responseData: JSON.stringify(responseData || "No response data available"),
+          },
+          "harsh.pandey@degreefyd.com",
+        );
+        console.log(`✅ Technical failure notification email sent for student ${studentId}`);
+      } catch (emailError) {
+        console.error(`❌ Failed to send technical failure notification email:`, emailError);
+      }
+    }
 
     console.log(`✅ Status updated successfully for ${collegeName}: ${status}`);
     return status;
@@ -359,10 +357,28 @@ async function getStudentDataForRequest(
 
 function processSpecialUniversityApiResponse(apiResponse, collegeName) {
   console.log(`📊 Processing special university response for ${collegeName}:`, {
-    status: apiResponse.status,
-    data: apiResponse.data,
+    status: apiResponse?.status,
+    data: apiResponse?.data,
+    error: apiResponse?.error,
   });
 
+  // Check for error responses first
+  if (apiResponse?.error) {
+    console.error(`❌ API Error from ${collegeName}:`, {
+      error: apiResponse.error,
+      location: apiResponse.location,
+    });
+
+    // Handle specific error cases
+    if (apiResponse.error === "A Lead with same Email already exists.") {
+      console.log(`⚠️ Lead already exists for ${collegeName} - Do not proceed`);
+      return "Do not Proceed";
+    }
+
+    return "Failed due to Technical Issues";
+  }
+
+  // Check if we have valid response data
   if (!apiResponse?.data) {
     console.error(`❌ No response data from ${collegeName}`);
     return "Failed due to Technical Issues";
@@ -372,22 +388,60 @@ function processSpecialUniversityApiResponse(apiResponse, collegeName) {
   const status = responseData.Status || responseData.status;
   const message = responseData.Message;
 
-  console.log(`📋 Response analysis:`, { status, message: typeof message });
+  console.log(`📋 Response analysis:`, {
+    status,
+    messageType: typeof message,
+    hasMessageObject: message && typeof message === 'object',
+    isCreated: message?.IsCreated,
+    relatedId: message?.RelatedId,
+    id: message?.Id
+  });
 
-  if (status !== "Success" || !message || typeof message !== "object") {
-    console.error(`❌ Invalid response structure from ${collegeName}`);
+  // Handle invalid response structure
+  if (status !== "Success") {
+    console.error(`❌ Non-success status from ${collegeName}:`, status);
     return "Failed due to Technical Issues";
   }
 
-  const result =
-    message.IsCreated === true
-      ? "Proceed"
-      : message.IsCreated === false
-        ? "Do not Proceed"
-        : "Failed due to Technical Issues";
+  // Handle missing message
+  if (!message) {
+    console.error(`❌ No message object in response from ${collegeName}`);
+    return "Failed due to Technical Issues";
+  }
 
-  console.log(`✅ ${collegeName} result: ${result}`);
-  return result;
+  // Handle case where message is a string error
+  if (typeof message === "string") {
+    console.log(`⚠️ String message from ${collegeName}:`, message);
+
+    // Check for error messages
+    if (message.includes("already exists") || message.includes("duplicate")) {
+      return "Do not Proceed";
+    }
+
+    return "Failed due to Technical Issues";
+  }
+
+  // Handle object message with IsCreated flag
+  if (typeof message === "object") {
+    if (message.IsCreated === true) {
+      console.log(`✅ ${collegeName} - Lead created successfully, proceed`);
+      return "Proceed";
+    }
+
+    if (message.IsCreated === false) {
+      console.log(`⚠️ ${collegeName} - Lead already exists, do not proceed`);
+      console.log(`   Existing lead ID: ${message.RelatedId || message.Id}`);
+      return "Do not Proceed";
+    }
+
+    // If IsCreated is undefined or not boolean
+    console.error(`❌ Invalid IsCreated value from ${collegeName}:`, message.IsCreated);
+    return "Failed due to Technical Issues";
+  }
+
+  // Fallback for unexpected response format
+  console.error(`❌ Unexpected response format from ${collegeName}:`, responseData);
+  return "Failed due to Technical Issues";
 }
 function processJaypeeApiResponse(apiResponse, collegeName) {
   console.log(`📊 Processing Jaypee (NoPaperForms) response:`, {
@@ -482,7 +536,6 @@ function processShooliniApiResponse(apiResponse, collegeName) {
     return "Failed due to Technical Issues";
   }
 
-  // ✅ Normal success / business failure handling
   const result =
     message.IsCreated === true
       ? "Proceed"
@@ -1089,8 +1142,8 @@ async function handleShooliniOnline(
         } else if (actualKey === "preferredCity") {
           finalValue =
             userValue?.trim() &&
-            !userValue.toLowerCase().includes("himachal") &&
-            !userValue.toLowerCase().includes("pradesh")
+              !userValue.toLowerCase().includes("himachal") &&
+              !userValue.toLowerCase().includes("pradesh")
               ? userValue
               : "Solan";
         } else if (actualKey === "program") {
@@ -1131,8 +1184,8 @@ async function handleShooliniOnline(
         } else if (actualKey === "preferredCity") {
           finalValue =
             userValue?.trim() &&
-            !userValue.toLowerCase().includes("himachal") &&
-            !userValue.toLowerCase().includes("pradesh")
+              !userValue.toLowerCase().includes("himachal") &&
+              !userValue.toLowerCase().includes("pradesh")
               ? userValue
               : "Solan";
         } else if (actualKey === "phoneNumber" && userValue) {
@@ -2808,7 +2861,7 @@ export const sentStatustoCollege = async (req, res) => {
       );
     } else if (
       collegeName.toLowerCase() ===
-        "chandigarh group of colleges, landran (cgc)" ||
+      "chandigarh group of colleges, landran (cgc)" ||
       collegeName.toLowerCase().includes("cgc")
     ) {
       statusResult = await CgcLandran(

@@ -1,8 +1,8 @@
-import EmailFunction from './Email.js';
+import EmailFunction from '../utils/email/Email.js';
 
 const sendMail = async (data, to) => {
-    try {
-        const emailContent = `<!DOCTYPE html>
+  try {
+    const emailContent = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -200,18 +200,15 @@ const sendMail = async (data, to) => {
 </body>
 </html>`;
 
-        const emailFunction = await EmailFunction(
-            emailContent, 
-            'College API Response Notification', 
-            to,
-            process.env.email,
-            process.env.passkey
-        );
-        return emailFunction;
-    } catch (error) {
-        console.error('Error sending email:', error);
-        throw new Error('Error generating email');
-    }
+    const emailFunction = await EmailFunction(
+      emailContent,
+      'College API Response Notification'
+    );
+    return emailFunction;
+  } catch (error) {
+    console.error('Error sending email:', error);
+    throw new Error('Error generating email');
+  }
 };
 
 export default sendMail;

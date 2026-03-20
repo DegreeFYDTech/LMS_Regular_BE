@@ -21,7 +21,7 @@ router.put('/:id', authorize(['supervisor', 'Supervisor']), updateAnalyser);
 router.delete('/:id', authorize(['supervisor']), deleteAnalyser);
 router.post('/:id/force-logout', authorize(['supervisor', 'Supervisor']), forceLogout);
 
-router.put('/:id/change-password',authorize(['supervisor', 'Supervisor']), changeAnalyserPassword);
+router.put('/:id/change-password', authorize(['supervisor', 'Supervisor']), changeAnalyserPassword);
 router.get('/getUserDetails', authorize(['Analyser', 'Admin', 'Supervisor']), getUserDetails);
 
 export default router;

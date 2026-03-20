@@ -147,8 +147,62 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
 
     const where = [];
 
-    // Role-based filtering - simplified for L3 using journey table
-    if (userRole === "to") {
+    // Store L3 team IDs for later use
+    let l3TeamIds = [];
+    let isToL3View = false;
+
+    // Role-based filtering - handle to_l3 as a separate role
+    if (userRole === "to_l3") {
+      isToL3View = true;
+      // Team Owner for L3 counsellors - they manage L3 counsellors
+      // Get all L3 counsellors assigned to this team owner
+      const teamMembersQuery = `
+        SELECT counsellor_id, role 
+        FROM counsellors 
+        WHERE assigned_to = ${escape(userId)}
+        AND role = 'l3'
+      `;
+      const teamMembersResult = await sequelize.query(teamMembersQuery, {
+        type: QueryTypes.SELECT,
+      });
+
+      l3TeamIds = teamMembersResult.map((c) => c.counsellor_id);
+
+      if (l3TeamIds.length === 0) {
+        // If no L3 counsellors under this team owner, return empty result
+        where.push("1 = 0");
+      }
+
+      if (!data || data === "to_l3") {
+        if (selectedagent) {
+          // If selected agent is one of the L3 counsellors in their team
+          if (l3TeamIds.includes(selectedagent)) {
+            // Filter by specific L3 counsellor - ensure students exist in journey table for this counsellor
+            where.push(`EXISTS (
+              SELECT 1 FROM course_status_journeys csj 
+              WHERE csj.student_id = s.student_id 
+              AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}
+            )`);
+          } else {
+            where.push("1 = 0");
+          }
+        } else {
+          // No specific agent selected - show all students assigned to any L3 counsellor in their team
+          where.push(`EXISTS (
+            SELECT 1 FROM course_status_journeys csj 
+            WHERE csj.student_id = s.student_id 
+            AND csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})
+          )`);
+        }
+      } else if (data === "l3") {
+        // If specifically viewing L3 data, handled in journey WHERE clause
+        if (selectedagent && l3TeamIds.includes(selectedagent)) {
+          // Will be handled in journey WHERE clause
+        } else if (!selectedagent && l3TeamIds.length === 0) {
+          where.push("1 = 0");
+        }
+      }
+    } else if (userRole === "to") {
       const teamMembersQuery = `
         SELECT counsellor_id, role 
         FROM counsellors 
@@ -162,7 +216,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       const l2TeamIds = teamMembersResult
         .filter((c) => c.role === "l2")
         .map((c) => c.counsellor_id);
-      const l3TeamIds = teamMembersResult
+      l3TeamIds = teamMembersResult
         .filter((c) => c.role === "l3")
         .map((c) => c.counsellor_id);
 
@@ -241,7 +295,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     let supervisorCounsellorIds = [];
     let isSupervisorView = false;
 
-    if (selectedagent && data && data !== "to" && data !== "l3") {
+    if (selectedagent && data && data !== "to" && data !== "l3" && userRole !== "to_l3") {
       const teamMembersQuery = `
         SELECT counsellor_id 
         FROM counsellors 
@@ -512,21 +566,43 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     const latestRemarkWhere =
       data === "l3" && userRole === "l3"
         ? `WHERE sr.counsellor_id = ${escape(userId)}` // L3 counsellor sees only their remarks
-        : data === "l3" && selectedagent
-          ? `WHERE sr.counsellor_id = ${escape(selectedagent)}` // Filter by selected agent in L3 view
-          : selectedagent && isSupervisorView && data && data !== "to" && data !== "l3"
-            ? `WHERE sr.counsellor_id IN (${supervisorCounsellorIds.map(escape).join(",")})`
-            : selectedagent && data && data !== "to" && data !== "l3"
-              ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
-              : "";
+        : data === "l3" && selectedagent && userRole === "to_l3" && l3TeamIds.includes(selectedagent)
+          ? `WHERE sr.counsellor_id = ${escape(selectedagent)}` // to_l3 filtering by specific L3 counsellor
+          : data === "l3" && selectedagent && userRole === "to" && l3TeamIds.includes(selectedagent)
+            ? `WHERE sr.counsellor_id = ${escape(selectedagent)}` // to filtering by specific L3 counsellor
+            : data === "l3" && selectedagent
+              ? `WHERE sr.counsellor_id = ${escape(selectedagent)}` // Filter by selected agent in L3 view
+              : data === "l3" && userRole === "to_l3" && l3TeamIds.length > 0
+                ? `WHERE sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})` // to_l3 sees all remarks from their L3 counsellors
+                : selectedagent && isSupervisorView && data && data !== "to" && data !== "l3"
+                  ? `WHERE sr.counsellor_id IN (${supervisorCounsellorIds.map(escape).join(",")})`
+                  : selectedagent && data && data !== "to" && data !== "l3"
+                    ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
+                    : "";
 
     // Determine the L3 counsellor ID to filter by
     let l3CounsellorFilter = "";
     if (data === "l3") {
       if (selectedagent) {
-        l3CounsellorFilter = `csj.assigned_l3_counsellor_id = ${escape(selectedagent)}`;
+        // For to_l3, check if selected agent is under them
+        if (userRole === "to_l3") {
+          if (l3TeamIds.includes(selectedagent)) {
+            l3CounsellorFilter = `csj.assigned_l3_counsellor_id = ${escape(selectedagent)}`;
+          } else {
+            l3CounsellorFilter = "1 = 0";
+          }
+        } else {
+          l3CounsellorFilter = `csj.assigned_l3_counsellor_id = ${escape(selectedagent)}`;
+        }
       } else if (userRole === "l3") {
         l3CounsellorFilter = `csj.assigned_l3_counsellor_id = ${escape(userId)}`;
+      } else if (userRole === "to_l3") {
+        // Team Owner for L3 - show all L3 counsellors under them
+        if (l3TeamIds.length > 0) {
+          l3CounsellorFilter = `csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})`;
+        } else {
+          l3CounsellorFilter = "1 = 0";
+        }
       } else if (userRole === "to" && l3TeamIds && l3TeamIds.length > 0) {
         l3CounsellorFilter = `csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})`;
       } else {
@@ -737,14 +813,28 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       if (data === "l3") {
         // For L3 fresh leads, check if there are no journey entries for this counsellor
         if (selectedagent) {
-          whereClauses.push(
-            `NOT EXISTS (
-              SELECT 1 
-              FROM course_status_journeys csj 
-              WHERE csj.student_id = s.student_id 
-              AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}
-            )`,
-          );
+          if (userRole === "to_l3" && l3TeamIds.includes(selectedagent)) {
+            whereClauses.push(
+              `NOT EXISTS (
+                SELECT 1 
+                FROM course_status_journeys csj 
+                WHERE csj.student_id = s.student_id 
+                AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}
+              )`,
+            );
+          } else if (userRole === "to_l3") {
+            // Selected agent not in their team
+            whereClauses.push("1 = 0");
+          } else {
+            whereClauses.push(
+              `NOT EXISTS (
+                SELECT 1 
+                FROM course_status_journeys csj 
+                WHERE csj.student_id = s.student_id 
+                AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}
+              )`,
+            );
+          }
         } else if (userRole === "l3") {
           whereClauses.push(
             `NOT EXISTS (
@@ -752,6 +842,15 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
               FROM course_status_journeys csj 
               WHERE csj.student_id = s.student_id 
               AND csj.assigned_l3_counsellor_id = ${escape(userId)}
+            )`,
+          );
+        } else if (userRole === "to_l3" && l3TeamIds && l3TeamIds.length > 0) {
+          whereClauses.push(
+            `NOT EXISTS (
+              SELECT 1 
+              FROM course_status_journeys csj 
+              WHERE csj.student_id = s.student_id 
+              AND csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})
             )`,
           );
         } else if (userRole === "to" && l3TeamIds && l3TeamIds.length > 0) {
@@ -817,7 +916,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         ? "WHERE " + whereClauses.filter(Boolean).join(" AND ")
         : "";
 
-    // MASKED SELECT FIELDS - Applied to ALL roles (no more separate baseSelectFields)
+    // MASKED SELECT FIELDS - Applied to ALL roles
     const maskedSelectFields = `
       s.student_id,
       s.student_name,
@@ -1119,9 +1218,19 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     let journeyWhere = "1=1";
     if (data === "l3") {
       if (selectedagent) {
-        journeyWhere = `csj.assigned_l3_counsellor_id = ${escape(selectedagent)}`;
+        if (userRole === "to_l3") {
+          if (l3TeamIds.includes(selectedagent)) {
+            journeyWhere = `csj.assigned_l3_counsellor_id = ${escape(selectedagent)}`;
+          } else {
+            journeyWhere = "1 = 0";
+          }
+        } else {
+          journeyWhere = `csj.assigned_l3_counsellor_id = ${escape(selectedagent)}`;
+        }
       } else if (userRole === "l3") {
         journeyWhere = `csj.assigned_l3_counsellor_id = ${escape(userId)}`;
+      } else if (userRole === "to_l3" && l3TeamIds && l3TeamIds.length > 0) {
+        journeyWhere = `csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})`;
       } else if (userRole === "to" && l3TeamIds && l3TeamIds.length > 0) {
         journeyWhere = `csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})`;
       }
@@ -1141,7 +1250,9 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
             callback,
             selectedagent,
             role: data,
-            userId // Pass userId for L3 counsellor filtering
+            userId,
+            userRole,
+            l3TeamIds
           })
           : getOptimizedOverallStatsFromHelper({
             studentWhere: studentWhereStr,
@@ -1163,43 +1274,34 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
             student_id: item.student_id,
             student_name: item.student_name,
             number_of_unread_messages: item.number_of_unread_messages,
-            student_email: item.student_email, // Already masked in SQL
-            student_phone: item.student_phone, // Already masked in SQL
+            student_email: item.student_email,
+            student_phone: item.student_phone,
             total_remarks_l3: item.total_remarks_l3,
             next_call_date_l3: item?.next_call_date_l3,
             last_call_date_l3: item?.last_call_date_l3,
             next_call_time_l3: item?.next_call_time_l3,
             is_connected_yet_l3: item?.is_connected_yet_l3,
             remark_count: item.remarks_count,
-            // Use first journey entry timestamp as created_at for L3
             created_at: item.created_at_l3 || item.created_at,
-            // Use journey timestamp for assigned_l3_date
             assigned_l3_date: item.assigned_l3_date_from_journey || item?.assigned_l3_date,
             is_reactivity: item?.is_reactivity,
             assigned_team_owner_date: item?.assigned_team_owner_date,
             mode: item.mode,
             source: item.source,
-
-            // Data masking note for all users
             data_masked: true,
             mask_note: "Phone and email information is masked for privacy",
-
-            // L3 Counsellor (from journey)
             assignedCounsellorL3: {
               counsellor_id: item.l3_counsellor_id,
               counsellor_name: item.l3_counsellor_name,
               counsellor_email: item.l3_counsellor_email,
               role: item.l3_counsellor_role,
             },
-
-            // L2 Counsellor (from students table)
             assignedCounsellor: {
               counsellor_id: item.counsellor_id,
               counsellor_name: item.counsellor_name,
               counsellor_email: item.counsellor_email,
               role: item.counsellor_role,
             },
-
             student_remarks: item.remark_id
               ? [
                 {
@@ -1215,7 +1317,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
                 },
               ]
               : [],
-
             lead_activities: item.activity_created_at
               ? [{
                 utm_source: item.utm_source,
@@ -1273,14 +1374,13 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           return result;
         });
       } else {
-        // Original transformation for non-L3 data
         return arr.map((item) => {
           const result = {
             student_id: item.student_id,
             student_name: item.student_name,
             number_of_unread_messages: item.number_of_unread_messages,
-            student_email: item.student_email, // Already masked in SQL
-            student_phone: item.student_phone, // Already masked in SQL
+            student_email: item.student_email,
+            student_phone: item.student_phone,
             total_remarks_l3: item.total_remarks_l3,
             next_call_date_l3: item?.next_call_date_l3,
             last_call_date_l3: item?.last_call_date_l3,
@@ -1293,11 +1393,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
             assigned_team_owner_date: item?.assigned_team_owner_date,
             mode: item.mode,
             source: item.source,
-            
-            // Data masking note for all users
             data_masked: true,
             mask_note: "Phone and email information is masked for privacy",
-            
             assignedCounsellor: {
               counsellor_id: item.counsellor_id,
               counsellor_name: item.counsellor_name,
@@ -1422,6 +1519,11 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         supervisorCounsellorIds: data === "to" ? [] : supervisorCounsellorIds,
         selectedagent,
         dataMode: data,
+        ...(userRole === "to_l3" && {
+          note: "Team Owner for L3 view - showing students assigned to L3 counsellors under this team owner",
+          l3TeamIds: l3TeamIds,
+          totalL3Counsellors: l3TeamIds.length,
+        }),
         ...(data === "l3" && {
           note: "L3 view - showing distinct students with assigned L3 counsellor, created_at and assigned_l3_date from first journey entry",
         }),
@@ -1429,7 +1531,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           note: "Team Owner view - showing leads based on role and filters",
         }),
       },
-      // Add masking information for all users
       mask_note: "Phone numbers and emails are masked for privacy across all roles",
       mask_details: {
         phone: "Shows first 4 digits followed by XXXXXX",
@@ -1453,7 +1554,9 @@ async function getL3OverallStatsFromJourney({
   callback,
   selectedagent,
   role = 'l3',
-  userId
+  userId,
+  userRole,
+  l3TeamIds = []
 }) {
   try {
     const formatDateForPostgres = (date) => {
@@ -1469,9 +1572,25 @@ async function getL3OverallStatsFromJourney({
     const todayStartFormatted = formatDateForPostgres(todayStart);
     const todayEndFormatted = formatDateForPostgres(todayEnd);
 
-    // For Supervisor (no selectedagent, role is 'l3' from data param but user is Supervisor)
-    // We need to detect if this is a Supervisor view vs L3 counsellor view
-    const isSupervisorView = role === 'l3' && !selectedagent && userId && userId.startsWith('SUP-');
+    const isToL3View = userRole === 'to_l3';
+
+    // Build the counsellor filter for remarks
+    let remarkCounsellorFilter = "";
+    if (role === 'l3') {
+      if (selectedagent) {
+        if (isToL3View && l3TeamIds.includes(selectedagent)) {
+          remarkCounsellorFilter = `AND sr.counsellor_id = ${escape(selectedagent)}`;
+        } else if (!isToL3View) {
+          remarkCounsellorFilter = `AND sr.counsellor_id = ${escape(selectedagent)}`;
+        } else if (isToL3View && selectedagent && !l3TeamIds.includes(selectedagent)) {
+          remarkCounsellorFilter = `AND 1 = 0`;
+        }
+      } else if (userRole === 'l3') {
+        remarkCounsellorFilter = `AND sr.counsellor_id = ${escape(userId)}`;
+      } else if (isToL3View && l3TeamIds.length > 0) {
+        remarkCounsellorFilter = `AND sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})`;
+      }
+    }
 
     const query = `
       WITH base_students_with_journey AS (
@@ -1500,16 +1619,13 @@ async function getL3OverallStatsFromJourney({
         ` : ''}
         WHERE (${remarkWhere})
       ),
-      -- Fresh leads: students with no L3 remarks (for Supervisor) or no remarks by specific counsellor (for L3 view)
       fresh_leads AS (
         SELECT bs.student_id
         FROM base_students bs
         WHERE NOT EXISTS (
           SELECT 1 FROM student_remarks sr
           WHERE sr.student_id = bs.student_id
-          ${!isSupervisorView && (selectedagent || userId) ?
-        `AND sr.counsellor_id = ${selectedagent ? escape(selectedagent) : escape(userId)}` :
-        ''}
+          ${remarkCounsellorFilter}
         )
       ),
       latest_remarks AS (
@@ -1523,9 +1639,8 @@ async function getL3OverallStatsFromJourney({
           sr.lead_status
         FROM student_remarks sr
         INNER JOIN base_students bs ON sr.student_id = bs.student_id
-        ${!isSupervisorView && (selectedagent || userId) ?
-        `WHERE sr.counsellor_id = ${selectedagent ? escape(selectedagent) : escape(userId)}` :
-        ''}
+        WHERE 1=1
+        ${remarkCounsellorFilter}
         ORDER BY sr.student_id, sr.created_at DESC
       ),
       today_callbacks AS (

@@ -147,13 +147,19 @@ export const updateStudentStatus = async (req, res) => {
       leadStatus,
       leadSubStatus,
       leadStatus === "Admission" ||
-        leadStatus === "Application" ||
-        (leadStatus === "Pre Application" && leadSubStatus === "Walkin marked"),
+      leadStatus === "Application" ||
+      (leadStatus === "Pre Application" && leadSubStatus === "Walkin marked"),
     );
     if (!student) {
       return res.status(404).json({ message: "Student not found" });
     }
-
+    const updateReactivity = await Student.update({
+      is_reactivity: false,
+    }, {
+      where: {
+        student_id: studentId,
+      },
+    })
     let updateFields = {};
 
     if (
@@ -783,14 +789,14 @@ export const getStudentById = async (req, res) => {
     const counsellors =
       counsellorIds.length > 0
         ? await Counsellor.findAll({
-            where: { counsellor_id: counsellorIds },
-            attributes: [
-              "counsellor_id",
-              "counsellor_name",
-              "counsellor_email",
-              "role",
-            ],
-          })
+          where: { counsellor_id: counsellorIds },
+          attributes: [
+            "counsellor_id",
+            "counsellor_name",
+            "counsellor_email",
+            "role",
+          ],
+        })
         : [];
 
     // Create a map for quick lookup
@@ -808,16 +814,16 @@ export const getStudentById = async (req, res) => {
     const courses =
       courseIds.length > 0
         ? await UniversityCourse.findAll({
-            where: { course_id: courseIds },
-            attributes: [
-              "course_id",
-              "course_name",
-              "university_name",
-              "degree_name",
-              "stream",
-              "level",
-            ],
-          })
+          where: { course_id: courseIds },
+          attributes: [
+            "course_id",
+            "course_name",
+            "university_name",
+            "degree_name",
+            "stream",
+            "level",
+          ],
+        })
         : [];
 
     // Create a map for quick lookup
@@ -850,7 +856,7 @@ export const getStudentById = async (req, res) => {
         if (
           !journeysByCourse[journey.course_id] ||
           new Date(journey.created_at) >
-            new Date(journeysByCourse[journey.course_id].created_at)
+          new Date(journeysByCourse[journey.course_id].created_at)
         ) {
           journeysByCourse[journey.course_id] = journey;
         }
@@ -883,12 +889,12 @@ export const getStudentById = async (req, res) => {
             ...cred,
             l3_counsellor_details: l3Data
               ? {
-                  assigned_l3_counsellor_id: l3Data.assigned_l3_counsellor_id,
-                  counsellor_name: l3Data.l3_counsellor_name,
-                  counsellor_email: l3Data.l3_counsellor_email,
-                  journey_created_at: l3Data.journey_created_at,
-                  journey_status: l3Data.journey_status,
-                }
+                assigned_l3_counsellor_id: l3Data.assigned_l3_counsellor_id,
+                counsellor_name: l3Data.l3_counsellor_name,
+                counsellor_email: l3Data.l3_counsellor_email,
+                journey_created_at: l3Data.journey_created_at,
+                journey_status: l3Data.journey_status,
+              }
               : null,
           };
         },
@@ -1555,9 +1561,8 @@ export const bulkReassignLeads = async (req, res) => {
     // Final response
     const responsePayload = {
       success: true,
-      message: `Processed ${data.length} reassignments for ${level}${
-        level?.toLowerCase() === "l3" ? " (journey entries only)" : ""
-      }`,
+      message: `Processed ${data.length} reassignments for ${level}${level?.toLowerCase() === "l3" ? " (journey entries only)" : ""
+        }`,
       results: {
         reassigned: results.length,
         errors: errors.length,
@@ -1746,10 +1751,10 @@ export const addLeadDirect = async (req, res) => {
         ...lead.toJSON(),
         referenceStudent: referenceStudent
           ? {
-              student_id: referenceStudent.student_id,
-              student_name: referenceStudent.student_name,
-              student_email: referenceStudent.student_email,
-            }
+            student_id: referenceStudent.student_id,
+            student_name: referenceStudent.student_name,
+            student_email: referenceStudent.student_email,
+          }
           : null,
       },
     });

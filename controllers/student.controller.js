@@ -143,16 +143,42 @@ export const updateStudentStatus = async (req, res) => {
     const student = await Student.findOne({
       where: { student_id: studentId },
     });
-    console.log(
-      leadStatus,
-      leadSubStatus,
-      leadStatus === "Admission" ||
-      leadStatus === "Application" ||
-      (leadStatus === "Pre Application" && leadSubStatus === "Walkin marked"),
-    );
     if (!student) {
       return res.status(404).json({ message: "Student not found" });
     }
+    if (
+      leadStatus === "Initial Counselling Completed" &&
+      student.first_icc_date === null
+    ) {
+      const Response = await Student.update(
+        {
+          first_icc_date: new Date(),
+          is_reassigned_yet: false,
+        },
+        {
+          where: { student_id: studentId },
+        },
+      );
+    }
+    const statusPriority = {
+      "Pre Application": 1,
+      "Initial Counselling Completed": 2,
+      Application: 3,
+      Admission: 4,
+      "Documents Pending": 5,
+      "Documents Submitted": 5,
+      "IDs Created": 5,
+      "Verification in Progress": 5,
+      Verified: 5,
+      "E-sign Completed": 5,
+      "Rework Required": 5,
+      Resubmitted: 5,
+      Enrolled: 6,
+      NotInterested: 7,
+    };
+
+
+    // Handle reactivation
     const updateReactivity = await Student.update({
       is_reactivity: false,
     }, {
@@ -160,8 +186,38 @@ export const updateStudentStatus = async (req, res) => {
         student_id: studentId,
       },
     })
+
+    // Priority and Backward movement protection
+    const currentStatus = student.current_student_status || "Pre Application";
+    const currentPriority = (currentStatus === "NotInterested" || currentStatus === "Not Interested") ? 0 : (statusPriority[currentStatus] || 0);
+    const newPriority = statusPriority[leadStatus] || 0;
+
+    const isMovingBackward = leadStatus && currentStatus && newPriority < currentPriority;
+    const isSamePriority = leadStatus && currentStatus && newPriority === currentPriority;
+
+    console.log("Is Moving Backward:", isMovingBackward);
+    console.log("Current Status:", currentStatus, "Priority:", currentPriority);
+    console.log("New Status:", leadStatus, "Priority:", newPriority);
+
+    // Hybrid NotInterested logic (Priority check against other courses)
+    let shouldUpdateGlobalStatus = true;
+    if (leadStatus === "NotInterested" || leadStatus === "Not Interested") {
+      const otherActiveCourses = await CourseStatus.findOne({
+        where: {
+          student_id: studentId,
+          course_id: { [Op.ne]: selectedCourse },
+          latest_course_status: { [Op.notIn]: ['NotInterested', 'Not Interested'] }
+        }
+      });
+      if (otherActiveCourses) {
+        shouldUpdateGlobalStatus = false;
+        console.log("Global status update prevented: student has other active courses.");
+      }
+    }
+
     let updateFields = {};
 
+    // Role-based logic
     if (
       counsellorRole === "l2" ||
       counsellorRole === "to" ||
@@ -177,100 +233,27 @@ export const updateStudentStatus = async (req, res) => {
       if (
         leadStatus === "Pre Application" &&
         leadSubStatus === "Initial Counseling Completed" &&
-        counsellorRole === "l2"
+        counsellorRole === "l2" &&
+        (!isMovingBackward || isSamePriority)
       ) {
         const assignedTeamOwner = await Counsellor.findOne({
           where: { counsellor_id: counsellorId },
           attributes: ["assigned_to"],
           raw: true,
         });
-        if (
-          !student.assigned_team_owner_date &&
-          !student.assigned_team_owner_id
-        ) {
+        if (!student.assigned_team_owner_date && !student.assigned_team_owner_id) {
           updateFields.assigned_team_owner_date = new Date();
-          updateFields.assigned_team_owner_id = assignedTeamOwner.assigned_to;
+          updateFields.assigned_team_owner_id = assignedTeamOwner?.assigned_to;
         }
-      } else if (
-        leadStatus === "Application" ||
-        (leadStatus === "Pre Application" && leadSubStatus === "Walkin marked")
-      ) {
-        updateFields = {
-          calling_status_l3: callingStatus,
-          sub_calling_status_l3: subCallingStatus,
-          remarks_l3: remark,
-          next_call_date_l3: callbackDate,
-          next_call_time_l3: callbackTime,
-          last_call_date_l3: new Date(),
-          total_remarks_l3: (student.total_remarks_l3 || 0) + 1,
-          remarks_count: (student.remarks_count || 0) + 1,
-          is_connected_yet_l3:
-            student.is_connected_yet_l3 || callingStatus === "Connected",
-          is_reactivity: false,
-        };
-        const journeylogs = await CourseStatusJourney.findOne({
-          where: {
-            student_id: studentId,
-            course_id: selectedCourse,
-          },
-          order: [["created_at", "DESC"]],
-        });
-        let l3data;
-        if (
-          !journeylogs?.dataValues?.assigned_l3_counsellor_id &&
-          leadStatus == "Application"
-        ) {
-          const courseDetails = await UniversityCourse.findOne({
-            where: { course_id: selectedCourse },
-          });
-          l3data = await axios.post(
-            "http://localhost:3031/v1/leadassignmentl3/assign",
-            {
-              studentId,
-              collegeName: courseDetails.university_name,
-              Course: courseDetails.course_name,
-              Degree: courseDetails.degree_name,
-              Specialization: courseDetails.specialization,
-              level: courseDetails.level,
-              source: courseDetails.level,
-              stream: courseDetails.stream,
-            },
-          );
-          console.log(l3data.data);
-        }
-        const log = await CourseStatusJourney.create({
-          student_id: studentId,
-          course_id: selectedCourse,
-          counsellor_id: counsellorId,
-          course_status: collegeCourseStatus,
-          deposit_amount: 0,
-          currency: "INR",
-          exam_interview_date: null,
-          last_admission_date: null,
-          assigned_l3_counsellor_id: journeylogs?.dataValues
-            .assigned_l3_counsellor_id
-            ? journeylogs?.dataValues.assigned_l3_counsellor_id
-            : l3data?.data?.assigned_l3_counsellor_id || null,
-          notes: "L3 Status BY Remark Handling",
-          timestamp: new Date(),
-        });
-        const updated = await CourseStatus.update(
-          {
-            latest_course_status: collegeCourseStatus,
-            created_by: counsellorId,
-          },
-          { where: { course_id: selectedCourse, student_id: studentId } },
-        );
       }
-    } else if (
-      leadStatus === "Admission" ||
-      leadStatus === "Enrolled" ||
-      leadStatus === "Application" ||
-      leadStatus === "NotInterested" ||
-      (leadStatus === "Pre Application" && leadSubStatus === "Walkin marked")
-    ) {
-      console.log("Updating as L3 counsellor");
-      updateFields = {
+    }
+
+    // Always calculate L3 related updates if applicable
+    if (counsellorRole === "l3" ||
+      leadStatus === "Admission" || leadStatus === "Enrolled" || leadStatus === "Application" ||
+      (leadStatus === "Pre Application" && leadSubStatus === "Walkin marked")) {
+
+      const newL3Fields = {
         calling_status_l3: callingStatus,
         sub_calling_status_l3: subCallingStatus,
         remarks_l3: remark,
@@ -283,35 +266,16 @@ export const updateStudentStatus = async (req, res) => {
           student.is_connected_yet_l3 || callingStatus === "Connected",
         is_reactivity: false,
       };
-      const journeylogs = await CourseStatusJourney.findOne({
-        where: {
-          student_id: studentId,
-          course_id: selectedCourse,
-        },
-        order: [["created_at", "DESC"]],
-      });
-      console.log(journeylogs.dataValues, "journeylogs");
-      const log = await CourseStatusJourney.create({
-        student_id: studentId,
-        course_id: selectedCourse,
-        counsellor_id: counsellorId,
-        course_status: collegeCourseStatus,
-        deposit_amount: 0,
-        currency: "INR",
-        exam_interview_date: null,
-        last_admission_date: null,
-        assigned_l3_counsellor_id:
-          journeylogs?.dataValues.assigned_l3_counsellor_id || null,
-        notes: "L3 Status BY Remark Handling",
-        timestamp: new Date(),
-      });
-      const updated = await CourseStatus.update(
-        { latest_course_status: collegeCourseStatus, created_by: counsellorId },
-        { where: { course_id: selectedCourse, student_id: studentId } },
-      );
-    } else {
-      return res.status(403).json({ message: "Unauthorized role" });
+
+      updateFields = { ...updateFields, ...newL3Fields };
     }
+
+    // Determine final global status
+    if (shouldUpdateGlobalStatus && (!isMovingBackward || isSamePriority)) {
+      updateFields.current_student_status = leadStatus || currentStatus;
+      updateFields.current_student_ni_sub_status = (leadStatus === "NotInterested" || leadStatus === "Not Interested") ? leadSubStatus : null;
+    }
+
     if (
       counsellorPreferredMode == "Online" &&
       (leadStatus == "Application" || leadStatus == "Admission")
@@ -319,38 +283,103 @@ export const updateStudentStatus = async (req, res) => {
       updateFields.online_ffh = 1;
     }
 
-    // Update student
+    // Update Student
     const updatedStudent = await Student.update(updateFields, {
       where: { student_id: studentId },
       returning: true,
     });
+
+    // Handle course status and Journey Tracking (Upsert)
+    const effectiveCourseStatus = collegeCourseStatus ||
+      ((leadStatus === "NotInterested" || leadStatus === "Not Interested") ? "NotInterested" : leadStatus);
+
+    if (effectiveCourseStatus && selectedCourse) {
+      const journeylogs = await CourseStatusJourney.findOne({
+        where: {
+          student_id: studentId,
+          course_id: selectedCourse,
+          course_status: effectiveCourseStatus
+        }
+      });
+
+      let assigned_l3_counsellor_id = null;
+      if (leadStatus == "Application" && !journeylogs) {
+        try {
+          const courseDetails = await UniversityCourse.findOne({
+            where: { course_id: selectedCourse },
+          });
+          const l3data = await axios.post(
+            "http://localhost:3031/v1/leadassignmentl3/assign",
+            {
+              studentId,
+              collegeName: courseDetails.university_name,
+              Course: courseDetails.course_name,
+              Degree: courseDetails.degree_name,
+              Specialization: courseDetails.specialization,
+              level: courseDetails.level,
+              source: courseDetails.level,
+              stream: courseDetails.stream,
+            },
+          );
+          assigned_l3_counsellor_id = l3data?.data?.assigned_l3_counsellor_id;
+        } catch (l3error) {
+          console.error("L3 Assignment failed:", l3error.message);
+        }
+      }
+
+      if (journeylogs) {
+        await journeylogs.update({
+          notes: remark,
+          deposit_amount: feesAmount || journeylogs.deposit_amount,
+          fee_type: leadStatus === "Admission" ? leadSubStatus : journeylogs.fee_type,
+        });
+      } else {
+        await CourseStatusJourney.create({
+          student_id: studentId,
+          course_id: selectedCourse,
+          counsellor_id: counsellorId,
+          course_status: effectiveCourseStatus,
+          deposit_amount: feesAmount || 0,
+          fee_type: leadStatus === "Admission" ? leadSubStatus : null,
+          currency: "INR",
+          assigned_l3_counsellor_id: assigned_l3_counsellor_id,
+          notes: remark,
+          created_at: new Date(),
+        });
+      }
+
+      await CourseStatus.update(
+        { latest_course_status: effectiveCourseStatus, created_by: counsellorId },
+        { where: { course_id: selectedCourse, student_id: studentId } }
+      );
+    }
+
     let enrolledDocumentUrl1;
-    // console.log("Updated student fields:", leadStatus, enrolledDocumentUrl);
     if (leadStatus === "Enrolled" && enrolledDocumentUrl) {
-      console.log("hello from cloudinary");
       enrolledDocumentUrl1 = await uploadToCloudinary(
         enrolledDocumentUrl,
         `enrollementDocument-${studentId}`,
       );
     }
-    console.log("enrolledDocumentUrl", enrolledDocumentUrl1);
+
+    // CREATE REMARK (Minimized status storage)
     const remarkData = {
       student_id: studentId,
       counsellor_id: counsellorRole !== "Supervisor" ? counsellorId : null,
       supervisor_id: counsellorRole === "Supervisor" ? counsellorId : null,
-      lead_status: leadStatus,
-      lead_sub_status: leadSubStatus,
+      lead_status: null, // Stored in Student table
+      lead_sub_status: null, // Stored in Student table
       calling_status: callingStatus,
-      feesAmount: feesAmount,
+      feesAmount: null, // Stored in Student/Journey table if needed
       sub_calling_status: subCallingStatus,
       remarks: remark,
       callback_date: callbackDate,
       enrolledDocumentUrl: enrolledDocumentUrl1 || null,
       callback_time: callbackTime,
     };
-    console.log("Remark data to be created:", remarkData);
+
     const newRemark = await createRemark(remarkData);
-    console.log("New remark created:", remarkData);
+
     if (
       leadStatus === "NotInterested" &&
       leadSubStatus === "Only_Online course"
@@ -754,7 +783,6 @@ export const getStudentById = async (req, res) => {
       updated_at: snap.updatedAt,
     }));
 
-    // Fetch all L3 journey data for this student using raw query
     const allL3Journeys = await sequelize.query(
       `SELECT 
           status_history_id, 
@@ -778,14 +806,53 @@ export const getStudentById = async (req, res) => {
       },
     );
 
-    // Get unique counsellor IDs to fetch their names
     const counsellorIds = [
       ...new Set(
         allL3Journeys.map((j) => j.assigned_l3_counsellor_id).filter(Boolean),
       ),
     ];
-
-    // Fetch counsellor names separately
+    if (counsellorRole === "l2") {
+      const latestJourney = await CourseStatusJourney.findOne({
+        where: {
+          student_id: id,
+          counsellor_id: counsellorId,
+        },
+        order: [["created_at", "DESC"]],
+        raw: true,
+      });
+      const result = await CourseStatusJourney.findAll({
+        attributes: ["course_id", "student_id"],
+        where: {
+          counsellor_id: counsellorId,
+          student_id: id,
+        },
+        group: ["course_id", "student_id"],
+        raw: true,
+      });
+      studentData.course_id = latestJourney?.course_id || null;
+      studentData.course_count = result?.length || 0;
+    }
+    else if (counsellorRole === "l3") {
+      const latestJourney = await CourseStatusJourney.findOne({
+        where: {
+          student_id: id,
+          assigned_l3_counsellor_id: counsellorId,
+        },
+        order: [["created_at", "DESC"]],
+        raw: true,
+      });
+      const result = await CourseStatusJourney.findAll({
+        attributes: ["course_id", "student_id"],
+        where: {
+          assigned_l3_counsellor_id: counsellorId,
+          student_id: id,
+        },
+        group: ["course_id", "student_id"],
+        raw: true,
+      });
+      studentData.course_id = latestJourney?.course_id || null;
+      studentData.course_count = result?.length || 0;
+    }
     const counsellors =
       counsellorIds.length > 0
         ? await Counsellor.findAll({
@@ -799,18 +866,15 @@ export const getStudentById = async (req, res) => {
         })
         : [];
 
-    // Create a map for quick lookup
     const counsellorMap = {};
     counsellors.forEach((c) => {
       counsellorMap[c.counsellor_id] = c;
     });
 
-    // Get unique course IDs to fetch course details
     const courseIds = [
       ...new Set(allL3Journeys.map((j) => j.course_id).filter(Boolean)),
     ];
 
-    // Fetch course details separately
     const courses =
       courseIds.length > 0
         ? await UniversityCourse.findAll({
@@ -826,15 +890,11 @@ export const getStudentById = async (req, res) => {
         })
         : [];
 
-    // Create a map for quick lookup
     const courseMap = {};
     courses.forEach((c) => {
       courseMap[c.course_id] = c;
     });
-
-    // Enhance journeys with counsellor and course details
     const enhancedJourneys = allL3Journeys.map((journey) => {
-      // Add counsellor details
       if (
         journey.assigned_l3_counsellor_id &&
         counsellorMap[journey.assigned_l3_counsellor_id]
@@ -842,7 +902,6 @@ export const getStudentById = async (req, res) => {
         journey.counsellor = counsellorMap[journey.assigned_l3_counsellor_id];
       }
 
-      // Add course details
       if (journey.course_id && courseMap[journey.course_id]) {
         journey.university_course = courseMap[journey.course_id];
       }
@@ -877,7 +936,6 @@ export const getStudentById = async (req, res) => {
       }
     });
 
-    // Add L3 journey data to each college credential
     if (
       studentData.collegeCredentials &&
       studentData.collegeCredentials.length > 0

@@ -35,6 +35,6 @@ router.put('/changeCounsellorPassword/:id', authorize(["Supervisor", "to", 'to_l
 router.put('/updateCounsellorPreferredMode/:id', authorize(["Supervisor", "to", 'to_l3']), updateCounsellorPreferredMode);
 router.put('/assignCounsellors', authorize(["Supervisor", "to", 'to_l3']), assignCounsellorsToStudents);
 router.put('/break/end', end_Counsellors_break)
-router.put('/change-supervisor', changeSupervisor);
+router.put('/change-supervisor', authorize(["Supervisor", "to", 'to_l3']), changeSupervisor);
 
 export default router;

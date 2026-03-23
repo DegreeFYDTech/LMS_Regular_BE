@@ -57,6 +57,10 @@ const CourseStatusJourney = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    fee_type: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
     assigned_l3_counsellor_id: {
       type: DataTypes.STRING(50),
       allowNull: true,
@@ -65,7 +69,7 @@ const CourseStatusJourney = sequelize.define(
   {
     timestamps: true,
     createdAt: "created_at",
-    updatedAt: false,
+    updatedAt: "updated_at",
     underscored: true,
     freezeTableName: true,
   },

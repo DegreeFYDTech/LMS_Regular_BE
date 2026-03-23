@@ -289,11 +289,12 @@ export const updateStudentStatus = async (req, res) => {
       returning: true,
     });
 
-    // Handle course status and Journey Tracking (Upsert)
     const effectiveCourseStatus = collegeCourseStatus ||
       ((leadStatus === "NotInterested" || leadStatus === "Not Interested") ? "NotInterested" : leadStatus);
 
     if (effectiveCourseStatus && selectedCourse) {
+      console.log("effectiveCourseStatus", effectiveCourseStatus);
+      console.log("selectedCourse", selectedCourse);
       const journeylogs = await CourseStatusJourney.findOne({
         where: {
           student_id: studentId,
@@ -718,7 +719,6 @@ export const getStudentById = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
 
-    // Fetch snapshots and payment orders for this student across all models (linked by phone/email)
     const matchingAdmissions = await Admission.findAll({
       where: {
         [Op.or]: [
@@ -812,6 +812,7 @@ export const getStudentById = async (req, res) => {
       ),
     ];
     if (counsellorRole === "l2") {
+      console.log("counsellorId", counsellorId);
       const latestJourney = await CourseStatusJourney.findOne({
         where: {
           student_id: id,

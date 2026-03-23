@@ -883,7 +883,7 @@ async function processStandardUniversity(
       data: finalPayload,
       timeout: 15000,
     });
-
+    console.log(apiResponse, "api.response");
     const statusResult = processApiResponse(apiResponse, collegeName);
 
     if (studentId) {
@@ -1310,15 +1310,15 @@ async function handleSpecialUniversity(
   courseId,
   isPartnerPortal,
 ) {
-  console.log(`🎯 Handling special university: ${collegeName}`, {
-    isPrimary,
-    studentEmail,
-    studentPhone,
-  });
-
+  const courseHeaderValue = await findHeaderValue(
+    collegeName,
+    courseId,
+    studentId,
+    isPartnerPortal,
+  );
+console.log(courseHeaderValue)
   const specialPayload = [
     { Attribute: "FirstName", Value: userResponse.student_name || "" },
-    { Attribute: "LastName", value: "" },
     {
       Attribute: "EmailAddress",
       Value:
@@ -1334,33 +1334,39 @@ async function handleSpecialUniversity(
           : userResponse.student_phone || "",
     },
     { Attribute: "Source", Value: "nuvora" },
-    { Attribute: "SourceCampaign", Value: "" },
-    { Attribute: "SourceMedium", Value: "" },
     {
-      Attribute: "mx_Campus",
-      Value: collegeName.includes("Chandigarh University")
-        ? "Mohali"
-        : "Gurgaon",
+      Attribute: "mx_Program_Code_New",
+      Value: courseHeaderValue.values?.mx_Program_Code_New || "AS201",
     },
-    { Attribute: "mx_Course2", Value: "Btech" },
     {
-      Attribute: "mx_State",
+      Attribute: "mx_Program_New",
+      Value:
+        courseHeaderValue.values?.mx_Program_New || "Bachelor of Engineering",
+    },
+    {
+      Attribute: "mx_Discipline_New",
+      Value: courseHeaderValue.values?.mx_Discipline_New || "Engineering",
+    },
+    {
+      Attribute: "Campus",
+      Value: courseHeaderValue.values?.Campus || "Mohali",
+    },
+    {
+      Attribute: "State",
       Value: collegeName.includes("Chandigarh University") ? "Punjab" : "Delhi",
     },
     {
-      Attribute: "mx_City",
+      Attribute: "City",
       Value: collegeName.includes("Chandigarh University")
         ? "Chandigarh"
         : "West Delhi",
     },
+    {
+      Attribute: "Date of Birth",
+      Value: "1990/10/10",
+    },
   ];
 
-  const courseHeaderValue = await findHeaderValue(
-    collegeName,
-    courseId,
-    studentId,
-    isPartnerPortal,
-  );
   const apiUrl =
     courseHeaderValue?.values?.API_URL ||
     courseHeaderValue?.values?.["api-url"];
@@ -1403,7 +1409,7 @@ async function handleSpecialUniversity(
       data: specialPayload,
       timeout: 15000,
     });
-console.log(apiResponse, "api.response");
+    console.log(apiResponse, "api.response");
     const statusResult = processSpecialUniversityApiResponse(
       apiResponse,
       collegeName,
@@ -1670,8 +1676,8 @@ async function handleLPUOnline(
       !isPrimary && studentPhone
         ? studentPhone
         : userResponse.student_phone || "",
-    state: "Punjab",
-    city: "Chandigarh",
+    state: "delhi",
+    city: "West Delhi",
     field_new_specialization_for_new_widgets: "BBA",
     field_new_specialization: "BBA",
   };
@@ -2237,13 +2243,18 @@ async function CgcLandran(
   courseId,
   isPartnerPortal,
 ) {
+  console.log(
+    `🎯 Handling CGC Landran: ${collegeName}`,
+    { courseId },
+    { isPrimary },
+  );
   const courseHeaderValue = await findHeaderValue(
     collegeName,
     courseId,
     studentId,
     isPartnerPortal,
   );
-
+  console.log(courseHeaderValue, "course.header.value");
   const defaultValues = {
     name: `${userResponse.student_name || ""} ${""}`.trim(),
     email:
@@ -2258,7 +2269,7 @@ async function CgcLandran(
     source: "nuvora",
     state: "Punjab",
     city: "Mohali",
-    course: courseHeaderValue.dataValues.values.course || "Btech",
+    course: courseHeaderValue.dataValues.values.course || "B.Tech - CSE - Leet",
     secret_key: "b30c9bcd9fb18a82e41a505fae8490b2",
   };
   const values = courseHeaderValue?.values || defaultValues;
@@ -2278,7 +2289,7 @@ async function CgcLandran(
       headers,
       timeout: 15000,
     });
-
+    console.log(apiResponse, "api.response.cgc");
     const statusResult = CgcApiResponse(apiResponse, collegeName);
 
     if (studentId) {

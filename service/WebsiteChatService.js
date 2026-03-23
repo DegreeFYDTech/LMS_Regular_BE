@@ -6,7 +6,7 @@ import sequelize from '../config/database-config.js';
 import redis from '../config/redis.js';
 import { Op } from 'sequelize';
 import { processStudentLead } from '../helper/leadAssignmentService.js';
-
+import axios from 'axios';
 const STREAM_KEY = 'regular_website_chat:stream';
 const REDIS_TTL = 60 * 60 * 24 * 7; 
 
@@ -32,6 +32,18 @@ class WebsiteChatService {
       const { phone, name, email } = studentData;
       const requesteddata={
         phone_number:phone,...studentData}
+          try{
+      const apiResponse=await axios.post(`${process.env.PRIMARY_STORAGE_URL}/leads/batch`,{data:requesteddata})
+       const {data}=apiResponse
+       const {results}=data
+       if(results && results?.length>0)
+       {
+       requesteddata.primary_db_id=results[0].lead_id
+       }
+      }
+      catch(e){
+      console.log("error",e)
+      }
       const leadResult = await processStudentLead(requesteddata);
       
       if (!leadResult.success) {

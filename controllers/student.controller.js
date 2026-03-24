@@ -202,17 +202,80 @@ export const updateStudentStatus = async (req, res) => {
     // Hybrid NotInterested logic (Priority check against other courses)
     let shouldUpdateGlobalStatus = true;
     if (leadStatus === "NotInterested" || leadStatus === "Not Interested") {
-      const otherActiveCourses = await CourseStatus.findOne({
+      console.log("========== NI LOGIC START ==========");
+      console.log("Student ID:", studentId);
+      console.log("Selected Course:", selectedCourse);
+      console.log("Lead Status:", leadStatus);
+
+      const distinctCourses = await CourseStatusJourney.findAll({
         where: {
           student_id: studentId,
-          course_id: { [Op.ne]: selectedCourse },
-          latest_course_status: { [Op.notIn]: ['NotInterested', 'Not Interested'] }
-        }
+        },
+        attributes: ['course_id'],
+        group: ['course_id'],
+        raw: true,
       });
-      if (otherActiveCourses) {
-        shouldUpdateGlobalStatus = false;
-        console.log("Global status update prevented: student has other active courses.");
+
+      const totalDistinctCourses = distinctCourses.length;
+      console.log("Distinct Courses in Journey:", JSON.stringify(distinctCourses, null, 2));
+      console.log("Total Distinct Courses:", totalDistinctCourses);
+
+      if (totalDistinctCourses === 1) {
+        console.log("Case: Only 1 course exists");
+        shouldUpdateGlobalStatus = true;
+        console.log("shouldUpdateGlobalStatus =", shouldUpdateGlobalStatus);
       }
+      else if (totalDistinctCourses > 1 && selectedCourse) {
+        console.log("Case: Multiple courses exist (", totalDistinctCourses, "courses)");
+        console.log("Current course being updated:", selectedCourse);
+
+        // Get LATEST status for each course from journey
+        const allCoursesStatus = await Promise.all(
+          distinctCourses.map(async (course) => {
+            console.log(`Fetching latest status for course: ${course.course_id}`);
+            const latestJourney = await CourseStatusJourney.findOne({
+              where: {
+                student_id: studentId,
+                course_id: course.course_id,
+              },
+              order: [['updated_at', 'DESC']], // Get the latest entry
+              attributes: ['course_id', 'course_status'],
+              raw: true,
+            });
+            console.log(`  Latest status for ${course.course_id}:`, latestJourney?.course_status);
+            return latestJourney;
+          })
+        );
+
+        console.log("All Courses Latest Status:", JSON.stringify(allCoursesStatus, null, 2));
+
+        // Filter out the current course and check others
+        const otherCourses = allCoursesStatus.filter(course => course.course_id !== selectedCourse);
+        console.log("Other Courses (excluding current):", JSON.stringify(otherCourses, null, 2));
+
+        const allOtherCoursesNI = otherCourses.every(course => {
+          const isNI = course.course_status === "NotInterested" || course.course_status === "Not Interested";
+          console.log(`Course ${course.course_id} status: "${course.course_status}", Is NI: ${isNI}`);
+          return isNI;
+        });
+
+        console.log("All other courses are NI?", allOtherCoursesNI);
+
+        if (allOtherCoursesNI) {
+          shouldUpdateGlobalStatus = true;
+          console.log("✅ All other courses are NI - Will update global status to NI");
+        } else {
+          shouldUpdateGlobalStatus = false;
+          console.log("❌ Some other courses are still active - Will NOT update global status");
+        }
+      } else {
+        console.log("Case: No selectedCourse or other case");
+        shouldUpdateGlobalStatus = true;
+        console.log("shouldUpdateGlobalStatus =", shouldUpdateGlobalStatus);
+      }
+
+      console.log("========== NI LOGIC END ==========");
+      console.log("Final shouldUpdateGlobalStatus:", shouldUpdateGlobalStatus);
     }
 
     let updateFields = {};
@@ -333,13 +396,14 @@ export const updateStudentStatus = async (req, res) => {
           notes: remark,
           deposit_amount: feesAmount || journeylogs.deposit_amount,
           fee_type: leadStatus === "Admission" ? leadSubStatus : journeylogs.fee_type,
+          course_status: leadStatus === "Application" ? leadSubStatus : leadStatus,
         });
       } else {
         await CourseStatusJourney.create({
           student_id: studentId,
           course_id: selectedCourse,
           counsellor_id: counsellorId,
-          course_status: effectiveCourseStatus,
+          course_status: effectiveCourseStatus === "Application" ? leadSubStatus : effectiveCourseStatus,
           deposit_amount: feesAmount || 0,
           fee_type: leadStatus === "Admission" ? leadSubStatus : null,
           currency: "INR",
@@ -350,7 +414,7 @@ export const updateStudentStatus = async (req, res) => {
       }
 
       await CourseStatus.update(
-        { latest_course_status: effectiveCourseStatus, created_by: counsellorId },
+        { latest_course_status: effectiveCourseStatus === "Application" ? leadSubStatus : effectiveCourseStatus, created_by: counsellorId },
         { where: { course_id: selectedCourse, student_id: studentId } }
       );
     }

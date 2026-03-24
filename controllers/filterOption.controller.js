@@ -53,12 +53,12 @@ export const getLeadOptions = async (req, res) => {
         attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('mode')), 'mode']],
         raw: true
       }),
-      StudentRemark.findAll({
-        attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('lead_status')), 'lead_status']],
+      Student.findAll({
+        attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('current_student_status')), 'current_student_status']],
         raw: true
       }),
-      StudentRemark.findAll({
-        attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('lead_sub_status')), 'lead_sub_status']],
+      Student.findAll({
+        attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('current_student_ni_sub_status')), 'current_student_ni_sub_status']],
         raw: true
       }),
       StudentRemark.findAll({
@@ -123,8 +123,8 @@ export const getLeadOptions = async (req, res) => {
       source: isAnalyser ? sources : format(sources, 'source'),
       first_source_url: format(sourceUrls, 'source_url'),
       campaign_name: format(campaigns, 'utm_campaign'),
-      lead_status: format(leadStatuses, 'lead_status'),
-      sub_lead_status: format(subLeadStatuses, 'lead_sub_status'),
+      lead_status: format(leadStatuses, 'current_student_status'),
+      sub_lead_status: format(subLeadStatuses, 'current_student_ni_sub_status'),
       calling_status: format(callingStatuses, 'calling_status'),
       calling_sub_status: format(subCallingStatuses, 'sub_calling_status'),
     };

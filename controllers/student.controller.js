@@ -811,7 +811,7 @@ export const getStudentById = async (req, res) => {
         allL3Journeys.map((j) => j.assigned_l3_counsellor_id).filter(Boolean),
       ),
     ];
-    if (counsellorRole === "l2") {
+    if (counsellorRole === "l2" || counsellorRole === "to") {
       console.log("counsellorId", counsellorId);
       const latestJourney = await CourseStatusJourney.findOne({
         where: {
@@ -833,7 +833,7 @@ export const getStudentById = async (req, res) => {
       studentData.course_id = latestJourney?.course_id || null;
       studentData.course_count = result?.length || 0;
     }
-    else if (counsellorRole === "l3") {
+    else if (counsellorRole === "l3" || counsellorRole === "to_l3") {
       const latestJourney = await CourseStatusJourney.findOne({
         where: {
           student_id: id,

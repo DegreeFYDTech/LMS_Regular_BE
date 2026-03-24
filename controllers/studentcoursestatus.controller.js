@@ -1083,15 +1083,36 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     const firstAdmissionCTE = `
       SELECT DISTINCT
         student_id
-      FROM student_remarks
-      WHERE lead_status IN ('Admission', 'Enrolled')
+      FROM course_status_journeys
+      WHERE course_status IN (
+        'Registration Done', 
+        'Partially Paid', 
+        'Admission', 
+        'Registration done', 
+        'Walkin marked'
+      )
     `;
 
     const firstFormfilledCTE = `
       SELECT DISTINCT
         student_id
-      FROM student_remarks
-      WHERE lead_status IN ('Application', 'Admission', 'Enrolled')
+      FROM course_status_journeys
+      WHERE course_status IN (
+        'Form Submitted – Portal Pending',
+        'Form Filled_Partner website',
+        'Offer Letter/Results Pending',
+        'Application',
+        'Form Submitted – Completed',
+        'Walkin Completed',
+        'Form Filled_Degreefyd',
+        'Exam Interview Pending',
+        'Offer Letter/Results Released',
+        'Registration Done',
+        'Partially Paid',
+        'Admission',
+        'Registration done',
+        'Walkin marked'
+      )
     `;
 
     const firstEnrolledCTE = `
@@ -2683,6 +2704,41 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
       SELECT student_id FROM eligible_students
     `;
 
+    const firstAdmissionCTE = `
+      SELECT DISTINCT
+        student_id
+      FROM course_status_journeys
+      WHERE course_status IN (
+        'Registration Done', 
+        'Partially Paid', 
+        'Admission', 
+        'Registration done', 
+        'Walkin marked'
+      )
+    `;
+
+    const firstFormfilledCTE = `
+      SELECT DISTINCT
+        student_id
+      FROM course_status_journeys
+      WHERE course_status IN (
+        'Form Submitted – Portal Pending',
+        'Form Filled_Partner website',
+        'Offer Letter/Results Pending',
+        'Application',
+        'Form Submitted – Completed',
+        'Walkin Completed',
+        'Form Filled_Degreefyd',
+        'Exam Interview Pending',
+        'Offer Letter/Results Released',
+        'Registration Done',
+        'Partially Paid',
+        'Admission',
+        'Registration done',
+        'Walkin marked'
+      )
+    `;
+
     let sortColumn;
     if (sortBy) {
       const sortMap = {
@@ -2718,7 +2774,9 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
            last_remark AS (${lastRemarkCTE}),
            connected_remarks_count AS (${connectedRemarksCountCTE}),
            student_remark_count AS (${studentRemarkCountCTE}),
-           pre_ni_students AS (${preNICTE})
+           pre_ni_students AS (${preNICTE}),
+           first_admission_students AS (${firstAdmissionCTE}),
+           first_formfilled_students AS (${firstFormfilledCTE})
            
       SELECT
         ${groupByField} AS group_by,
@@ -2754,12 +2812,12 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
         END) AS attempted,
 
         COUNT(DISTINCT CASE 
-          WHEN lr.lead_status IN ('Application', 'Admission')
+          WHEN ffs.student_id IS NOT NULL
           THEN s.student_id 
         END) AS formFilled,
 
         COUNT(DISTINCT CASE 
-          WHEN lr.lead_status = 'Admission'
+          WHEN fas.student_id IS NOT NULL
           THEN s.student_id 
         END) AS admission_count,
 
@@ -2817,6 +2875,8 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
       LEFT JOIN connected_remarks_count crc ON s.student_id = crc.student_id
       LEFT JOIN student_remark_count src ON s.student_id = src.student_id
       LEFT JOIN pre_ni_students pns ON s.student_id = pns.student_id
+      LEFT JOIN first_admission_students fas ON s.student_id = fas.student_id
+      LEFT JOIN first_formfilled_students ffs ON s.student_id = ffs.student_id
       LEFT JOIN counsellors c ON lr.counsellor_id = c.counsellor_id
       ${counsellorJoin}
       ${whereSQL}

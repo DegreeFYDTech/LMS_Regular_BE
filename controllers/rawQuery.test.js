@@ -427,8 +427,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     if (subCallingStatusL3)
       where.push(inSQL("s.sub_calling_status_l3", subCallingStatusL3));
 
-    if (leadStatus) where.push(inSQL("lr.lead_status", leadStatus));
-    if (leadSubStatus) where.push(inSQL("lr.lead_sub_status", leadSubStatus));
+    if (leadStatus) where.push(inSQL("s.current_student_status", leadStatus));
+    if (leadSubStatus) where.push(inSQL("s.current_student_ni_sub_status", leadSubStatus));
     if (callingStatus) where.push(inSQL("lr.calling_status", callingStatus));
     if (subCallingStatus)
       where.push(inSQL("lr.sub_calling_status", subCallingStatus));
@@ -458,7 +458,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       switch (callback.toLowerCase()) {
         case "today":
           where.push(
-            `lr.callback_date >= '${todayStart}'::timestamp AND lr.callback_date <= '${todayEnd}'::timestamp`,
+            `lr.callback_date >= '${todayStart}'::timestamp AND lr.callback_date <= '${todayEnd}'::timestamp AND s.current_student_status IN ('Admission','Application','Pre Application','Pre_Application')`,
           );
           break;
         case "overdue":
@@ -811,7 +811,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
 
     if (freshLeads === "Fresh") {
       if (data === "l3") {
-        // For L3 fresh leads, check if there are no journey entries for this counsellor
+        // For L3 fresh leads, check if there are no journey entries for this counsellor (or remark depending on previous state)
         if (selectedagent) {
           if (userRole === "to_l3" && l3TeamIds.includes(selectedagent)) {
             whereClauses.push(
@@ -823,7 +823,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
               )`,
             );
           } else if (userRole === "to_l3") {
-            // Selected agent not in their team
             whereClauses.push("1 = 0");
           } else {
             whereClauses.push(
@@ -862,32 +861,11 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
               AND csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})
             )`,
           );
-        }
-      } else if (selectedagent && data && data !== "to") {
-        if (isSupervisorView) {
-          whereClauses.push(
-            `NOT EXISTS (
-              SELECT 1 
-              FROM student_remarks sr 
-              WHERE sr.student_id = s.student_id 
-              AND sr.counsellor_id IN (${supervisorCounsellorIds.map(escape).join(",")})
-            )`,
-          );
         } else {
-          whereClauses.push(
-            `NOT EXISTS (
-              SELECT 1 
-              FROM student_remarks sr 
-              WHERE sr.student_id = s.student_id AND sr.counsellor_id = ${escape(selectedagent)}
-            )`,
-          );
+           whereClauses.push(`s.total_remarks_l3='0'`);
         }
       } else {
-        if (data == "l3") {
-          whereClauses.push(`s.total_remarks_l3='0' `);
-        } else {
-          whereClauses.push("lr.student_id IS NULL");
-        }
+        whereClauses.push(`s.current_student_status = 'Fresh'`);
       }
     } else {
       const hasRemarkFilters =
@@ -1011,8 +989,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         c1.role as counsellor_role,
 
         lr.remark_id,
-        lr.lead_status,
-        lr.lead_sub_status,
+        s.current_student_status as lead_status,
+        s.current_student_ni_sub_status as lead_sub_status,
         lr.calling_status,
         lr.sub_calling_status,
         lr.remarks,
@@ -1083,8 +1061,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         MIN(c2_single.role) as counsellor_l3_role,
 
         lr.remark_id,
-        lr.lead_status,
-        lr.lead_sub_status,
+        s.current_student_status as lead_status,
+        s.current_student_ni_sub_status as lead_sub_status,
         lr.calling_status,
         lr.sub_calling_status,
         lr.remarks,
@@ -1125,7 +1103,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       GROUP BY 
         s.student_id, 
         c1.counsellor_id, c1.counsellor_name, c1.counsellor_email, c1.role,
-        lr.remark_id, lr.lead_status, lr.lead_sub_status, lr.calling_status,
+        lr.remark_id, s.current_student_status, s.current_student_ni_sub_status, lr.calling_status,
         lr.sub_calling_status, lr.remarks, lr.callback_date, lr.callback_time,
         lr.remark_created_at,
         fla.utm_source, fla.utm_medium, fla.utm_campaign, fla.utm_keyword,
@@ -1646,10 +1624,11 @@ async function getL3OverallStatsFromJourney({
       today_callbacks AS (
         SELECT COUNT(DISTINCT lr.student_id) as count
         FROM latest_remarks lr
+        INNER JOIN base_students bs ON lr.student_id = bs.student_id
         WHERE lr.student_id IS NOT NULL
           AND lr.callback_date >= current_date 
           AND lr.callback_date < current_date + 1
-          AND lr.lead_status IN ('Admission', 'Application', 'Pre Application', 'Pre_Application')
+          AND bs.current_student_status IN ('Admission', 'Application', 'Pre Application', 'Pre_Application')
       ),
       intent_stats AS (
         SELECT 

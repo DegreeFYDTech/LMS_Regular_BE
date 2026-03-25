@@ -980,7 +980,8 @@ export const getStudentById = async (req, res) => {
           latestJourney?.course_status == "Semester Paid" ||
           latestJourney?.course_status == "Admission Blocked" ||
           latestJourney?.course_status == "Registration done" ||
-          latestJourney?.course_status == "Registration done"
+          latestJourney?.course_status == "Registration done" ||
+          latestJourney?.course_status == "Admission"
         ) {
           studentData.current_student_status = "Admission";
         } else {

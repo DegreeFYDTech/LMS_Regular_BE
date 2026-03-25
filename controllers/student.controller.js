@@ -423,9 +423,7 @@ if (effectiveCourseStatus && selectedCourse) {
   // ONLY create new entry if status is different
   if (latestStatus !== effectiveCourseStatus) {
     console.log("Status changed - creating new journey entry");
-    
-    // Check if this is an Application status and needs L3 assignment
-    if (leadStatus == "Application" && effectiveCourseStatus === "Application") {
+        if (leadStatus == "Application" && effectiveCourseStatus === "Application") {
       try {
         const courseDetails = await UniversityCourse.findOne({
           where: { course_id: selectedCourse },
@@ -448,8 +446,14 @@ if (effectiveCourseStatus && selectedCourse) {
         console.error("L3 Assignment failed:", l3error.message);
       }
     }
-    
-    // Create new journey entry
+    const latestCourse = await CourseStatusJourney.findOne({
+      where: {
+        student_id: studentId,
+        course_id: selectedCourse,
+      },
+      order: [["created_at", "DESC"]],
+    });
+
     await CourseStatusJourney.create({
       student_id: studentId,
       course_id: selectedCourse,
@@ -460,7 +464,7 @@ if (effectiveCourseStatus && selectedCourse) {
       deposit_amount: feesAmount || 0,
       fee_type: leadStatus === "Admission" ? leadSubStatus : null,
       currency: "INR",
-      assigned_l3_counsellor_id: assigned_l3_counsellor_id,
+      assigned_l3_counsellor_id: latestCourse?.assigned_l3_counsellor_id || assigned_l3_counsellor_id, // Preserve existing L3 assignment if exists, else use new one
       notes: remark,
       created_at: new Date(),
     });

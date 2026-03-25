@@ -401,7 +401,7 @@ export const updateStudentStatus = async (req, res) => {
         ? "NotInterested"
         : leadStatus);
 
-   if (effectiveCourseStatus && selectedCourse) {
+if (effectiveCourseStatus && selectedCourse) {
   console.log("effectiveCourseStatus", effectiveCourseStatus);
   console.log("selectedCourse", selectedCourse);
   
@@ -411,8 +411,7 @@ export const updateStudentStatus = async (req, res) => {
       student_id: studentId,
       course_id: selectedCourse,
     },
-    order: [["created_at", "DESC"]], // Get the most recent entry
-    attributes: ["course_status"],
+    order: [["created_at", "DESC"]],
   });
   
   const latestStatus = latestJourney?.course_status;
@@ -477,13 +476,20 @@ export const updateStudentStatus = async (req, res) => {
       { where: { course_id: selectedCourse, student_id: studentId } }
     );
   } else {
-    console.log("Status unchanged - skipping journey creation");
-    // Optionally update notes or other fields in the latest entry if needed
-    if (latestJourney && remark) {
-      await latestJourney.update({
-        notes: remark,
-        deposit_amount: feesAmount || latestJourney.deposit_amount,
-      });
+    console.log("Status unchanged - updating existing journey entry");
+    // Update the latest entry with new notes/amount while preserving assigned_l3_counsellor_id
+    if (latestJourney) {
+      const updateData = {};
+      
+      if (remark) updateData.notes = remark;
+      if (feesAmount) updateData.deposit_amount = feesAmount;
+      if (leadStatus === "Admission" && leadSubStatus) updateData.fee_type = leadSubStatus;
+      
+      // IMPORTANT: Keep the existing assigned_l3_counsellor_id
+      // Don't set it to null, preserve the previous value
+      
+      await latestJourney.update(updateData);
+      console.log("Updated existing journey entry with:", updateData);
     }
   }
 }

@@ -2696,6 +2696,9 @@ export const sentStatustoCollege = async (req, res) => {
       studentPhone,
       isPrimary,
     );
+    console.log(
+      `✅ Student data retrieved successfully for studentId: ${studentData}`,
+    );
     userResponse.student_name =
       userResponse.student_name || userResponse.studentName || "";
     console.log(`✅ Student data retrieved:`, {

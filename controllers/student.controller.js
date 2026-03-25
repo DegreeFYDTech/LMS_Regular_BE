@@ -984,8 +984,10 @@ export const getStudentById = async (req, res) => {
           latestJourney?.course_status == "Admission"
         ) {
           studentData.current_student_status = "Admission";
-        } else {
+        } else if (latestJourney?.course_status == "Exam Interview Pending"|| latestJourney?.course_status == "Offer Letter/Results Pending" || latestJourney?.course_status == "Form Filled_Partner website" || latestJourney?.course_status == "Form Submitted – Portal Pending" || latestJourney?.course_status == "Offer Letter/Results Released" || latestJourney?.course_status == "Application Fee Paid" || latestJourney?.course_status == "Form Submitted – Offline" || latestJourney?.course_status == "Form Filled_Degreefyd" || latestJourney?.course_status == "Exam/Interview Scheduled" || latestJourney?.course_status == "Form Submitted – Completed") {
           studentData.current_student_status = "Application";
+        } else {
+          studentData.current_student_status = latestJourney?.course_status;
         }
       }
     }

@@ -177,23 +177,30 @@ export const updateStudentStatus = async (req, res) => {
       NotInterested: 7,
     };
 
-
     // Handle reactivation
-    const updateReactivity = await Student.update({
-      is_reactivity: false,
-    }, {
-      where: {
-        student_id: studentId,
+    const updateReactivity = await Student.update(
+      {
+        is_reactivity: false,
       },
-    })
+      {
+        where: {
+          student_id: studentId,
+        },
+      },
+    );
 
     // Priority and Backward movement protection
     const currentStatus = student.current_student_status || "Pre Application";
-    const currentPriority = (currentStatus === "NotInterested" || currentStatus === "Not Interested") ? 0 : (statusPriority[currentStatus] || 0);
+    const currentPriority =
+      currentStatus === "NotInterested" || currentStatus === "Not Interested"
+        ? 0
+        : statusPriority[currentStatus] || 0;
     const newPriority = statusPriority[leadStatus] || 0;
 
-    const isMovingBackward = leadStatus && currentStatus && newPriority < currentPriority;
-    const isSamePriority = leadStatus && currentStatus && newPriority === currentPriority;
+    const isMovingBackward =
+      leadStatus && currentStatus && newPriority < currentPriority;
+    const isSamePriority =
+      leadStatus && currentStatus && newPriority === currentPriority;
 
     console.log("Is Moving Backward:", isMovingBackward);
     console.log("Current Status:", currentStatus, "Priority:", currentPriority);
@@ -211,51 +218,74 @@ export const updateStudentStatus = async (req, res) => {
         where: {
           student_id: studentId,
         },
-        attributes: ['course_id'],
-        group: ['course_id'],
+        attributes: ["course_id"],
+        group: ["course_id"],
         raw: true,
       });
 
       const totalDistinctCourses = distinctCourses.length;
-      console.log("Distinct Courses in Journey:", JSON.stringify(distinctCourses, null, 2));
+      console.log(
+        "Distinct Courses in Journey:",
+        JSON.stringify(distinctCourses, null, 2),
+      );
       console.log("Total Distinct Courses:", totalDistinctCourses);
 
       if (totalDistinctCourses === 1) {
         console.log("Case: Only 1 course exists");
         shouldUpdateGlobalStatus = true;
         console.log("shouldUpdateGlobalStatus =", shouldUpdateGlobalStatus);
-      }
-      else if (totalDistinctCourses > 1 && selectedCourse) {
-        console.log("Case: Multiple courses exist (", totalDistinctCourses, "courses)");
+      } else if (totalDistinctCourses > 1 && selectedCourse) {
+        console.log(
+          "Case: Multiple courses exist (",
+          totalDistinctCourses,
+          "courses)",
+        );
         console.log("Current course being updated:", selectedCourse);
 
         // Get LATEST status for each course from journey
         const allCoursesStatus = await Promise.all(
           distinctCourses.map(async (course) => {
-            console.log(`Fetching latest status for course: ${course.course_id}`);
+            console.log(
+              `Fetching latest status for course: ${course.course_id}`,
+            );
             const latestJourney = await CourseStatusJourney.findOne({
               where: {
                 student_id: studentId,
                 course_id: course.course_id,
               },
-              order: [['updated_at', 'DESC']], // Get the latest entry
-              attributes: ['course_id', 'course_status'],
+              order: [["updated_at", "DESC"]], // Get the latest entry
+              attributes: ["course_id", "course_status"],
               raw: true,
             });
-            console.log(`  Latest status for ${course.course_id}:`, latestJourney?.course_status);
+            console.log(
+              `  Latest status for ${course.course_id}:`,
+              latestJourney?.course_status,
+            );
             return latestJourney;
-          })
+          }),
         );
 
-        console.log("All Courses Latest Status:", JSON.stringify(allCoursesStatus, null, 2));
+        console.log(
+          "All Courses Latest Status:",
+          JSON.stringify(allCoursesStatus, null, 2),
+        );
 
         // Filter out the current course and check others
-        const otherCourses = allCoursesStatus.filter(course => course.course_id !== selectedCourse);
-        console.log("Other Courses (excluding current):", JSON.stringify(otherCourses, null, 2));
+        const otherCourses = allCoursesStatus.filter(
+          (course) => course.course_id !== selectedCourse,
+        );
+        console.log(
+          "Other Courses (excluding current):",
+          JSON.stringify(otherCourses, null, 2),
+        );
 
-        const allOtherCoursesNI = otherCourses.every(course => {
-          const isNI = course.course_status === "NotInterested" || course.course_status === "Not Interested";
-          console.log(`Course ${course.course_id} status: "${course.course_status}", Is NI: ${isNI}`);
+        const allOtherCoursesNI = otherCourses.every((course) => {
+          const isNI =
+            course.course_status === "NotInterested" ||
+            course.course_status === "Not Interested";
+          console.log(
+            `Course ${course.course_id} status: "${course.course_status}", Is NI: ${isNI}`,
+          );
           return isNI;
         });
 
@@ -263,10 +293,14 @@ export const updateStudentStatus = async (req, res) => {
 
         if (allOtherCoursesNI) {
           shouldUpdateGlobalStatus = true;
-          console.log("✅ All other courses are NI - Will update global status to NI");
+          console.log(
+            "✅ All other courses are NI - Will update global status to NI",
+          );
         } else {
           shouldUpdateGlobalStatus = false;
-          console.log("❌ Some other courses are still active - Will NOT update global status");
+          console.log(
+            "❌ Some other courses are still active - Will NOT update global status",
+          );
         }
       } else {
         console.log("Case: No selectedCourse or other case");
@@ -304,7 +338,10 @@ export const updateStudentStatus = async (req, res) => {
           attributes: ["assigned_to"],
           raw: true,
         });
-        if (!student.assigned_team_owner_date && !student.assigned_team_owner_id) {
+        if (
+          !student.assigned_team_owner_date &&
+          !student.assigned_team_owner_id
+        ) {
           updateFields.assigned_team_owner_date = new Date();
           updateFields.assigned_team_owner_id = assignedTeamOwner?.assigned_to;
         }
@@ -312,10 +349,13 @@ export const updateStudentStatus = async (req, res) => {
     }
 
     // Always calculate L3 related updates if applicable
-    if (counsellorRole === "l3" ||
-      leadStatus === "Admission" || leadStatus === "Enrolled" || leadStatus === "Application" ||
-      (leadStatus === "Pre Application" && leadSubStatus === "Walkin marked")) {
-
+    if (
+      counsellorRole === "l3" ||
+      leadStatus === "Admission" ||
+      leadStatus === "Enrolled" ||
+      leadStatus === "Application" ||
+      (leadStatus === "Pre Application" && leadSubStatus === "Walkin marked")
+    ) {
       const newL3Fields = {
         calling_status_l3: callingStatus,
         sub_calling_status_l3: subCallingStatus,
@@ -336,7 +376,10 @@ export const updateStudentStatus = async (req, res) => {
     // Determine final global status
     if (shouldUpdateGlobalStatus && (!isMovingBackward || isSamePriority)) {
       updateFields.current_student_status = leadStatus || currentStatus;
-      updateFields.current_student_ni_sub_status = (leadStatus === "NotInterested" || leadStatus === "Not Interested") ? leadSubStatus : null;
+      updateFields.current_student_ni_sub_status =
+        leadStatus === "NotInterested" || leadStatus === "Not Interested"
+          ? leadSubStatus
+          : null;
     }
 
     if (
@@ -352,8 +395,11 @@ export const updateStudentStatus = async (req, res) => {
       returning: true,
     });
 
-    const effectiveCourseStatus = collegeCourseStatus ||
-      ((leadStatus === "NotInterested" || leadStatus === "Not Interested") ? "NotInterested" : leadStatus);
+    const effectiveCourseStatus =
+      collegeCourseStatus ||
+      (leadStatus === "NotInterested" || leadStatus === "Not Interested"
+        ? "NotInterested"
+        : leadStatus);
 
     if (effectiveCourseStatus && selectedCourse) {
       console.log("effectiveCourseStatus", effectiveCourseStatus);
@@ -362,8 +408,8 @@ export const updateStudentStatus = async (req, res) => {
         where: {
           student_id: studentId,
           course_id: selectedCourse,
-          course_status: effectiveCourseStatus
-        }
+          course_status: effectiveCourseStatus,
+        },
       });
 
       let assigned_l3_counsellor_id = null;
@@ -395,15 +441,20 @@ export const updateStudentStatus = async (req, res) => {
         await journeylogs.update({
           notes: remark,
           deposit_amount: feesAmount || journeylogs.deposit_amount,
-          fee_type: leadStatus === "Admission" ? leadSubStatus : journeylogs.fee_type,
-          course_status: leadStatus === "Application" ? leadSubStatus : leadStatus,
+          fee_type:
+            leadStatus === "Admission" ? leadSubStatus : journeylogs.fee_type,
+          course_status:
+            leadStatus === "Application" ? leadSubStatus : leadStatus,
         });
       } else {
         await CourseStatusJourney.create({
           student_id: studentId,
           course_id: selectedCourse,
           counsellor_id: counsellorId,
-          course_status: effectiveCourseStatus === "Application" ? leadSubStatus : effectiveCourseStatus,
+          course_status:
+            effectiveCourseStatus === "Application"
+              ? leadSubStatus
+              : effectiveCourseStatus,
           deposit_amount: feesAmount || 0,
           fee_type: leadStatus === "Admission" ? leadSubStatus : null,
           currency: "INR",
@@ -414,8 +465,14 @@ export const updateStudentStatus = async (req, res) => {
       }
 
       await CourseStatus.update(
-        { latest_course_status: effectiveCourseStatus === "Application" ? leadSubStatus : effectiveCourseStatus, created_by: counsellorId },
-        { where: { course_id: selectedCourse, student_id: studentId } }
+        {
+          latest_course_status:
+            effectiveCourseStatus === "Application"
+              ? leadSubStatus
+              : effectiveCourseStatus,
+          created_by: counsellorId,
+        },
+        { where: { course_id: selectedCourse, student_id: studentId } },
       );
     }
 
@@ -645,7 +702,7 @@ export const getStudentById = async (req, res) => {
     const { id } = req.params;
     const counsellorId = req.user.id;
     const counsellorRole = req.user.role;
-
+    console.log(counsellorRole);
     let whereConditions = {};
 
     if (counsellorRole === "l2") {
@@ -875,6 +932,7 @@ export const getStudentById = async (req, res) => {
         allL3Journeys.map((j) => j.assigned_l3_counsellor_id).filter(Boolean),
       ),
     ];
+    console.log("Counsellor Role:", counsellorRole);
     if (counsellorRole === "l2" || counsellorRole === "to") {
       console.log("counsellorId", counsellorId);
       const latestJourney = await CourseStatusJourney.findOne({
@@ -896,8 +954,7 @@ export const getStudentById = async (req, res) => {
       });
       studentData.course_id = latestJourney?.course_id || null;
       studentData.course_count = result?.length || 0;
-    }
-    else if (counsellorRole === "l3" || counsellorRole === "to_l3") {
+    } else if (counsellorRole === "l3" || counsellorRole === "to_l3") {
       const latestJourney = await CourseStatusJourney.findOne({
         where: {
           student_id: id,
@@ -917,18 +974,31 @@ export const getStudentById = async (req, res) => {
       });
       studentData.course_id = latestJourney?.course_id || null;
       studentData.course_count = result?.length || 0;
+      if (counsellorRole === "l3") {
+        if (
+          latestJourney?.course_status == "Partially Paid" ||
+          latestJourney?.course_status == "Semester Paid" ||
+          latestJourney?.course_status == "Admission Blocked" ||
+          latestJourney?.course_status == "Registration done" ||
+          latestJourney?.course_status == "Registration done"
+        ) {
+          studentData.current_student_status = "Admission";
+        } else {
+          studentData.current_student_status = "Application";
+        }
+      }
     }
     const counsellors =
       counsellorIds.length > 0
         ? await Counsellor.findAll({
-          where: { counsellor_id: counsellorIds },
-          attributes: [
-            "counsellor_id",
-            "counsellor_name",
-            "counsellor_email",
-            "role",
-          ],
-        })
+            where: { counsellor_id: counsellorIds },
+            attributes: [
+              "counsellor_id",
+              "counsellor_name",
+              "counsellor_email",
+              "role",
+            ],
+          })
         : [];
 
     const counsellorMap = {};
@@ -943,16 +1013,16 @@ export const getStudentById = async (req, res) => {
     const courses =
       courseIds.length > 0
         ? await UniversityCourse.findAll({
-          where: { course_id: courseIds },
-          attributes: [
-            "course_id",
-            "course_name",
-            "university_name",
-            "degree_name",
-            "stream",
-            "level",
-          ],
-        })
+            where: { course_id: courseIds },
+            attributes: [
+              "course_id",
+              "course_name",
+              "university_name",
+              "degree_name",
+              "stream",
+              "level",
+            ],
+          })
         : [];
 
     const courseMap = {};
@@ -980,7 +1050,7 @@ export const getStudentById = async (req, res) => {
         if (
           !journeysByCourse[journey.course_id] ||
           new Date(journey.created_at) >
-          new Date(journeysByCourse[journey.course_id].created_at)
+            new Date(journeysByCourse[journey.course_id].created_at)
         ) {
           journeysByCourse[journey.course_id] = journey;
         }
@@ -1012,12 +1082,12 @@ export const getStudentById = async (req, res) => {
             ...cred,
             l3_counsellor_details: l3Data
               ? {
-                assigned_l3_counsellor_id: l3Data.assigned_l3_counsellor_id,
-                counsellor_name: l3Data.l3_counsellor_name,
-                counsellor_email: l3Data.l3_counsellor_email,
-                journey_created_at: l3Data.journey_created_at,
-                journey_status: l3Data.journey_status,
-              }
+                  assigned_l3_counsellor_id: l3Data.assigned_l3_counsellor_id,
+                  counsellor_name: l3Data.l3_counsellor_name,
+                  counsellor_email: l3Data.l3_counsellor_email,
+                  journey_created_at: l3Data.journey_created_at,
+                  journey_status: l3Data.journey_status,
+                }
               : null,
           };
         },
@@ -1684,8 +1754,9 @@ export const bulkReassignLeads = async (req, res) => {
     // Final response
     const responsePayload = {
       success: true,
-      message: `Processed ${data.length} reassignments for ${level}${level?.toLowerCase() === "l3" ? " (journey entries only)" : ""
-        }`,
+      message: `Processed ${data.length} reassignments for ${level}${
+        level?.toLowerCase() === "l3" ? " (journey entries only)" : ""
+      }`,
       results: {
         reassigned: results.length,
         errors: errors.length,
@@ -1874,10 +1945,10 @@ export const addLeadDirect = async (req, res) => {
         ...lead.toJSON(),
         referenceStudent: referenceStudent
           ? {
-            student_id: referenceStudent.student_id,
-            student_name: referenceStudent.student_name,
-            student_email: referenceStudent.student_email,
-          }
+              student_id: referenceStudent.student_id,
+              student_name: referenceStudent.student_name,
+              student_email: referenceStudent.student_email,
+            }
           : null,
       },
     });

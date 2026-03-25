@@ -401,80 +401,92 @@ export const updateStudentStatus = async (req, res) => {
         ? "NotInterested"
         : leadStatus);
 
-    if (effectiveCourseStatus && selectedCourse) {
-      console.log("effectiveCourseStatus", effectiveCourseStatus);
-      console.log("selectedCourse", selectedCourse);
-      const journeylogs = await CourseStatusJourney.findOne({
-        where: {
-          student_id: studentId,
-          course_id: selectedCourse,
-          course_status: effectiveCourseStatus,
-        },
-      });
-
-      let assigned_l3_counsellor_id = null;
-      if (leadStatus == "Application" && !journeylogs) {
-        try {
-          const courseDetails = await UniversityCourse.findOne({
-            where: { course_id: selectedCourse },
-          });
-          const l3data = await axios.post(
-            "http://localhost:3031/v1/leadassignmentl3/assign",
-            {
-              studentId,
-              collegeName: courseDetails.university_name,
-              Course: courseDetails.course_name,
-              Degree: courseDetails.degree_name,
-              Specialization: courseDetails.specialization,
-              level: courseDetails.level,
-              source: courseDetails.level,
-              stream: courseDetails.stream,
-            },
-          );
-          assigned_l3_counsellor_id = l3data?.data?.assigned_l3_counsellor_id;
-        } catch (l3error) {
-          console.error("L3 Assignment failed:", l3error.message);
-        }
-      }
-
-      if (journeylogs) {
-        await journeylogs.update({
-          notes: remark,
-          deposit_amount: feesAmount || journeylogs.deposit_amount,
-          fee_type:
-            leadStatus === "Admission" ? leadSubStatus : journeylogs.fee_type,
-          course_status:
-            leadStatus === "Application" ? leadSubStatus : leadStatus,
+   if (effectiveCourseStatus && selectedCourse) {
+  console.log("effectiveCourseStatus", effectiveCourseStatus);
+  console.log("selectedCourse", selectedCourse);
+  
+  // Get the LATEST journey entry for this course
+  const latestJourney = await CourseStatusJourney.findOne({
+    where: {
+      student_id: studentId,
+      course_id: selectedCourse,
+    },
+    order: [["created_at", "DESC"]], // Get the most recent entry
+    attributes: ["course_status"],
+  });
+  
+  const latestStatus = latestJourney?.course_status;
+  console.log("Latest status in journey:", latestStatus);
+  console.log("New status:", effectiveCourseStatus);
+  
+  let assigned_l3_counsellor_id = null;
+  
+  // ONLY create new entry if status is different
+  if (latestStatus !== effectiveCourseStatus) {
+    console.log("Status changed - creating new journey entry");
+    
+    // Check if this is an Application status and needs L3 assignment
+    if (leadStatus == "Application" && effectiveCourseStatus === "Application") {
+      try {
+        const courseDetails = await UniversityCourse.findOne({
+          where: { course_id: selectedCourse },
         });
-      } else {
-        await CourseStatusJourney.create({
-          student_id: studentId,
-          course_id: selectedCourse,
-          counsellor_id: counsellorId,
-          course_status:
-            effectiveCourseStatus === "Application"
-              ? leadSubStatus
-              : effectiveCourseStatus,
-          deposit_amount: feesAmount || 0,
-          fee_type: leadStatus === "Admission" ? leadSubStatus : null,
-          currency: "INR",
-          assigned_l3_counsellor_id: assigned_l3_counsellor_id,
-          notes: remark,
-          created_at: new Date(),
-        });
+        const l3data = await axios.post(
+          "http://localhost:3031/v1/leadassignmentl3/assign",
+          {
+            studentId,
+            collegeName: courseDetails.university_name,
+            Course: courseDetails.course_name,
+            Degree: courseDetails.degree_name,
+            Specialization: courseDetails.specialization,
+            level: courseDetails.level,
+            source: courseDetails.level,
+            stream: courseDetails.stream,
+          },
+        );
+        assigned_l3_counsellor_id = l3data?.data?.assigned_l3_counsellor_id;
+      } catch (l3error) {
+        console.error("L3 Assignment failed:", l3error.message);
       }
-
-      await CourseStatus.update(
-        {
-          latest_course_status:
-            effectiveCourseStatus === "Application"
-              ? leadSubStatus
-              : effectiveCourseStatus,
-          created_by: counsellorId,
-        },
-        { where: { course_id: selectedCourse, student_id: studentId } },
-      );
     }
+    
+    // Create new journey entry
+    await CourseStatusJourney.create({
+      student_id: studentId,
+      course_id: selectedCourse,
+      counsellor_id: counsellorId,
+      course_status: effectiveCourseStatus === "Application" 
+        ? leadSubStatus 
+        : effectiveCourseStatus,
+      deposit_amount: feesAmount || 0,
+      fee_type: leadStatus === "Admission" ? leadSubStatus : null,
+      currency: "INR",
+      assigned_l3_counsellor_id: assigned_l3_counsellor_id,
+      notes: remark,
+      created_at: new Date(),
+    });
+    
+    // Update the latest status in CourseStatus table
+    await CourseStatus.update(
+      {
+        latest_course_status: effectiveCourseStatus === "Application"
+          ? leadSubStatus
+          : effectiveCourseStatus,
+        created_by: counsellorId,
+      },
+      { where: { course_id: selectedCourse, student_id: studentId } }
+    );
+  } else {
+    console.log("Status unchanged - skipping journey creation");
+    // Optionally update notes or other fields in the latest entry if needed
+    if (latestJourney && remark) {
+      await latestJourney.update({
+        notes: remark,
+        deposit_amount: feesAmount || latestJourney.deposit_amount,
+      });
+    }
+  }
+}
 
     let enrolledDocumentUrl1;
     if (leadStatus === "Enrolled" && enrolledDocumentUrl) {

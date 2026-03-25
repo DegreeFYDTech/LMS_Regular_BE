@@ -159,9 +159,12 @@ async function updateStudentShortlistStatus(
       isPrimary,
       isPartnerPortal,
     });
-    console.log(status, "hello ok")
+    console.log(status, "hello ok");
     // 📧 Trigger notification email for technical failures
-    if (status === "Failed due to Technical Issues" || status === "TEch issues") {
+    if (
+      status === "Failed due to Technical Issues" ||
+      status === "TEch issues"
+    ) {
       try {
         await sendMail(
           {
@@ -169,13 +172,20 @@ async function updateStudentShortlistStatus(
             name: `Student ID: ${studentId}`,
             phone: studentPhone || "N/A",
             stream: collegeName,
-            responseData: JSON.stringify(responseData || "No response data available"),
+            responseData: JSON.stringify(
+              responseData || "No response data available",
+            ),
           },
           "harsh.pandey@degreefyd.com",
         );
-        console.log(`✅ Technical failure notification email sent for student ${studentId}`);
+        console.log(
+          `✅ Technical failure notification email sent for student ${studentId}`,
+        );
       } catch (emailError) {
-        console.error(`❌ Failed to send technical failure notification email:`, emailError);
+        console.error(
+          `❌ Failed to send technical failure notification email:`,
+          emailError,
+        );
       }
     }
 
@@ -391,10 +401,10 @@ function processSpecialUniversityApiResponse(apiResponse, collegeName) {
   console.log(`📋 Response analysis:`, {
     status,
     messageType: typeof message,
-    hasMessageObject: message && typeof message === 'object',
+    hasMessageObject: message && typeof message === "object",
     isCreated: message?.IsCreated,
     relatedId: message?.RelatedId,
-    id: message?.Id
+    id: message?.Id,
   });
 
   // Handle invalid response structure
@@ -435,12 +445,18 @@ function processSpecialUniversityApiResponse(apiResponse, collegeName) {
     }
 
     // If IsCreated is undefined or not boolean
-    console.error(`❌ Invalid IsCreated value from ${collegeName}:`, message.IsCreated);
+    console.error(
+      `❌ Invalid IsCreated value from ${collegeName}:`,
+      message.IsCreated,
+    );
     return "Failed due to Technical Issues";
   }
 
   // Fallback for unexpected response format
-  console.error(`❌ Unexpected response format from ${collegeName}:`, responseData);
+  console.error(
+    `❌ Unexpected response format from ${collegeName}:`,
+    responseData,
+  );
   return "Failed due to Technical Issues";
 }
 function processJaypeeApiResponse(apiResponse, collegeName) {
@@ -1142,8 +1158,8 @@ async function handleShooliniOnline(
         } else if (actualKey === "preferredCity") {
           finalValue =
             userValue?.trim() &&
-              !userValue.toLowerCase().includes("himachal") &&
-              !userValue.toLowerCase().includes("pradesh")
+            !userValue.toLowerCase().includes("himachal") &&
+            !userValue.toLowerCase().includes("pradesh")
               ? userValue
               : "Solan";
         } else if (actualKey === "program") {
@@ -1184,8 +1200,8 @@ async function handleShooliniOnline(
         } else if (actualKey === "preferredCity") {
           finalValue =
             userValue?.trim() &&
-              !userValue.toLowerCase().includes("himachal") &&
-              !userValue.toLowerCase().includes("pradesh")
+            !userValue.toLowerCase().includes("himachal") &&
+            !userValue.toLowerCase().includes("pradesh")
               ? userValue
               : "Solan";
         } else if (actualKey === "phoneNumber" && userValue) {
@@ -2673,14 +2689,15 @@ export const sentStatustoCollege = async (req, res) => {
       });
     }
 
-    const userResponse = await getStudentDataForRequest(
+    let userResponse = await getStudentDataForRequest(
       studentId,
       studentData,
       studentEmail,
       studentPhone,
       isPrimary,
     );
-
+    userResponse.student_name =
+      userResponse.student_name || userResponse.studentName || "";
     console.log(`✅ Student data retrieved:`, {
       email: userResponse.student_email,
       phone: userResponse.student_phone,
@@ -2861,7 +2878,7 @@ export const sentStatustoCollege = async (req, res) => {
       );
     } else if (
       collegeName.toLowerCase() ===
-      "chandigarh group of colleges, landran (cgc)" ||
+        "chandigarh group of colleges, landran (cgc)" ||
       collegeName.toLowerCase().includes("cgc")
     ) {
       statusResult = await CgcLandran(

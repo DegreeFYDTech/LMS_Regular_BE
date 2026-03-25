@@ -323,6 +323,7 @@ async function getStudentDataForRequest(
   studentEmail,
   studentPhone,
   isPrimary,
+  isPartnerPortal
 ) {
   console.log(`👤 Getting student data:`, {
     studentId,
@@ -332,7 +333,7 @@ async function getStudentDataForRequest(
     providedPhone: studentPhone,
   });
 
-  if (!isPrimary && studentEmail && studentPhone) {
+  if (!isPrimary && studentEmail && studentPhone && !isPartnerPortal) {
     console.log(
       `📞 Using secondary contact details: ${studentEmail}, ${studentPhone}`,
     );
@@ -2695,6 +2696,7 @@ export const sentStatustoCollege = async (req, res) => {
       studentEmail,
       studentPhone,
       isPrimary,
+      isPartnerPortal
     );
     console.log(
       `✅ Student data retrieved successfully for studentId: ${studentData}`,

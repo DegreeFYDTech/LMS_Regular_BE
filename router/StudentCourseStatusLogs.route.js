@@ -19,12 +19,12 @@ router.post("/sentStatustoCollege", sentStatustoCollege);
 router.get("/get-forms-data", getFormData);
 router.post(
   "/distinct-by-students",
-  authorize(["Supervisor", "to"]),
+  authorize(["Supervisor", "to", "to_l3"]),
   getDistinctL3CounsellorsByStudentIds,
 );
 router.get(
   "/counsellor-stats",
-  authorize(["Supervisor", "to"]),
+  authorize(["Supervisor", "to", "to_l3"]),
   getCounsellorStats,
 );
 router.use("/course-reports", getFormToAdmissionsReport);
@@ -32,7 +32,7 @@ router.use("/course-reports", getFormToAdmissionsReport);
 // Add these routes to your counsellor routes file
 router.post(
   "/student-journey-details",
-  authorize(["Supervisor", "to"]),
+  authorize(["Supervisor", "to", "to_l3"]),
   getStudentJourneyDetails,
 );
 router.post(
@@ -41,7 +41,7 @@ router.post(
 );
 router.post(
   "/replace",
-  authorize(["Supervisor", "to"]),
+  authorize(["Supervisor", "to", "to_l3"]),
   replaceL3CounsellorForStudents,
 );
 
@@ -49,7 +49,7 @@ router.get("/reports", getCollegeStatusReports);
 
 router.post(
   "/:courseId",
-  authorize(["l2", "l3", "Supervisor", "to"]),
+  authorize(["l2", "l3", "Supervisor", "to", "to_l3"]),
   createStatusLog,
 );
 

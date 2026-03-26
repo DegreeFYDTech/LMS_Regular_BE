@@ -182,17 +182,20 @@ export const getAllCounsellors = async (req, res) => {
   try {
     let whereClause = {};
 
-    // Handle role filtering
     if (role) {
-      // If role is specified, use it directly
-      whereClause.role = role;
+      if (role === "to") {
+        whereClause.role = { [Op.in]: ['to', 'to_l3'] };
+      } else {
+        whereClause.role = role;
+      }
     } else {
-      // Default: exclude 'to' if no role specified
       whereClause.role = { [Op.ne]: 'to' };
     }
 
-    // If user is 'to', filter by their assigned counsellors
     if (user?.role === 'to' && user?.id) {
+      whereClause.assigned_to = user.id;
+    }
+    if (user?.role === 'to_l3' && user?.id) {
       whereClause.assigned_to = user.id;
     }
 
@@ -435,7 +438,7 @@ export const assignCounsellorsToStudents = async (req, res) => {
           where: { counsellor_id: student.assigned_counsellor_id },
           attributes: ['counsellor_name', 'counsellor_email']
         });
-        
+
         return {
           ...student.toJSON(),
           assignedCounsellor: counsellor
@@ -456,7 +459,7 @@ export const assignCounsellorsToStudents = async (req, res) => {
         }
       }
     });
-    
+
     await activityLogger(req, {
       success: true,
       message: `Assigned ${selectedStudents.length} students to ${selectedAgents.length} L2 counsellor(s)`,
@@ -701,7 +704,7 @@ export async function getCounsellorBreakStats(param = {}, userRole = null, userI
 
   // Build where clause for counsellor inclusion
   const counsellorWhere = {};
-  
+
   // If user is a Team Owner (to), only show counsellors assigned to them
   if (userRole === 'to' && userId) {
     counsellorWhere.assigned_to = userId;
@@ -777,10 +780,10 @@ export async function getCounsellor_break_stats(req, res) {
   try {
     const user = req.user;
     console.log('User accessing break stats:', user.id, 'Role:', user.role);
-    
+
     // Pass user role and ID to the stats function
     const data = await getCounsellorBreakStats(req.query, user.role, user.id);
-    
+
     // Add user info to response
     const response = {
       data: data,
@@ -794,12 +797,12 @@ export async function getCounsellor_break_stats(req, res) {
         note: 'Showing break stats for counsellors assigned to this Team Owner'
       })
     };
-    
+
     res.status(200).send(response);
   } catch (e) {
     console.log('Error in getCounsellor_break_stats:', e.message);
-    res.status(200).send({ 
-      success: false, 
+    res.status(200).send({
+      success: false,
       message: e.message,
       userInfo: req.user ? {
         id: req.user.id,
@@ -812,16 +815,16 @@ export async function getCounsellor_break_stats(req, res) {
 
 export const changeSupervisor = async (req, res) => {
   const { counsellor_id, supervisor_id } = req.body;
-
+  console.log(counsellor_id, supervisor_id)
   try {
     if (supervisor_id) {
       const supervisor = await Counsellor.findOne({
         where: {
           counsellor_id: supervisor_id,
-          role: 'to'
+          role: { [Op.in]: ['to', 'to_l3'] }
         }
       });
-
+      console.log(supervisor)
       if (!supervisor) {
         return res.status(404).json({
           message: 'Supervisor not found or not a valid supervisor (role must be "to")'

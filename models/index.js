@@ -4,7 +4,7 @@ import Counsellor from './Counsellor.js';
 import Student from './Student.js';
 import UniversityCourse from './UniversityCourse.js';
 import StudentRemark from './StudentRemark.js';
-import CourseStatusHistory from './CourseStatusJourney.js';
+import CourseStatusHistory from './course_status_jounreny.js';
 import StudentLeadActivity from './StudentLeadActivity.js';
 import CourseStatus from './courseStatus.js';
 import AnalyserUser from './Analyser.js';

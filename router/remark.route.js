@@ -6,9 +6,9 @@ import { getRemarkByStudentId, getAllRemarksofData, getAnalysisReportSQL, downlo
 
 const router = express.Router();
 router.get('/getallRemarksToExcel', getAllRemarksofData);
-router.get('/getAnalysisReport', authorize(['supervisor', 'Supervisor', 'to', "analyser"]), getAnalysisReportSQL);
+router.get('/getAnalysisReport', authorize(['supervisor', 'Supervisor', 'to', "analyser", "to_l3"]), getAnalysisReportSQL);
 router.get('/downloadAnalysisReport', downloadAnalysisReport);
-router.get('/connected-calls', authorize(['supervisor', 'Supervisor', 'to', "analyser"]), getConnectedCallsAnalysis);
+router.get('/connected-calls', authorize(['supervisor', 'Supervisor', 'to', "analyser", "to_l3"]), getConnectedCallsAnalysis);
 
 router.get('/:studentId', getRemarkByStudentId)
 router.post('/bulkCreateStudentRemarks', bulkCreateStudentRemarks)

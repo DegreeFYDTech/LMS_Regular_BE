@@ -1,6 +1,3 @@
-
-
-
 import sequelize from '../config/database-config.js';
 
 const escape = (val) =>
@@ -18,13 +15,6 @@ export const getOptimizedOverallStatsFromHelper = async ({
   role = 'l2'
 }) => {
   try {
-    const freshLeadsRemarkAgentFilter = selectedagent
-      ? `AND sr.counsellor_id = ${escape(selectedagent)}`
-      : '';
-    const freshLeadsL3Condition = !selectedagent && role === 'l3'
-      ? `or bs.total_remarks_l3 = 0`
-      : '';
-
     const wishlistAgentFilter = selectedagent
       ? `AND sw.counsellor_id = ${escape(selectedagent)}`
       : '';
@@ -42,7 +32,8 @@ export const getOptimizedOverallStatsFromHelper = async ({
                s.is_connected_yet_l3,
                s.total_remarks_l3,
                s.source,
-               s.is_reactivity
+               s.is_reactivity,
+               s.current_student_status
         FROM students s
         ${utmWhere !== '1=1' ? `
           INNER JOIN student_lead_activities la ON s.student_id = la.student_id
@@ -51,14 +42,23 @@ export const getOptimizedOverallStatsFromHelper = async ({
         WHERE (${studentWhere})
       ),
      fresh_leads AS (
-        SELECT bs.student_id
-        FROM base_students bs
-        WHERE NOT EXISTS (
-          SELECT 1 FROM student_remarks sr
-          WHERE sr.student_id = bs.student_id
-          ${freshLeadsRemarkAgentFilter}
-        )
-        ${freshLeadsL3Condition}
+        ${role === 'l3' 
+          ? `
+          SELECT bs.student_id
+          FROM base_students bs
+          WHERE NOT EXISTS (
+            SELECT 1 FROM student_remarks sr
+            WHERE sr.student_id = bs.student_id
+            ${selectedagent ? `AND sr.counsellor_id = ${escape(selectedagent)}` : ''}
+          )
+          ${!selectedagent ? 'OR bs.total_remarks_l3 = 0' : ''}
+          `
+          : `
+          SELECT bs.student_id
+          FROM base_students bs
+          WHERE bs.current_student_status = 'Fresh'
+          `
+        }
       ),
               
       latest_remarks AS (
@@ -68,8 +68,7 @@ export const getOptimizedOverallStatsFromHelper = async ({
           sr.sub_calling_status,
           sr.created_at,
           sr.callback_date,
-          sr.counsellor_id,
-          sr.lead_status
+          sr.counsellor_id
         FROM student_remarks sr
         INNER JOIN base_students bs ON sr.student_id = bs.student_id
         ORDER BY sr.student_id, sr.created_at DESC
@@ -78,10 +77,11 @@ export const getOptimizedOverallStatsFromHelper = async ({
       today_callbacks AS (
         SELECT lr.student_id
         FROM latest_remarks lr
+        INNER JOIN base_students bs ON lr.student_id = bs.student_id
         WHERE lr.student_id IS NOT NULL
           AND lr.callback_date >=current_date 
           AND lr.callback_date < current_date+1
-          AND lr.lead_status in ('Admission','Application','Pre Application','Pre_Application')
+          AND bs.current_student_status in ('Admission','Application','Pre Application','Pre_Application')
         ${todaycallbacks}
       ),
       
@@ -101,7 +101,6 @@ export const getOptimizedOverallStatsFromHelper = async ({
         FROM base_students bs
       ),
       unread_messages AS (
-        -- FIXED: Count students with unread messages, not sum of messages
         SELECT 
           COUNT(CASE WHEN bs.number_of_unread_messages > 0 THEN 1 END) as students_with_unread_messages,
           COALESCE(SUM(COALESCE(bs.number_of_unread_messages, 0)), 0) as total_unread_messages_sum
@@ -117,7 +116,6 @@ export const getOptimizedOverallStatsFromHelper = async ({
         (SELECT COUNT(*) FROM today_callbacks) as today_callbacks,
         (SELECT COUNT(*) FROM wishlist_students) as wishlist_count,
         COALESCE(ints.not_connected, 0) as not_connected_yet,
-        -- FIXED: Use students_with_unread_messages instead of total sum
         COALESCE(um.students_with_unread_messages, 0) as all_unread_messages_count,
         COALESCE(rs.reactivity_count, 0) as reactivity_count
       FROM intent_stats ints

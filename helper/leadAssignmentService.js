@@ -565,7 +565,7 @@ export const createChatAndMessagesFromLead = async (studentPhone, leadData) => {
     };
   }
 };
-export const ProceessLeads = async (leads) => {};
+export const ProceessLeads = async (leads) => { };
 export const processStudentLead = async (leadData) => {
   if (
     !leadData.email ||
@@ -873,17 +873,7 @@ export const processStudentLead = async (leadData) => {
     student = existingStudent;
     studentStatus = "already_exists";
 
-    if (existingStudent?.student_remarks.length === 0) {
-      const [updated] = await Student.update(
-        { is_reactivity: true },
-        { where: { student_id: existingStudent.student_id }, returning: true },
-      );
-    } else if (
-      existingStudent?.student_remarks.length > 0 &&
-      existingStudent?.lead_activities.length > 0 &&
-      new Date(existingStudent.student_remarks[0].created_at) <
-        new Date(existingStudent.lead_activities[0].created_at)
-    ) {
+    if (existingStudent) {
       const [updated] = await Student.update(
         { is_reactivity: true },
         { where: { student_id: existingStudent.student_id }, returning: true },

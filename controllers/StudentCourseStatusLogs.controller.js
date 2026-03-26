@@ -1231,8 +1231,8 @@ export const getCollegeStatusReports = async (req, res) => {
       startDate,
       endDate,
       collegeId,
-      firstTimeFrom, // New: First time date range start
-      firstTimeTo, // New: First time date range end
+      firstTimeFrom,
+      firstTimeTo,
     } = req.query;
 
     const whereClause = {};
@@ -1251,8 +1251,8 @@ export const getCollegeStatusReports = async (req, res) => {
           startDate,
           endDate,
           courseWhereClause,
-          firstTimeFrom, // Pass to helper
-          firstTimeTo, // Pass to helper
+          firstTimeFrom,
+          firstTimeTo,
         );
         break;
 
@@ -1263,8 +1263,8 @@ export const getCollegeStatusReports = async (req, res) => {
           endDate,
           "l2",
           courseWhereClause,
-          firstTimeFrom, // Pass to helper
-          firstTimeTo, // Pass to helper
+          firstTimeFrom,
+          firstTimeTo,
         );
         break;
 
@@ -1275,8 +1275,8 @@ export const getCollegeStatusReports = async (req, res) => {
           endDate,
           "l3",
           courseWhereClause,
-          firstTimeFrom, // Pass to helper
-          firstTimeTo, // Pass to helper
+          firstTimeFrom,
+          firstTimeTo,
         );
         break;
 
@@ -1286,8 +1286,8 @@ export const getCollegeStatusReports = async (req, res) => {
           startDate,
           endDate,
           courseWhereClause,
-          firstTimeFrom, // Pass to helper
-          firstTimeTo, // Pass to helper
+          firstTimeFrom,
+          firstTimeTo,
         );
     }
 
@@ -1321,75 +1321,135 @@ const getCollegesPivotReport = async (
   firstTimeFrom,
   firstTimeTo,
 ) => {
-  const isFirstTimeDateFilter = !!(firstTimeFrom || firstTimeTo);
-  const isMainDateFilter = !!(startDate || endDate);
-  const aggFn = isFirstTimeDateFilter ? "MIN" : "MAX";
-
-  // Build single raw SQL query
-  let innerWhere = "";
+  const isFirstTimeFilter = !!(firstTimeFrom || firstTimeTo);
+  const isDateFilter = !!(startDate || endDate);
+  
+  let sql = "";
   const replacements = {};
 
-  if (isFirstTimeDateFilter) {
-    const conditions = [];
+  // CASE 1: First Time Filter - Get absolute first entries within the date range
+  if (isFirstTimeFilter) {
+    sql = `
+      SELECT 
+        csh.student_id,
+        csh.course_id,
+        csh.course_status,
+        csh.created_at,
+        uc.university_name AS college
+      FROM course_status_journeys csh
+      INNER JOIN (
+        SELECT 
+          student_id, 
+          course_id, 
+          MIN(created_at) AS first_entry_date
+        FROM course_status_journeys
+        GROUP BY student_id, course_id
+      ) first_entry ON csh.student_id = first_entry.student_id 
+                    AND csh.course_id = first_entry.course_id 
+                    AND csh.created_at = first_entry.first_entry_date
+      INNER JOIN university_courses uc ON csh.course_id = uc.course_id
+      WHERE 1=1
+    `;
+    
+    // Add date range filter on the first entry date
     if (firstTimeFrom) {
-      conditions.push(`csh_inner.created_at >= :firstTimeFrom`);
-      replacements.firstTimeFrom = firstTimeFrom + "T00:00:00Z";
+      sql += ` AND DATE(csh.created_at) >= :firstTimeFrom`;
+      replacements.firstTimeFrom = firstTimeFrom;
     }
     if (firstTimeTo) {
-      conditions.push(`csh_inner.created_at <= :firstTimeTo`);
-      replacements.firstTimeTo = firstTimeTo + "T23:59:59.999Z";
+      sql += ` AND DATE(csh.created_at) <= :firstTimeTo`;
+      replacements.firstTimeTo = firstTimeTo;
     }
-    innerWhere = `WHERE ${conditions.join(" AND ")}`;
-  }
-
-  let havingClause = "";
-  if (isMainDateFilter) {
-    const havingConditions = [];
+    
+    // Add course filter
+    if (courseWhereClause.course_id) {
+      sql += ` AND uc.course_id = :courseId`;
+      replacements.courseId = courseWhereClause.course_id;
+    }
+  } 
+  // CASE 2: Regular Date Filter - Get latest entries within the date range
+  else if (isDateFilter) {
+    sql = `
+      SELECT 
+        csh.student_id,
+        csh.course_id,
+        csh.course_status,
+        csh.created_at,
+        uc.university_name AS college
+      FROM course_status_journeys csh
+      INNER JOIN (
+        SELECT 
+          csh_inner.student_id, 
+          csh_inner.course_id, 
+          MAX(csh_inner.created_at) AS latest_date
+        FROM course_status_journeys csh_inner
+        WHERE 1=1
+    `;
+    
     if (startDate) {
-      havingConditions.push(
-        `DATE(${aggFn}(csh_inner.created_at)) >= :startDate`,
-      );
+      sql += ` AND DATE(csh_inner.created_at) >= :startDate`;
       replacements.startDate = startDate;
     }
     if (endDate) {
-      havingConditions.push(`DATE(${aggFn}(csh_inner.created_at)) <= :endDate`);
+      sql += ` AND DATE(csh_inner.created_at) <= :endDate`;
       replacements.endDate = endDate;
     }
-    havingClause = `HAVING ${havingConditions.join(" AND ")}`;
+    
+    sql += `
+        GROUP BY csh_inner.student_id, csh_inner.course_id
+      ) latest ON csh.student_id = latest.student_id 
+               AND csh.course_id = latest.course_id 
+               AND csh.created_at = latest.latest_date
+      INNER JOIN university_courses uc ON csh.course_id = uc.course_id
+      WHERE 1=1
+    `;
+    
+    // Add course filter
+    if (courseWhereClause.course_id) {
+      sql += ` AND uc.course_id = :courseId`;
+      replacements.courseId = courseWhereClause.course_id;
+    }
   }
-
-  let courseFilter = "";
-  if (courseWhereClause.course_id) {
-    courseFilter = `AND uc.course_id = :courseId`;
-    replacements.courseId = courseWhereClause.course_id;
-  }
-
-  const sql = `
-    SELECT 
-      csh.student_id,
-      csh.course_id,
-      csh.course_status,
-      uc.university_name AS college
-    FROM course_status_journeys csh
-    INNER JOIN (
+  // CASE 3: No filters - Get latest entries overall
+  else {
+    sql = `
       SELECT 
-        csh_inner.student_id, 
-        csh_inner.course_id, 
-        ${aggFn}(csh_inner.created_at) AS target_date
-      FROM course_status_journeys csh_inner
-      ${innerWhere}
-      GROUP BY csh_inner.student_id, csh_inner.course_id
-      ${havingClause}
-    ) sub ON csh.student_id = sub.student_id 
-         AND csh.course_id = sub.course_id 
-         AND csh.created_at = sub.target_date
-    INNER JOIN university_courses uc ON csh.course_id = uc.course_id ${courseFilter}
-  `;
+        csh.student_id,
+        csh.course_id,
+        csh.course_status,
+        csh.created_at,
+        uc.university_name AS college
+      FROM course_status_journeys csh
+      INNER JOIN (
+        SELECT 
+          student_id, 
+          course_id, 
+          MAX(created_at) AS latest_date
+        FROM course_status_journeys
+        GROUP BY student_id, course_id
+      ) latest ON csh.student_id = latest.student_id 
+               AND csh.course_id = latest.course_id 
+               AND csh.created_at = latest.latest_date
+      INNER JOIN university_courses uc ON csh.course_id = uc.course_id
+      WHERE 1=1
+    `;
+    
+    // Add course filter
+    if (courseWhereClause.course_id) {
+      sql += ` AND uc.course_id = :courseId`;
+      replacements.courseId = courseWhereClause.course_id;
+    }
+  }
+
+  console.log("Executing SQL:", sql);
+  console.log("Replacements:", replacements);
 
   const records = await sequelize.query(sql, {
     replacements,
     type: QueryTypes.SELECT,
   });
+
+  console.log(`Found ${records.length} records`);
 
   if (records.length === 0) {
     return {
@@ -1448,70 +1508,122 @@ const getCounsellorPivotReport = async (
   firstTimeFrom,
   firstTimeTo,
 ) => {
-  const isFirstTimeDateFilter = !!(firstTimeFrom || firstTimeTo);
-  const isMainDateFilter = !!(startDate || endDate);
-  const aggFn = isFirstTimeDateFilter ? "MIN" : "MAX";
-
-  // Build single raw SQL query
-  let innerWhere = "";
+  const isFirstTimeFilter = !!(firstTimeFrom || firstTimeTo);
+  const isDateFilter = !!(startDate || endDate);
+  
+  let sql = "";
   const replacements = {};
 
-  if (isFirstTimeDateFilter) {
-    const conditions = [];
+  // CASE 1: First Time Filter - Get absolute first entries within the date range
+  if (isFirstTimeFilter) {
+    sql = `
+      SELECT 
+        csh.student_id,
+        csh.course_id,
+        csh.course_status,
+        csh.created_at
+      FROM course_status_journeys csh
+      INNER JOIN (
+        SELECT 
+          student_id, 
+          course_id, 
+          MIN(created_at) AS first_entry_date
+        FROM course_status_journeys
+        GROUP BY student_id, course_id
+      ) first_entry ON csh.student_id = first_entry.student_id 
+                    AND csh.course_id = first_entry.course_id 
+                    AND csh.created_at = first_entry.first_entry_date
+      INNER JOIN university_courses uc ON csh.course_id = uc.course_id
+      WHERE 1=1
+    `;
+    
+    // Add date range filter on the first entry date
     if (firstTimeFrom) {
-      conditions.push(`csh_inner.created_at >= :firstTimeFrom`);
-      replacements.firstTimeFrom = firstTimeFrom + "T00:00:00Z";
+      sql += ` AND DATE(csh.created_at) >= :firstTimeFrom`;
+      replacements.firstTimeFrom = firstTimeFrom;
     }
     if (firstTimeTo) {
-      conditions.push(`csh_inner.created_at <= :firstTimeTo`);
-      replacements.firstTimeTo = firstTimeTo + "T23:59:59.999Z";
+      sql += ` AND DATE(csh.created_at) <= :firstTimeTo`;
+      replacements.firstTimeTo = firstTimeTo;
     }
-    innerWhere = `WHERE ${conditions.join(" AND ")}`;
-  }
-
-  let havingClause = "";
-  if (isMainDateFilter) {
-    const havingConditions = [];
+    
+    // Add course filter
+    if (courseWhereClause.course_id) {
+      sql += ` AND uc.course_id = :courseId`;
+      replacements.courseId = courseWhereClause.course_id;
+    }
+  } 
+  // CASE 2: Regular Date Filter - Get latest entries within the date range
+  else if (isDateFilter) {
+    sql = `
+      SELECT 
+        csh.student_id,
+        csh.course_id,
+        csh.course_status,
+        csh.created_at
+      FROM course_status_journeys csh
+      INNER JOIN (
+        SELECT 
+          csh_inner.student_id, 
+          csh_inner.course_id, 
+          MAX(csh_inner.created_at) AS latest_date
+        FROM course_status_journeys csh_inner
+        WHERE 1=1
+    `;
+    
     if (startDate) {
-      havingConditions.push(
-        `DATE(${aggFn}(csh_inner.created_at)) >= :startDate`,
-      );
+      sql += ` AND DATE(csh_inner.created_at) >= :startDate`;
       replacements.startDate = startDate;
     }
     if (endDate) {
-      havingConditions.push(`DATE(${aggFn}(csh_inner.created_at)) <= :endDate`);
+      sql += ` AND DATE(csh_inner.created_at) <= :endDate`;
       replacements.endDate = endDate;
     }
-    havingClause = `HAVING ${havingConditions.join(" AND ")}`;
+    
+    sql += `
+        GROUP BY csh_inner.student_id, csh_inner.course_id
+      ) latest ON csh.student_id = latest.student_id 
+               AND csh.course_id = latest.course_id 
+               AND csh.created_at = latest.latest_date
+      INNER JOIN university_courses uc ON csh.course_id = uc.course_id
+      WHERE 1=1
+    `;
+    
+    // Add course filter
+    if (courseWhereClause.course_id) {
+      sql += ` AND uc.course_id = :courseId`;
+      replacements.courseId = courseWhereClause.course_id;
+    }
   }
-
-  let courseFilter = "";
-  if (courseWhereClause.course_id) {
-    courseFilter = `AND uc.course_id = :courseId`;
-    replacements.courseId = courseWhereClause.course_id;
-  }
-
-  const sql = `
-    SELECT 
-      csh.student_id,
-      csh.course_id,
-      csh.course_status,
-      csh.created_at
-    FROM course_status_journeys csh
-    INNER JOIN (
+  // CASE 3: No filters - Get latest entries overall
+  else {
+    sql = `
       SELECT 
-        csh_inner.student_id, 
-        csh_inner.course_id, 
-        ${aggFn}(csh_inner.created_at) AS target_date
-      FROM course_status_journeys csh_inner
-      ${innerWhere}
-      GROUP BY csh_inner.student_id, csh_inner.course_id
-      ${havingClause}
-    ) sub ON csh.student_id = sub.student_id 
-         AND csh.course_id = sub.course_id 
-         AND csh.created_at = sub.target_date
-    INNER JOIN university_courses uc ON csh.course_id = uc.course_id ${courseFilter}
-  `;
+        csh.student_id,
+        csh.course_id,
+        csh.course_status,
+        csh.created_at
+      FROM course_status_journeys csh
+      INNER JOIN (
+        SELECT 
+          student_id, 
+          course_id, 
+          MAX(created_at) AS latest_date
+        FROM course_status_journeys
+        GROUP BY student_id, course_id
+      ) latest ON csh.student_id = latest.student_id 
+               AND csh.course_id = latest.course_id 
+               AND csh.created_at = latest.latest_date
+      INNER JOIN university_courses uc ON csh.course_id = uc.course_id
+      WHERE 1=1
+    `;
+    
+    // Add course filter
+    if (courseWhereClause.course_id) {
+      sql += ` AND uc.course_id = :courseId`;
+      replacements.courseId = courseWhereClause.course_id;
+    }
+  }
 
   const records = await sequelize.query(sql, {
     replacements,
@@ -1644,7 +1756,6 @@ const getCounsellorPivotReport = async (
     totals: { statusTotals, grandTotal },
   };
 };
-
 export const getCollegesList = async (req, res) => {
   try {
     const colleges = await UniversityCourse.findAll({

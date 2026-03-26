@@ -4,10 +4,7 @@ import pMap from 'p-map';
 export const createRemark = async (data) => {
   const requiredFields = [
     'student_id',
-    'lead_status',
-    'lead_sub_status',
     'calling_status',
-    'lead_sub_status',
     'remarks'
   ];
 
@@ -29,8 +26,8 @@ export const createRemark = async (data) => {
       remarks: data.remarks,
       callback_date: data.callback_date || null,
       callback_time: data.callback_time || null,
-      feesAmount:data.feesAmount,
-      enrolledDocumentUrl:data.enrolledDocumentUrl
+      feesAmount: data.feesAmount,
+      enrolledDocumentUrl: data.enrolledDocumentUrl
     });
 
     return newRemark;
@@ -56,7 +53,7 @@ export const getConnectedCallsAnalysis = async (req, res) => {
     // Build base WHERE conditions
     let baseWhereCondition = 'WHERE sr.created_at BETWEEN :fromDate AND :toDateEnd';
     let connectedWhereCondition = 'WHERE sr.calling_status = \'Connected\' AND sr.created_at BETWEEN :fromDate AND :toDateEnd';
-    console.log("isAnalyser",isAnalyser)
+    console.log("isAnalyser", isAnalyser)
     // Add Facebook filter for analysers
     if (isAnalyser) {
       baseWhereCondition += ` AND s.source = 'FaceBook'`;
@@ -245,8 +242,8 @@ export const getConnectedCallsAnalysis = async (req, res) => {
 
     // Calculate percentage for each supervisor group
     Object.values(groupedBySupervisor).forEach(supervisorGroup => {
-      supervisorGroup.totalPercentage = supervisorGroup.totalRemarks > 0 
-        ? Math.round((supervisorGroup.totalConnectedCalls / supervisorGroup.totalRemarks) * 10000) / 100 
+      supervisorGroup.totalPercentage = supervisorGroup.totalRemarks > 0
+        ? Math.round((supervisorGroup.totalConnectedCalls / supervisorGroup.totalRemarks) * 10000) / 100
         : 0;
     });
 
@@ -267,8 +264,8 @@ export const getConnectedCallsAnalysis = async (req, res) => {
         totalConnectedCalls: finalResult.reduce((sum, item) => sum + item.totalConnectedCalls, 0),
         totalRemarks: finalResult.reduce((sum, item) => sum + item.totalRemarks, 0),
         overallPercentage: finalResult.reduce((sum, item) => sum + item.totalRemarks, 0) > 0
-          ? Math.round((finalResult.reduce((sum, item) => sum + item.totalConnectedCalls, 0) / 
-                       finalResult.reduce((sum, item) => sum + item.totalRemarks, 0)) * 10000) / 100
+          ? Math.round((finalResult.reduce((sum, item) => sum + item.totalConnectedCalls, 0) /
+            finalResult.reduce((sum, item) => sum + item.totalRemarks, 0)) * 10000) / 100
           : 0
       }
     };
@@ -632,11 +629,11 @@ export const getAnalysisReportSQL = async (req, res) => {
   try {
     const userRole = req.user?.role; // Get user role from request
     const isAnalyser = userRole?.toLowerCase() === 'analyser'; // Case-insensitive check
-    
+
     console.log("User role for analysis report:", userRole, "isAnalyser:", isAnalyser);
-    
+
     const results = await getAnalysisReporthelper(req.query, isAnalyser);
-    
+
     if (!results.success) {
       return res.status(500).json({
         success: false,
@@ -678,7 +675,7 @@ export const getAnalysisReportSQL = async (req, res) => {
 
     // Fetch supervisor names if not already in results
     const counsellorIds = Object.keys(grouped);
-    
+
     if (counsellorIds.length > 0) {
       try {
         const supervisorQuery = `
@@ -690,7 +687,7 @@ export const getAnalysisReportSQL = async (req, res) => {
           LEFT JOIN counsellors c2 ON c1.assigned_to = c2.counsellor_id
           WHERE c1.counsellor_id IN (:counsellorIds)
         `;
-        
+
         const supervisorResults = await sequelize.query(supervisorQuery, {
           replacements: { counsellorIds },
           type: sequelize.QueryTypes.SELECT
@@ -827,7 +824,7 @@ export const getAnalysisReporthelper = async (query, isAnalyser = false) => {
     // For analysers, we need to ensure the source is Facebook-related
     let actualSource = source;
     let actualCampaign = campaign;
-    
+
     if (isAnalyser) {
       // If analyser provides a source, validate it's Facebook-related
       if (source && !source.toLowerCase().includes('facebook') && !source.toLowerCase().includes('fb')) {
@@ -1077,8 +1074,8 @@ export const bulkCreateStudentRemarks = async (req, res) => {
         r.isdisabled === 'TRUE'
           ? true
           : r.isdisabled === 'FALSE'
-          ? false
-          : false,
+            ? false
+            : false,
 
       feesAmount: Number(r.feesAmount) || 0,
 

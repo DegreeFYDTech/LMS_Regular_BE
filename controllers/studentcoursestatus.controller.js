@@ -328,7 +328,7 @@ export const getShortlistedColleges = async (req, res) => {
 
     const sendStatus = await StudentCollegeApiSentStatus.findAll({
       where: { student_id: studentId },
-      attributes: ["api_sent_status", "college_name"],
+      attributes: ["api_sent_status", "college_name", "response_from_api"],
     });
 
     // Get all course_ids from shortlisted statuses
@@ -455,8 +455,11 @@ export const getShortlistedColleges = async (req, res) => {
 
     const statusMap = {};
     sendStatus.forEach((item) => {
-      const { college_name, api_sent_status } = item.toJSON();
-      statusMap[college_name?.toLowerCase()?.trim()] = api_sent_status;
+      const { college_name, api_sent_status, response_from_api } = item.toJSON();
+      statusMap[college_name?.toLowerCase()?.trim()] = {
+        api_sent_status,
+        response_from_api,
+      };
     });
 
     let updatedArray = shortlistedStatuses.map((status) => {
@@ -464,9 +467,9 @@ export const getShortlistedColleges = async (req, res) => {
       const course = plain.courses_details || {};
       const api = course.university_api || null;
       const universityName = course.university_name?.toLowerCase()?.trim();
-      const matchedApiStatus = universityName
+      const matchedApiData = universityName
         ? statusMap[universityName]
-        : undefined;
+        : {};
 
       // Use course_id to look up journey info
       const assignedInfo = journeyMap[plain.course_id] || {
@@ -487,7 +490,8 @@ export const getShortlistedColleges = async (req, res) => {
         ...course,
         university_api: api,
         has_api_data: !!api,
-        college_api_sent_status: matchedApiStatus || null,
+        college_api_sent_status: matchedApiData?.api_sent_status || null,
+        response_from_api: matchedApiData?.response_from_api || null,
         assigned_counsellor: assignedInfo.assigned_by,
         assigned_l3_counsellor: assignedInfo.assigned_l3_counsellor,
         journey_details: {
@@ -1079,15 +1083,36 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     const firstAdmissionCTE = `
       SELECT DISTINCT
         student_id
-      FROM student_remarks
-      WHERE lead_status IN ('Admission', 'Enrolled')
+      FROM course_status_journeys
+      WHERE course_status IN (
+        'Registration Done', 
+        'Partially Paid', 
+        'Admission', 
+        'Registration done', 
+        'Walkin marked'
+      )
     `;
 
     const firstFormfilledCTE = `
       SELECT DISTINCT
         student_id
-      FROM student_remarks
-      WHERE lead_status IN ('Application', 'Admission', 'Enrolled')
+      FROM course_status_journeys
+      WHERE course_status IN (
+        'Form Submitted – Portal Pending',
+        'Form Filled_Partner website',
+        'Offer Letter/Results Pending',
+        'Application',
+        'Form Submitted – Completed',
+        'Walkin Completed',
+        'Form Filled_Degreefyd',
+        'Exam Interview Pending',
+        'Offer Letter/Results Released',
+        'Registration Done',
+        'Partially Paid',
+        'Admission',
+        'Registration done',
+        'Walkin marked'
+      )
     `;
 
     const firstEnrolledCTE = `
@@ -2679,6 +2704,41 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
       SELECT student_id FROM eligible_students
     `;
 
+    const firstAdmissionCTE = `
+      SELECT DISTINCT
+        student_id
+      FROM course_status_journeys
+      WHERE course_status IN (
+        'Registration Done', 
+        'Partially Paid', 
+        'Admission', 
+        'Registration done', 
+        'Walkin marked'
+      )
+    `;
+
+    const firstFormfilledCTE = `
+      SELECT DISTINCT
+        student_id
+      FROM course_status_journeys
+      WHERE course_status IN (
+        'Form Submitted – Portal Pending',
+        'Form Filled_Partner website',
+        'Offer Letter/Results Pending',
+        'Application',
+        'Form Submitted – Completed',
+        'Walkin Completed',
+        'Form Filled_Degreefyd',
+        'Exam Interview Pending',
+        'Offer Letter/Results Released',
+        'Registration Done',
+        'Partially Paid',
+        'Admission',
+        'Registration done',
+        'Walkin marked'
+      )
+    `;
+
     let sortColumn;
     if (sortBy) {
       const sortMap = {
@@ -2714,7 +2774,9 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
            last_remark AS (${lastRemarkCTE}),
            connected_remarks_count AS (${connectedRemarksCountCTE}),
            student_remark_count AS (${studentRemarkCountCTE}),
-           pre_ni_students AS (${preNICTE})
+           pre_ni_students AS (${preNICTE}),
+           first_admission_students AS (${firstAdmissionCTE}),
+           first_formfilled_students AS (${firstFormfilledCTE})
            
       SELECT
         ${groupByField} AS group_by,
@@ -2750,12 +2812,12 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
         END) AS attempted,
 
         COUNT(DISTINCT CASE 
-          WHEN lr.lead_status IN ('Application', 'Admission')
+          WHEN ffs.student_id IS NOT NULL
           THEN s.student_id 
         END) AS formFilled,
 
         COUNT(DISTINCT CASE 
-          WHEN lr.lead_status = 'Admission'
+          WHEN fas.student_id IS NOT NULL
           THEN s.student_id 
         END) AS admission_count,
 
@@ -2813,6 +2875,8 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
       LEFT JOIN connected_remarks_count crc ON s.student_id = crc.student_id
       LEFT JOIN student_remark_count src ON s.student_id = src.student_id
       LEFT JOIN pre_ni_students pns ON s.student_id = pns.student_id
+      LEFT JOIN first_admission_students fas ON s.student_id = fas.student_id
+      LEFT JOIN first_formfilled_students ffs ON s.student_id = ffs.student_id
       LEFT JOIN counsellors c ON lr.counsellor_id = c.counsellor_id
       ${counsellorJoin}
       ${whereSQL}
@@ -3913,10 +3977,12 @@ export const getTrackerReport2 = async (req, res) => {
     const userRole = req.user?.role; // Get user role from request
     console.log(userRole);
     if (!date_start || !date_end) {
-      return res.status(400).json({
-        success: false,
-        message: "date_start and date_end are required",
-      });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "date_start and date_end are required",
+        });
     }
 
     // Use explicit timezone handling (IST = UTC+5:30)
@@ -4052,15 +4118,14 @@ export const getTrackerReport2 = async (req, res) => {
         ORDER BY sr.student_id, sr.created_at ASC
       `;
 
+      // Use s."first_icc_date" for ICC - this is the date when ICC milestone was achieved
       firstICCQuery = `
-        SELECT DISTINCT ON (sr.student_id)
-          sr.student_id,
-          sr.created_at as first_icc_at
-        FROM student_remarks sr
-        INNER JOIN students s ON sr.student_id = s.student_id
-        WHERE sr.lead_sub_status = 'Initial Counseling Completed'
-          AND s.source = 'FaceBook'
-        ORDER BY sr.student_id, sr.created_at ASC
+        SELECT 
+          student_id,
+          "first_icc_date" as first_icc_at
+        FROM students
+        WHERE "first_icc_date" IS NOT NULL
+          AND source = 'FaceBook'
       `;
 
       firstNIQuery = `
@@ -4069,7 +4134,7 @@ export const getTrackerReport2 = async (req, res) => {
           sr.created_at as first_ni_at
         FROM student_remarks sr
         INNER JOIN students s ON sr.student_id = s.student_id
-        WHERE sr.lead_status = 'NotInterested'
+        WHERE s.current_student_status = 'NotInterested'
           AND s.source = 'FaceBook'
         ORDER BY sr.student_id, sr.created_at ASC
       `;
@@ -4084,34 +4149,40 @@ export const getTrackerReport2 = async (req, res) => {
         ORDER BY student_id, created_at ASC
       `;
 
+      // Use s."first_icc_date" for ICC
       firstICCQuery = `
-        SELECT DISTINCT ON (student_id)
+        SELECT 
           student_id,
-          created_at as first_icc_at
-        FROM student_remarks
-        WHERE lead_sub_status = 'Initial Counseling Completed'
-        ORDER BY student_id, created_at ASC
+          "first_icc_date" as first_icc_at
+        FROM students
+        WHERE "first_icc_date" IS NOT NULL
       `;
 
       firstNIQuery = `
-        SELECT DISTINCT ON (student_id)
-          student_id,
-          created_at as first_ni_at
-        FROM student_remarks
-        WHERE lead_status = 'NotInterested'
-        ORDER BY student_id, created_at ASC
+        SELECT DISTINCT ON (sr.student_id)
+          sr.student_id,
+          sr.created_at as first_ni_at
+        FROM student_remarks sr
+        INNER JOIN students s ON sr.student_id = s.student_id
+        WHERE s.current_student_status = 'NotInterested'
+        ORDER BY sr.student_id, sr.created_at ASC
       `;
     }
 
     // Execute queries
-    const firstConnected = await sequelize.query(firstConnectedQuery, {
-      type: sequelize.QueryTypes.SELECT,
-    });
-    const firstICC = await sequelize.query(firstICCQuery, {
-      type: sequelize.QueryTypes.SELECT,
-    });
-    const firstNI = await sequelize.query(firstNIQuery, {
-      type: sequelize.QueryTypes.SELECT,
+    const [firstConnected, firstICC, firstNI, studentsForStatus] = await Promise.all([
+      sequelize.query(firstConnectedQuery, { type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(firstICCQuery, { type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(firstNIQuery, { type: sequelize.QueryTypes.SELECT }),
+      Student.findAll({
+        attributes: ["student_id", "current_student_status"],
+        raw: true,
+      }),
+    ]);
+
+    const studentStatusMap = {};
+    studentsForStatus.forEach((s) => {
+      studentStatusMap[s.student_id] = s.current_student_status;
     });
 
     const firstConnectedMap = {};
@@ -4121,6 +4192,7 @@ export const getTrackerReport2 = async (req, res) => {
       ).getTime();
     });
 
+    // Create a map of first ICC date per student (from students table)
     const firstICCMap = {};
     firstICC.forEach((r) => {
       firstICCMap[r.student_id] = new Date(r.first_icc_at).getTime();
@@ -4130,6 +4202,10 @@ export const getTrackerReport2 = async (req, res) => {
     firstNI.forEach((r) => {
       firstNIMap[r.student_id] = new Date(r.first_ni_at).getTime();
     });
+
+    // Log for debugging
+    console.log(`Total students with ICC: ${Object.keys(firstICCMap).length}`);
+    console.log(`Sample ICC students:`, Object.keys(firstICCMap).slice(0, 5));
 
     const getGroupKey = (remark) => {
       if (groupBy === "counsellor") {
@@ -4197,6 +4273,7 @@ export const getTrackerReport2 = async (req, res) => {
       firstTimeNI: new Set(),
     };
 
+    // Process each remark
     remarks.forEach((remark) => {
       const groupInfo = getGroupKey(remark);
       if (!groupInfo) return;
@@ -4220,6 +4297,7 @@ export const getTrackerReport2 = async (req, res) => {
       groupData[groupKey].totalUniqueRemarks.add(remark.student_id);
       overallTotals.totalUniqueRemarks.add(remark.student_id);
 
+      // Check for first time connected
       if (
         remark.calling_status &&
         remark.calling_status.toLowerCase().trim() === "connected"
@@ -4231,15 +4309,23 @@ export const getTrackerReport2 = async (req, res) => {
         }
       }
 
-      if (remark.lead_sub_status === "Initial Counseling Completed") {
-        const firstICCTime = firstICCMap[remark.student_id];
-        if (firstICCTime && remarkTime === firstICCTime) {
+      // Check for first ICC - CHANGED LOGIC
+      // Instead of matching remark time with ICC time, we check if the student's ICC milestone
+      // falls within the date range, and if so, we add it when we process ANY remark from that student
+      const firstICCTime = firstICCMap[remark.student_id];
+      if (firstICCTime) {
+        // Check if ICC date falls within the selected date range
+        const iccDate = new Date(firstICCTime);
+        if (iccDate >= startDate && iccDate <= endDate) {
+          // Add this student to ICC set for the current group
           groupData[groupKey].firstTimeICC.add(remark.student_id);
           overallTotals.firstTimeICC.add(remark.student_id);
         }
       }
 
-      if (remark.lead_status === "NotInterested") {
+      // Check for first NI
+      const currentStatus = studentStatusMap[remark.student_id];
+      if (currentStatus === "NotInterested") {
         const firstNITime = firstNIMap[remark.student_id];
         if (firstNITime && remarkTime === firstNITime) {
           groupData[groupKey].firstTimeNI.add(remark.student_id);
@@ -4328,9 +4414,9 @@ export const getTrackerReport2 = async (req, res) => {
     const totalPercentages = {
       connectedPerc: totals.totalUniqueRemarks
         ? (
-            (totals.firstTimeConnected / totals.totalUniqueRemarks) *
-            100
-          ).toFixed(1)
+          (totals.firstTimeConnected / totals.totalUniqueRemarks) *
+          100
+        ).toFixed(1)
         : "0.0",
       iccPerc: totals.totalUniqueRemarks
         ? ((totals.firstTimeICC / totals.totalUniqueRemarks) * 100).toFixed(1)
@@ -4388,10 +4474,12 @@ export const getTrackerReport2RawData = async (req, res) => {
     const { date_start, date_end, groupBy = "detailed" } = req.query;
 
     if (!date_start || !date_end) {
-      return res.status(400).json({
-        success: false,
-        message: "date_start and date_end are required",
-      });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "date_start and date_end are required",
+        });
     }
 
     console.log(
@@ -4435,6 +4523,8 @@ export const getTrackerReport2RawData = async (req, res) => {
         "student_name",
         "student_phone",
         "student_email",
+        "current_student_status",
+        "first_icc_date" // Changed from first_Icc_date to first_icc_date
       ],
       raw: true,
     });
@@ -4444,7 +4534,7 @@ export const getTrackerReport2RawData = async (req, res) => {
       studentMap[s.student_id] = s;
     });
 
-    // 3. Get all remarks in date range (same logic as getTrackerReport2)
+    // 3. Get all remarks in date range
     const remarks = await StudentRemark.findAll({
       where: {
         created_at: { [Op.between]: [startDate, endDate] },
@@ -4467,8 +4557,8 @@ export const getTrackerReport2RawData = async (req, res) => {
 
     console.log(`Found ${remarks.length} remarks in date range`);
 
-    // 4. Get FIRST occurrences globally (same logic as getTrackerReport2)
-    // FIX: Handle the array of arrays response from sequelize.query
+    // 4. Get FIRST occurrences globally
+    // First Connected - from remarks
     const firstConnectedResult = await sequelize.query(
       `
       SELECT DISTINCT ON (student_id)
@@ -4481,18 +4571,19 @@ export const getTrackerReport2RawData = async (req, res) => {
       { type: sequelize.QueryTypes.SELECT },
     );
 
+    // First ICC - from students table (using first_icc_date)
     const firstICCResult = await sequelize.query(
       `
-      SELECT DISTINCT ON (student_id)
+      SELECT 
         student_id,
-        created_at as first_icc_at
-      FROM student_remarks
-      WHERE lead_sub_status = 'Initial Counseling Completed'
-      ORDER BY student_id, created_at ASC
+        "first_icc_date" as first_icc_at
+      FROM students
+      WHERE "first_icc_date" IS NOT NULL
     `,
       { type: sequelize.QueryTypes.SELECT },
     );
 
+    // First NI - from remarks where lead_status is NotInterested
     const firstNIResult = await sequelize.query(
       `
       SELECT DISTINCT ON (student_id)
@@ -4507,7 +4598,6 @@ export const getTrackerReport2RawData = async (req, res) => {
 
     // Create maps for quick lookup
     const firstConnectedMap = {};
-    // FIX: firstConnectedResult is already an array, not an array of arrays
     firstConnectedResult.forEach((r) => {
       firstConnectedMap[r.student_id] = new Date(
         r.first_connected_at,
@@ -4516,7 +4606,9 @@ export const getTrackerReport2RawData = async (req, res) => {
 
     const firstICCMap = {};
     firstICCResult.forEach((r) => {
-      firstICCMap[r.student_id] = new Date(r.first_icc_at).getTime();
+      if (r.first_icc_at) {
+        firstICCMap[r.student_id] = new Date(r.first_icc_at).getTime();
+      }
     });
 
     const firstNIMap = {};
@@ -4527,7 +4619,7 @@ export const getTrackerReport2RawData = async (req, res) => {
     console.log(
       `First connected map size: ${Object.keys(firstConnectedMap).length}`,
     );
-    console.log(`First ICC map size: ${Object.keys(firstICCMap).length}`);
+    console.log(`First ICC map size (from students table): ${Object.keys(firstICCMap).length}`);
     console.log(`First NI map size: ${Object.keys(firstNIMap).length}`);
 
     // 5. Process remarks to identify first-time occurrences in date range
@@ -4572,17 +4664,26 @@ export const getTrackerReport2RawData = async (req, res) => {
         }
       }
 
-      // Check if this is the FIRST ICC event globally AND it happened in our date range
-      if (remark.lead_sub_status === "Initial Counseling Completed") {
-        const firstICCTime = firstICCMap[studentId];
-        if (firstICCTime && remarkTime === firstICCTime) {
-          studentFirstOccurrences[key].icc_date = remark.created_at;
-          studentFirstOccurrences[key].is_first_icc = true;
+      // Check for ICC - using first_icc_date from students table
+      // Instead of matching remark time, we check if the student's ICC milestone date
+      // falls within the selected date range and is associated with this counsellor
+      const firstICCTime = firstICCMap[studentId];
+      const student = studentMap[studentId];
+      
+      if (firstICCTime && student && student.first_icc_date) { // Changed from first_Icc_date to first_icc_date
+        const iccDate = new Date(firstICCTime);
+        // Check if ICC date falls within the selected date range
+        if (iccDate >= startDate && iccDate <= endDate) {
+          // Check if we haven't already marked this student for this counsellor
+          if (!studentFirstOccurrences[key].is_first_icc) {
+            studentFirstOccurrences[key].icc_date = student.first_icc_date; // Changed from first_Icc_date to first_icc_date
+            studentFirstOccurrences[key].is_first_icc = true;
+          }
         }
       }
 
       // Check if this is the FIRST NI event globally AND it happened in our date range
-      if (remark.lead_status === "NotInterested") {
+      if (student && student.current_student_status === "NotInterested") {
         const firstNITime = firstNIMap[studentId];
         if (firstNITime && remarkTime === firstNITime) {
           studentFirstOccurrences[key].ni_date = remark.created_at;
@@ -4622,26 +4723,26 @@ export const getTrackerReport2RawData = async (req, res) => {
         Email: student.student_email || "",
         First_Remark_Date: row.first_remark_date
           ? new Date(row.first_remark_date).toLocaleString("en-IN", {
-              timeZone: "Asia/Kolkata",
-            })
+            timeZone: "Asia/Kolkata",
+          })
           : "",
         First_Time_Connected: row.is_first_connected ? "Yes" : "No",
         Connected_Date: row.connected_date
           ? new Date(row.connected_date).toLocaleString("en-IN", {
-              timeZone: "Asia/Kolkata",
-            })
+            timeZone: "Asia/Kolkata",
+          })
           : "",
         First_Time_ICC: row.is_first_icc ? "Yes" : "No",
         ICC_Date: row.icc_date
           ? new Date(row.icc_date).toLocaleString("en-IN", {
-              timeZone: "Asia/Kolkata",
-            })
+            timeZone: "Asia/Kolkata",
+          })
           : "",
         First_Time_NI: row.is_first_ni ? "Yes" : "No",
         NI_Date: row.ni_date
           ? new Date(row.ni_date).toLocaleString("en-IN", {
-              timeZone: "Asia/Kolkata",
-            })
+            timeZone: "Asia/Kolkata",
+          })
           : "",
       };
     });

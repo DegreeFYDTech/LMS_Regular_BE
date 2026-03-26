@@ -76,6 +76,22 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       isPreNi,
     } = filters;
 
+    // Application statuses mapping
+    const APPLICATION_STATUSES = [
+      "Exam Interview Pending",
+      "Ready For Admission",
+      "Offer Letter/Results Pending",
+      "Form Filled_Partner website",
+      "Form Submitted – Portal Pending",
+      "Offer Letter/Results Released",
+      "Application Fee Paid",
+      "Walkin Completed",
+      "Form Submitted – Offline",
+      "Form Filled_Degreefyd",
+      "Exam/Interview Scheduled",
+      "Form Submitted – Completed"
+    ];
+
     const isAnalyser = userrole === "Analyser";
     const requestingUser = req?.user;
     console.log("User role from JWT:", requestingUser?.role);
@@ -410,7 +426,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     if (subCallingStatusL3)
       where.push(inSQL("s.sub_calling_status_l3", subCallingStatusL3));
 
-    // For L3, lead_status should filter based on journey status, not students table
+    // Handle lead_status filter - For L3, filter based on journey status
+    // For non-L3, filter based on students table current_student_status
     if (leadStatus && data !== "l3") {
       where.push(inSQL("s.current_student_status", leadStatus));
     }
@@ -851,8 +868,12 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         } else {
           whereClauses.push(`COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0`);
         }
+      } else if (leadStatus === "Application") {
+        // Application leads: Filter by specific journey statuses
+        const applicationStatuses = APPLICATION_STATUSES.map(status => escape(status)).join(",");
+        whereClauses.push(`lje.journey_course_status IN (${applicationStatuses})`);
       } else {
-        // For non-Fresh statuses, filter by journey course_status
+        // For other statuses, filter by journey course_status
         const statuses = Array.isArray(leadStatus)
           ? leadStatus
           : leadStatus.split(",").map((v) => v.trim());
@@ -860,6 +881,22 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           whereClauses.push(`lje.journey_course_status IN (${statuses.map(escape).join(",")})`);
         }
       }
+    }
+
+    // Handle lead_status filter for L2 view - Application filter
+    if (leadStatus && data === "l2" && leadStatus === "Application") {
+      // For L2 view, we need to filter students whose latest journey status matches Application statuses
+      const applicationStatuses = APPLICATION_STATUSES.map(status => escape(status)).join(",");
+      whereClauses.push(`EXISTS (
+        SELECT 1 FROM course_status_journeys csj 
+        WHERE csj.student_id = s.student_id 
+        AND csj.course_status IN (${applicationStatuses})
+        AND NOT EXISTS (
+          SELECT 1 FROM course_status_journeys csj2 
+          WHERE csj2.student_id = s.student_id 
+          AND csj2.created_at > csj.created_at
+        )
+      )`);
     }
 
     // Handle freshLeads flag for L3
@@ -1005,78 +1042,82 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     `
       : "";
 
-    const mainQuery =
-      data === "l3"
-        ? `
-      ${ctesSQL}
-      SELECT
-        ${isDownload ? downloadSelectFields : ""}
-        ${maskedSelectFields}
-        COALESCE(rcc.total_remarks_by_this_counsellor, 0) as total_remarks_l3,
-        fje.first_journey_timestamp as created_at_l3,
-        fje.first_journey_timestamp as assigned_l3_date_from_journey,
-        
-        -- Use journey course_status as lead_status for L3
-        CASE 
-          WHEN lje.journey_course_status IS NOT NULL THEN lje.journey_course_status
-          WHEN COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0 THEN 'Fresh'
-          ELSE 'No Status'
-        END as lead_status,
-        
-        lcd.counsellor_id as l3_counsellor_id,
-        lcd.counsellor_name as l3_counsellor_name,
-        lcd.counsellor_email as l3_counsellor_email,
-        lcd.role as l3_counsellor_role,
-        
-        c1.counsellor_id as counsellor_id,
-        c1.counsellor_name as counsellor_name,
-        c1.counsellor_email as counsellor_email,
-        c1.role as counsellor_role,
+   const mainQuery =
+  data === "l3"
+    ? `
+  ${ctesSQL}
+  SELECT
+    ${isDownload ? downloadSelectFields : ""}
+    ${maskedSelectFields}
+    COALESCE(rcc.total_remarks_by_this_counsellor, 0) as total_remarks_l3,
+    fje.first_journey_timestamp as created_at_l3,
+    fje.first_journey_timestamp as assigned_l3_date_from_journey,
+    
+    -- Use journey course_status as lead_status for L3, but map application statuses to 'Application'
+    CASE 
+      WHEN lje.journey_course_status IS NOT NULL AND lje.journey_course_status IN (${APPLICATION_STATUSES.map(status => escape(status)).join(",")}) THEN 'Application'
+      WHEN lje.journey_course_status IS NOT NULL THEN lje.journey_course_status
+      WHEN COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0 THEN 'Fresh'
+      ELSE 'No Status'
+    END as lead_status,
+    
+    -- Also keep the original journey status for reference if needed
+    lje.journey_course_status as original_journey_status,
+    
+    lcd.counsellor_id as l3_counsellor_id,
+    lcd.counsellor_name as l3_counsellor_name,
+    lcd.counsellor_email as l3_counsellor_email,
+    lcd.role as l3_counsellor_role,
+    
+    c1.counsellor_id as counsellor_id,
+    c1.counsellor_name as counsellor_name,
+    c1.counsellor_email as counsellor_email,
+    c1.role as counsellor_role,
 
-        lr.remark_id,
-        s.current_student_ni_sub_status as lead_sub_status,
-        lr.calling_status,
-        lr.sub_calling_status,
-        lr.remarks,
-        lr.callback_date as latest_callback_date,
-        lr.callback_time,
-        lr.remark_created_at as latest_remark_date,
+    lr.remark_id,
+    s.current_student_ni_sub_status as lead_sub_status,
+    lr.calling_status,
+    lr.sub_calling_status,
+    lr.remarks,
+    lr.callback_date as latest_callback_date,
+    lr.callback_time,
+    lr.remark_created_at as latest_remark_date,
 
-        fla.utm_source,
-        fla.utm_medium,
-        fla.utm_campaign,
-        fla.utm_keyword,
-        fla.utm_campaign_id,
-        fla.utm_adgroup_id,
-        fla.utm_creative_id,
-        fla.source,
-        fla.source_url,
-        fla.activity_created_at
+    fla.utm_source,
+    fla.utm_medium,
+    fla.utm_campaign,
+    fla.utm_keyword,
+    fla.utm_campaign_id,
+    fla.utm_adgroup_id,
+    fla.utm_creative_id,
+    fla.source,
+    fla.source_url,
+    fla.activity_created_at
 
-      FROM students s
-      INNER JOIN latest_journey_entries lje ON s.student_id = lje.student_id
-      INNER JOIN first_journey_entries fje ON s.student_id = fje.student_id
-      LEFT JOIN l3_counsellor_details lcd ON lje.assigned_l3_counsellor_id = lcd.counsellor_id
-      LEFT JOIN counsellors c1 ON s.assigned_counsellor_id = c1.counsellor_id
-      LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
-      LEFT JOIN remarks_count_by_counsellor rcc ON s.student_id = rcc.student_id
-      LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
-      ${isDownload
-          ? `
-      LEFT JOIN first_remark_l2 frl2 ON s.student_id = frl2.student_id
-      LEFT JOIN first_remark_l3 frl3 ON s.student_id = frl3.student_id
-      LEFT JOIN first_icc_remark ficc ON s.student_id = ficc.student_id
-      LEFT JOIN connected_calls_count ccc ON s.student_id = ccc.student_id
-      LEFT JOIN admission_remark adm ON s.student_id = adm.student_id
-      LEFT JOIN has_icc_or_admission hia ON s.student_id = hia.student_id
-      LEFT JOIN pre_ni_students pns ON s.student_id = pns.student_id
-      LEFT JOIN first_application_remark far ON s.student_id = far.student_id
-      `
-          : ""
-        }
-      ${whereSQL}
-      ${orderBySQL}
-      ${!isDownload ? `LIMIT ${limitNum} OFFSET ${offset}` : ""}`
+  FROM students s
+  INNER JOIN latest_journey_entries lje ON s.student_id = lje.student_id
+  INNER JOIN first_journey_entries fje ON s.student_id = fje.student_id
+  LEFT JOIN l3_counsellor_details lcd ON lje.assigned_l3_counsellor_id = lcd.counsellor_id
+  LEFT JOIN counsellors c1 ON s.assigned_counsellor_id = c1.counsellor_id
+  LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
+  LEFT JOIN remarks_count_by_counsellor rcc ON s.student_id = rcc.student_id
+  LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
+  ${isDownload
+      ? `
+  LEFT JOIN first_remark_l2 frl2 ON s.student_id = frl2.student_id
+  LEFT JOIN first_remark_l3 frl3 ON s.student_id = frl3.student_id
+  LEFT JOIN first_icc_remark ficc ON s.student_id = ficc.student_id
+  LEFT JOIN connected_calls_count ccc ON s.student_id = ccc.student_id
+  LEFT JOIN admission_remark adm ON s.student_id = adm.student_id
+  LEFT JOIN has_icc_or_admission hia ON s.student_id = hia.student_id
+  LEFT JOIN pre_ni_students pns ON s.student_id = pns.student_id
+  LEFT JOIN first_application_remark far ON s.student_id = far.student_id
+  `
+      : ""
+    }
+  ${whereSQL}
+  ${orderBySQL}
+  ${!isDownload ? `LIMIT ${limitNum} OFFSET ${offset}` : ""}`
         : `
       ${ctesSQL}
       SELECT
@@ -1563,6 +1604,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         }),
         ...(data === "l3" && {
           note: "L3 view - lead_status is derived from journey course_status or 'Fresh' if no remarks",
+          applicationStatuses: APPLICATION_STATUSES,
         }),
         ...(userRole === "to" && {
           note: "Team Owner view - showing leads based on role and filters",
@@ -1598,6 +1640,21 @@ async function getL3OverallStatsFromJourney({
   studentWhere = '1=1'
 }) {
   try {
+    const APPLICATION_STATUSES = [
+      "Exam Interview Pending",
+      "Ready For Admission",
+      "Offer Letter/Results Pending",
+      "Form Filled_Partner website",
+      "Form Submitted – Portal Pending",
+      "Offer Letter/Results Released",
+      "Application Fee Paid",
+      "Walkin Completed",
+      "Form Submitted – Offline",
+      "Form Filled_Degreefyd",
+      "Exam/Interview Scheduled",
+      "Form Submitted – Completed"
+    ];
+
     const formatDateForPostgres = (date) => {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -1642,14 +1699,19 @@ async function getL3OverallStatsFromJourney({
       }
     }
 
-    // Add lead status filter for stats
+    // Add lead status filter for stats - Use bj.latest_course_status
     let leadStatusFilter = "";
     if (leadStatus && leadStatus !== "Fresh") {
-      const statuses = Array.isArray(leadStatus)
-        ? leadStatus
-        : leadStatus.split(",").map((v) => v.trim());
-      if (statuses.length) {
-        leadStatusFilter = `AND lje.journey_course_status IN (${statuses.map(escape).join(",")})`;
+      if (leadStatus === "Application") {
+        const applicationStatuses = APPLICATION_STATUSES.map(status => escape(status)).join(",");
+        leadStatusFilter = `AND bj.latest_course_status IN (${applicationStatuses})`;
+      } else {
+        const statuses = Array.isArray(leadStatus)
+          ? leadStatus
+          : leadStatus.split(",").map((v) => v.trim());
+        if (statuses.length) {
+          leadStatusFilter = `AND bj.latest_course_status IN (${statuses.map(escape).join(",")})`;
+        }
       }
     }
 
@@ -1689,6 +1751,22 @@ async function getL3OverallStatsFromJourney({
       cleanRemarkWhere = remarkWhere
         .replace(/sr\./g, '')
         .replace(/lr\./g, '');
+    }
+
+    // Prepare the filter string for base_students (bs) CTEs
+    let baseStudentFilter = "";
+    if (leadStatus && leadStatus !== "Fresh") {
+      if (leadStatus === "Application") {
+        const applicationStatuses = APPLICATION_STATUSES.map(status => escape(status)).join(",");
+        baseStudentFilter = `AND bs.latest_course_status IN (${applicationStatuses})`;
+      } else {
+        const statuses = Array.isArray(leadStatus)
+          ? leadStatus
+          : leadStatus.split(",").map((v) => v.trim());
+        if (statuses.length) {
+          baseStudentFilter = `AND bs.latest_course_status IN (${statuses.map(escape).join(",")})`;
+        }
+      }
     }
 
     const query = `
@@ -1732,13 +1810,14 @@ async function getL3OverallStatsFromJourney({
         ` : ''}
         WHERE 1=1
         ${studentWhereClause}
+        ${leadStatusFilter.replace('bj.', '')}
       ),
       -- Fresh leads: students with current_student_status = 'Fresh' in the students table
       fresh_leads AS (
         SELECT bs.student_id
         FROM base_students bs
         WHERE bs.current_student_status = 'Fresh'
-        ${leadStatusFilter}
+        ${baseStudentFilter}
       ),
       latest_remarks AS (
         SELECT DISTINCT ON (sr.student_id)
@@ -1765,7 +1844,7 @@ async function getL3OverallStatsFromJourney({
           AND lr.callback_date < current_date + 1
           -- Exclude students whose latest journey status is 'Not Interested'
           AND bs.latest_course_status NOT IN ('Not Interested', 'NotInterested')
-          ${leadStatusFilter}
+          ${baseStudentFilter}
           ${callbackFilter}
       ),
       wishlist_students AS (
@@ -1779,27 +1858,29 @@ async function getL3OverallStatsFromJourney({
         SELECT 
           COUNT(CASE WHEN bs.is_connected_yet_l3 = false THEN 1 END) as not_connected
         FROM base_students bs
-        ${leadStatusFilter}
+        WHERE 1=1
+        ${baseStudentFilter}
       ),
       unread_messages AS (
         SELECT 
           COUNT(CASE WHEN bs.number_of_unread_messages > 0 THEN 1 END) as students_with_unread_messages,
           COALESCE(SUM(COALESCE(bs.number_of_unread_messages, 0)), 0) as total_unread_messages_sum
         FROM base_students bs
-        ${leadStatusFilter}
+        WHERE 1=1
+        ${baseStudentFilter}
       ),
       reactivity_stats AS (
         SELECT COUNT(DISTINCT bs.student_id) as reactivity_count
         FROM base_students bs
         WHERE bs.is_reactivity = true
-        ${leadStatusFilter}
+        ${baseStudentFilter}
       ),
       created_today AS (
         SELECT COUNT(*) as created_today_count
         FROM base_students bs
         WHERE bs.journey_created_at >= '${todayStartFormatted}'::timestamp
           AND bs.journey_created_at <= '${todayEndFormatted}'::timestamp
-        ${leadStatusFilter}
+        ${baseStudentFilter}
       )
       SELECT 
         (SELECT COUNT(*) FROM fresh_leads) as fresh_leads,
@@ -1854,9 +1935,10 @@ async function getL3OverallStatsFromJourney({
     };
   }
 }
+
 const escape = (val) =>
   typeof val === "string"
     ? "'" + val.replace(/'/g, "''") + "'"
     : val === null || val === undefined
       ? "NULL"
-      : val;  
+      : val;

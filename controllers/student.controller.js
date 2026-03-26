@@ -126,6 +126,12 @@ export const markWalkin = async (req, res) => {
       course_status: "Walkin Marked",
       event_time: event_time ? new Date(event_time) : new Date(),
     });
+    const lateststudentJourney = await CourseStatus.update(
+      {
+        latest_course_status: "Walkin Marked",
+      },
+      { where: { student_id, course_id } },
+    );
 
     res.status(201).json({
       message: "Walkin marked successfully",
@@ -447,13 +453,16 @@ export const updateStudentStatus = async (req, res) => {
 
       let assigned_l3_counsellor_id = null;
 
-      // ONLY create new entry if status is different
       if (latestStatus !== effectiveCourseStatus) {
-        console.log("Status changed - creating new journey entry");
+        console.log(
+          leadStatus,
+          effectiveCourseStatus,
+          assigned_l3_counsellor_id,
+        );
         if (
           leadStatus == "Application" &&
           effectiveCourseStatus === "Application" &&
-          student.assigned_l3_counsellor_id === null
+          !latestJourney?.assigned_l3_counsellor_id
         ) {
           try {
             const courseDetails = await UniversityCourse.findOne({

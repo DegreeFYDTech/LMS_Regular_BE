@@ -114,6 +114,31 @@ export const createStudent = async (req, res) => {
     });
   }
 };
+
+export const markWalkin = async (req, res) => {
+  const { student_id, course_id, event_time } = req.body;
+  const userid = req.user.id;
+  try {
+    const studentJourney = await CourseStatusJourney.create({
+      student_id,
+      course_id,
+      counsellor_id: userid,
+      course_status: "Walkin Marked",
+      event_time: event_time ? new Date(event_time) : new Date(),
+    });
+
+    res.status(201).json({
+      message: "Walkin marked successfully",
+      studentJourney,
+    });
+  } catch (err) {
+    console.error("❌ markWalkin error:", err);
+    res.status(500).json({
+      message: "Internal server error",
+      error: err.message,
+    });
+  }
+};
 const COUNTRY_CODE = "91";
 const ensureCountryCode = (phoneNumber) => {
   return phoneNumber?.startsWith(COUNTRY_CODE)
@@ -139,7 +164,9 @@ export const updateStudentStatus = async (req, res) => {
       feesAmount,
       selectedCourse,
       collegeCourseStatus,
+      event_time, // Add event_time to destructured variables
     } = req.body;
+    console.log(event_time, "event_time received in controller");
     const student = await Student.findOne({
       where: { student_id: studentId },
     });
@@ -401,102 +428,134 @@ export const updateStudentStatus = async (req, res) => {
         ? "NotInterested"
         : leadStatus);
 
-if (effectiveCourseStatus && selectedCourse) {
-  console.log("effectiveCourseStatus", effectiveCourseStatus);
-  console.log("selectedCourse", selectedCourse);
-  
-  // Get the LATEST journey entry for this course
-  const latestJourney = await CourseStatusJourney.findOne({
-    where: {
-      student_id: studentId,
-      course_id: selectedCourse,
-    },
-    order: [["created_at", "DESC"]],
-  });
-  
-  const latestStatus = latestJourney?.course_status;
-  console.log("Latest status in journey:", latestStatus);
-  console.log("New status:", effectiveCourseStatus);
-  
-  let assigned_l3_counsellor_id = null;
-  
-  // ONLY create new entry if status is different
-  if (latestStatus !== effectiveCourseStatus) {
-    console.log("Status changed - creating new journey entry");
-        if (leadStatus == "Application" && effectiveCourseStatus === "Application") {
-      try {
-        const courseDetails = await UniversityCourse.findOne({
-          where: { course_id: selectedCourse },
-        });
-        const l3data = await axios.post(
-          "http://localhost:3031/v1/leadassignmentl3/assign",
-          {
-            studentId,
-            collegeName: courseDetails.university_name,
-            Course: courseDetails.course_name,
-            Degree: courseDetails.degree_name,
-            Specialization: courseDetails.specialization,
-            level: courseDetails.level,
-            source: courseDetails.level,
-            stream: courseDetails.stream,
+    if (effectiveCourseStatus && selectedCourse) {
+      console.log("effectiveCourseStatus", effectiveCourseStatus);
+      console.log("selectedCourse", selectedCourse);
+
+      // Get the LATEST journey entry for this course
+      const latestJourney = await CourseStatusJourney.findOne({
+        where: {
+          student_id: studentId,
+          course_id: selectedCourse,
+        },
+        order: [["created_at", "DESC"]],
+      });
+
+      const latestStatus = latestJourney?.course_status;
+      console.log("Latest status in journey:", latestStatus);
+      console.log("New status:", effectiveCourseStatus);
+
+      let assigned_l3_counsellor_id = null;
+
+      // ONLY create new entry if status is different
+      if (latestStatus !== effectiveCourseStatus) {
+        console.log("Status changed - creating new journey entry");
+        if (
+          leadStatus == "Application" &&
+          effectiveCourseStatus === "Application" &&
+          student.assigned_l3_counsellor_id === null
+        ) {
+          try {
+            const courseDetails = await UniversityCourse.findOne({
+              where: { course_id: selectedCourse },
+            });
+            const l3data = await axios.post(
+              "http://localhost:3031/v1/leadassignmentl3/assign",
+              {
+                studentId,
+                collegeName: courseDetails.university_name,
+                Course: courseDetails.course_name,
+                Degree: courseDetails.degree_name,
+                Specialization: courseDetails.specialization,
+                level: courseDetails.level,
+                source: courseDetails.level,
+                stream: courseDetails.stream,
+              },
+            );
+            assigned_l3_counsellor_id = l3data?.data?.assigned_l3_counsellor_id;
+          } catch (l3error) {
+            console.error("L3 Assignment failed:", l3error.message);
+          }
+        }
+        const latestCourse = await CourseStatusJourney.findOne({
+          where: {
+            student_id: studentId,
+            course_id: selectedCourse,
           },
+          order: [["created_at", "DESC"]],
+        });
+
+        // Create journey entry with event_time if provided
+        const journeyData = {
+          student_id: studentId,
+          course_id: selectedCourse,
+          counsellor_id: counsellorId,
+          course_status:
+            effectiveCourseStatus === "Application"
+              ? leadSubStatus
+              : effectiveCourseStatus,
+          deposit_amount: feesAmount || 0,
+          fee_type: leadStatus === "Admission" ? leadSubStatus : null,
+          currency: "INR",
+          assigned_l3_counsellor_id:
+            latestCourse?.assigned_l3_counsellor_id ||
+            assigned_l3_counsellor_id,
+          notes: remark,
+          created_at: new Date(),
+        };
+
+        // Add event_time if it exists (for Exam/Interview Scheduled)
+        if (event_time) {
+          journeyData.event_time = event_time;
+        }
+
+        await CourseStatusJourney.create(journeyData);
+
+        // Update the latest status in CourseStatus table
+        await CourseStatus.update(
+          {
+            latest_course_status:
+              effectiveCourseStatus === "Application"
+                ? leadSubStatus
+                : effectiveCourseStatus,
+            created_by: counsellorId,
+            // Also update event_time in CourseStatus if needed
+            ...(event_time && { event_time: event_time }),
+          },
+          { where: { course_id: selectedCourse, student_id: studentId } },
         );
-        assigned_l3_counsellor_id = l3data?.data?.assigned_l3_counsellor_id;
-      } catch (l3error) {
-        console.error("L3 Assignment failed:", l3error.message);
+      } else {
+        console.log("Status unchanged - updating existing journey entry");
+        // Update the latest entry with new notes/amount while preserving assigned_l3_counsellor_id
+        if (latestJourney) {
+          const updateData = {};
+
+          if (remark) updateData.notes = remark;
+          if (feesAmount) updateData.deposit_amount = feesAmount;
+          if (leadStatus === "Admission" && leadSubStatus)
+            updateData.fee_type = leadSubStatus;
+
+          // Add event_time if provided (for Exam/Interview Scheduled)
+          if (event_time) {
+            updateData.event_time = event_time;
+          }
+
+          // IMPORTANT: Keep the existing assigned_l3_counsellor_id
+          // Don't set it to null, preserve the previous value
+
+          await latestJourney.update(updateData);
+          console.log("Updated existing journey entry with:", updateData);
+
+          // Also update event_time in CourseStatus
+          if (event_time) {
+            await CourseStatus.update(
+              { event_time: event_time },
+              { where: { course_id: selectedCourse, student_id: studentId } },
+            );
+          }
+        }
       }
     }
-    const latestCourse = await CourseStatusJourney.findOne({
-      where: {
-        student_id: studentId,
-        course_id: selectedCourse,
-      },
-      order: [["created_at", "DESC"]],
-    });
-
-    await CourseStatusJourney.create({
-      student_id: studentId,
-      course_id: selectedCourse,
-      counsellor_id: counsellorId,
-      course_status: effectiveCourseStatus === "Application" 
-        ? leadSubStatus 
-        : effectiveCourseStatus,
-      deposit_amount: feesAmount || 0,
-      fee_type: leadStatus === "Admission" ? leadSubStatus : null,
-      currency: "INR",
-      assigned_l3_counsellor_id: latestCourse?.assigned_l3_counsellor_id || assigned_l3_counsellor_id, // Preserve existing L3 assignment if exists, else use new one
-      notes: remark,
-      created_at: new Date(),
-    });
-    
-    // Update the latest status in CourseStatus table
-    await CourseStatus.update(
-      {
-        latest_course_status: effectiveCourseStatus === "Application"
-          ? leadSubStatus
-          : effectiveCourseStatus,
-        created_by: counsellorId,
-      },
-      { where: { course_id: selectedCourse, student_id: studentId } }
-    );
-  } else {
-    console.log("Status unchanged - updating existing journey entry");
-    // Update the latest entry with new notes/amount while preserving assigned_l3_counsellor_id
-    if (latestJourney) {
-      const updateData = {};
-      
-      if (remark) updateData.notes = remark;
-      if (feesAmount) updateData.deposit_amount = feesAmount;
-      if (leadStatus === "Admission" && leadSubStatus) updateData.fee_type = leadSubStatus;
-      
-      // IMPORTANT: Keep the existing assigned_l3_counsellor_id
-      // Don't set it to null, preserve the previous value
-      
-      await latestJourney.update(updateData);
-      console.log("Updated existing journey entry with:", updateData);
-    }
-  }
-}
 
     let enrolledDocumentUrl1;
     if (leadStatus === "Enrolled" && enrolledDocumentUrl) {
@@ -520,6 +579,8 @@ if (effectiveCourseStatus && selectedCourse) {
       callback_date: callbackDate,
       enrolledDocumentUrl: enrolledDocumentUrl1 || null,
       callback_time: callbackTime,
+      // Add event_time to remark if needed for tracking
+      ...(event_time && { event_time: event_time }),
     };
 
     const newRemark = await createRemark(remarkData);
@@ -976,6 +1037,7 @@ export const getStudentById = async (req, res) => {
       });
       studentData.course_id = latestJourney?.course_id || null;
       studentData.course_count = result?.length || 0;
+      studentData.course_sub_status = latestJourney?.course_status || null;
     } else if (counsellorRole === "l3" || counsellorRole === "to_l3") {
       const latestJourney = await CourseStatusJourney.findOne({
         where: {
@@ -996,6 +1058,8 @@ export const getStudentById = async (req, res) => {
       });
       studentData.course_id = latestJourney?.course_id || null;
       studentData.course_count = result?.length || 0;
+      studentData.course_sub_status = latestJourney?.course_status || null;
+
       if (counsellorRole === "l3") {
         if (
           latestJourney?.course_status == "Partially Paid" ||
@@ -1025,6 +1089,7 @@ export const getStudentById = async (req, res) => {
         }
       }
     }
+
     const counsellors =
       counsellorIds.length > 0
         ? await Counsellor.findAll({

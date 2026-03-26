@@ -12,6 +12,7 @@ import {
   addLeadDirect,
   getAllLeadsofDatatest,
   bulkCreateStudents,
+  markWalkin,
 } from "../controllers/student.controller.js";
 import { exportStudentsCSV } from "../controllers/exports/leads_csv_export.js";
 import { getStudents } from "../controllers/students.table.js";
@@ -30,6 +31,7 @@ router.get(
 
 router.post("/create", createStudent);
 router.post("/create-student", bearerAuth, createStudent);
+router.post("/mark-walkin",   authorize(["l2", "l3", "supervisor", "Supervisor", "to", "analyser", "to_l3"]), markWalkin);
 
 router.get(
   "/export",

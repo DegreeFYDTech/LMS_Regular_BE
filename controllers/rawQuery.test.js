@@ -1258,36 +1258,44 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       }
     }
 
-    const [students, countResult, overallStats = {}] = await Promise.all([
+    // Determine which overall stats function to use
+    let overallStats = {};
+    
+    if (!isDownload && freshLeads !== "Fresh" && leadStatus !== "Fresh") {
+      if (data === "l3") {
+        // For L3 view, use the stats function that calculates fresh from student.current_student_status
+        overallStats = await getL3OverallStatsFromJourney({
+          journeyWhere,
+          remarkWhere: remarkWhereStr,
+          utmWhere: utmWhereStr,
+          todayStart: today,
+          todayEnd: tomorrow,
+          callback,
+          selectedagent,
+          role: data,
+          userId,
+          userRole,
+          l3TeamIds,
+          leadStatus,
+          studentWhere: studentWhereStr // Pass studentWhere for fresh leads calculation
+        });
+      } else {
+        overallStats = await getOptimizedOverallStatsFromHelper({
+          studentWhere: studentWhereStr,
+          remarkWhere: remarkWhereStr,
+          utmWhere: utmWhereStr,
+          todayStart: today,
+          todayEnd: tomorrow,
+          selectedagent,
+          callback,
+          role: data,
+        });
+      }
+    }
+
+    const [students, countResult] = await Promise.all([
       sequelize.query(mainQuery, { type: QueryTypes.SELECT }),
       sequelize.query(countQuery, { type: QueryTypes.SELECT }),
-      !isDownload && freshLeads !== "Fresh" && leadStatus !== "Fresh"
-        ? data === "l3"
-          ? getL3OverallStatsFromJourney({
-            journeyWhere,
-            remarkWhere: remarkWhereStr,
-            utmWhere: utmWhereStr,
-            todayStart: today,
-            todayEnd: tomorrow,
-            callback,
-            selectedagent,
-            role: data,
-            userId,
-            userRole,
-            l3TeamIds,
-            leadStatus
-          })
-          : getOptimizedOverallStatsFromHelper({
-            studentWhere: studentWhereStr,
-            remarkWhere: remarkWhereStr,
-            utmWhere: utmWhereStr,
-            todayStart: today,
-            todayEnd: tomorrow,
-            selectedagent,
-            callback,
-            role: data,
-          })
-        : Promise.resolve({}),
     ]);
 
     function convertFlatArrayToNested(arr) {
@@ -1586,7 +1594,8 @@ async function getL3OverallStatsFromJourney({
   userId,
   userRole,
   l3TeamIds = [],
-  leadStatus = null
+  leadStatus = null,
+  studentWhere = '1=1'
 }) {
   try {
     const formatDateForPostgres = (date) => {
@@ -1606,29 +1615,30 @@ async function getL3OverallStatsFromJourney({
     const isToView = userRole === 'to';
 
     let remarkCounsellorFilter = "";
-    let freshLeadsFilter = "";
+    let journeyCounsellorFilter = "";
     
+    // Build filters for counsellor access
     if (role === 'l3') {
       if (selectedagent) {
         if ((isToL3View || isToView) && l3TeamIds.includes(selectedagent)) {
           remarkCounsellorFilter = `AND sr.counsellor_id = ${escape(selectedagent)}`;
-          freshLeadsFilter = `AND sr.counsellor_id = ${escape(selectedagent)}`;
+          journeyCounsellorFilter = `AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}`;
         } else if (!isToL3View && !isToView) {
           remarkCounsellorFilter = `AND sr.counsellor_id = ${escape(selectedagent)}`;
-          freshLeadsFilter = `AND sr.counsellor_id = ${escape(selectedagent)}`;
+          journeyCounsellorFilter = `AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}`;
         } else if ((isToL3View || isToView) && selectedagent && !l3TeamIds.includes(selectedagent)) {
           remarkCounsellorFilter = `AND 1 = 0`;
-          freshLeadsFilter = `AND 1 = 0`;
+          journeyCounsellorFilter = `AND 1 = 0`;
         }
       } else if (userRole === 'l3') {
         remarkCounsellorFilter = `AND sr.counsellor_id = ${escape(userId)}`;
-        freshLeadsFilter = `AND sr.counsellor_id = ${escape(userId)}`;
+        journeyCounsellorFilter = `AND csj.assigned_l3_counsellor_id = ${escape(userId)}`;
       } else if ((isToL3View || isToView) && l3TeamIds.length > 0) {
         remarkCounsellorFilter = `AND sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})`;
-        freshLeadsFilter = `AND sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})`;
+        journeyCounsellorFilter = `AND csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})`;
       } else if ((isToL3View || isToView) && l3TeamIds.length === 0) {
         remarkCounsellorFilter = `AND 1 = 0`;
-        freshLeadsFilter = `AND 1 = 0`;
+        journeyCounsellorFilter = `AND 1 = 0`;
       }
     }
 
@@ -1643,6 +1653,44 @@ async function getL3OverallStatsFromJourney({
       }
     }
 
+    // Add student where clause for fresh leads calculation
+    let studentWhereClause = "";
+    if (studentWhere && studentWhere !== '1=1') {
+      studentWhereClause = `AND (${studentWhere})`;
+    }
+
+    // Add callback filter for stats
+    let callbackFilter = "";
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const todayStartStr = todayStr + " 00:00:00";
+    const todayEndStr = todayStr + " 23:59:59";
+    
+    if (callback) {
+      switch (callback.toLowerCase()) {
+        case "today":
+          callbackFilter = `AND lr.callback_date >= '${todayStartStr}'::timestamp AND lr.callback_date <= '${todayEndStr}'::timestamp`;
+          break;
+        case "overdue":
+          callbackFilter = `AND lr.callback_date < '${todayStartStr}'::timestamp AND lr.callback_date IS NOT NULL`;
+          break;
+        case "all":
+          callbackFilter = `AND lr.callback_date IS NOT NULL`;
+          break;
+        case "combined":
+          callbackFilter = `AND lr.callback_date <= '${todayEndStr}'::timestamp AND lr.callback_date IS NOT NULL`;
+          break;
+      }
+    }
+
+    // Clean remarkWhere to remove references to sr and lr tables for base_students
+    let cleanRemarkWhere = "1=1";
+    if (remarkWhere && remarkWhere !== '1=1') {
+      cleanRemarkWhere = remarkWhere
+        .replace(/sr\./g, '')
+        .replace(/lr\./g, '');
+    }
+
     const query = `
       WITH base_students_with_journey AS (
         SELECT DISTINCT csj.student_id,
@@ -1650,7 +1698,7 @@ async function getL3OverallStatsFromJourney({
                MIN(csj.created_at) as first_journey_date,
                MAX(csj.course_status) as latest_course_status
         FROM course_status_journeys csj
-        WHERE ${journeyWhere}
+        WHERE ${journeyWhere} ${journeyCounsellorFilter}
         GROUP BY csj.student_id
       ),
       remarks_count AS (
@@ -1666,13 +1714,13 @@ async function getL3OverallStatsFromJourney({
         SELECT DISTINCT s.student_id,
                s.number_of_unread_messages,
                s.created_at as student_created_at,
+               s.current_student_status,
                bj.first_journey_date as journey_created_at,
                s.is_connected_yet,
                s.is_connected_yet_l3,
                s.total_remarks_l3,
                s.source,
                s.is_reactivity,
-               s.current_student_status,
                bj.latest_course_status,
                COALESCE(rc.total_remarks_by_counsellor, 0) as remarks_count
         FROM students s
@@ -1682,13 +1730,15 @@ async function getL3OverallStatsFromJourney({
           INNER JOIN student_lead_activities la ON s.student_id = la.student_id
           AND (${utmWhere})
         ` : ''}
-        WHERE (${remarkWhere})
+        WHERE 1=1
+        ${studentWhereClause}
       ),
+      -- Fresh leads: students with current_student_status = 'Fresh' in the students table
       fresh_leads AS (
         SELECT bs.student_id
         FROM base_students bs
-        WHERE bs.remarks_count = 0
-        ${!selectedagent && (isToL3View || isToView || userRole === 'l3') ? 'OR bs.total_remarks_l3 = 0' : ''}
+        WHERE bs.current_student_status = 'Fresh'
+        ${leadStatusFilter}
       ),
       latest_remarks AS (
         SELECT DISTINCT ON (sr.student_id)
@@ -1702,6 +1752,7 @@ async function getL3OverallStatsFromJourney({
         FROM student_remarks sr
         INNER JOIN base_students bs ON sr.student_id = bs.student_id
         WHERE 1=1
+          AND (${cleanRemarkWhere})
         ${remarkCounsellorFilter}
         ORDER BY sr.student_id, sr.created_at DESC
       ),
@@ -1712,7 +1763,10 @@ async function getL3OverallStatsFromJourney({
         WHERE lr.student_id IS NOT NULL
           AND lr.callback_date >= current_date 
           AND lr.callback_date < current_date + 1
-          AND bs.latest_course_status IN ('Admission', 'Application', 'Pre Application', 'Pre_Application')
+          -- Exclude students whose latest journey status is 'Not Interested'
+          AND bs.latest_course_status NOT IN ('Not Interested', 'NotInterested')
+          ${leadStatusFilter}
+          ${callbackFilter}
       ),
       wishlist_students AS (
         SELECT DISTINCT bs.student_id
@@ -1749,7 +1803,7 @@ async function getL3OverallStatsFromJourney({
       )
       SELECT 
         (SELECT COUNT(*) FROM fresh_leads) as fresh_leads,
-        (SELECT count FROM today_callbacks) as today_callbacks,
+        (SELECT COALESCE(count, 0) FROM today_callbacks) as today_callbacks,
         (SELECT COUNT(*) FROM wishlist_students) as wishlist_count,
         COALESCE(ints.not_connected, 0) as not_connected_yet,
         COALESCE(um.students_with_unread_messages, 0) as all_unread_messages_count,
@@ -1800,10 +1854,9 @@ async function getL3OverallStatsFromJourney({
     };
   }
 }
-
 const escape = (val) =>
   typeof val === "string"
     ? "'" + val.replace(/'/g, "''") + "'"
     : val === null || val === undefined
       ? "NULL"
-      : val;
+      : val;  

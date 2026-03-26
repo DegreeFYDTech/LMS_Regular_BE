@@ -470,8 +470,6 @@ export const getAllCoursesWithFilter = async (req, res) => {
 
 
 
-
-// Unified search with advanced filters
 export const unifiedSearch = async (req, res) => {
   try {
     const remappedBody = {
@@ -493,7 +491,9 @@ export const unifiedSearch = async (req, res) => {
       limit: req.body.limit || 100,
       studentId: req.body.student_id || req.body.studentId
     };
-   console.log('Unified Search - Remapped Body:', JSON.stringify(remappedBody, null, 2));
+    
+    console.log('Unified Search - Remapped Body:', JSON.stringify(remappedBody, null, 2));
+    
     const {
       totalFees = {},
       duration = {},
@@ -506,6 +506,9 @@ export const unifiedSearch = async (req, res) => {
     } = remappedBody;
 
     const where = { status: 'Active' };
+    
+    // Initialize Op.and array if needed - use this to collect ALL conditions
+    const andConditions = [];
 
     const exactMatchFields = [
       'universityName',
@@ -516,86 +519,132 @@ export const unifiedSearch = async (req, res) => {
       'stream',
       'level',
       'courseName',
-      'durationType',
-      'studyMode'
+      'durationType'
+      // studyMode handled separately
     ];
 
-    // Exact match filters
+    // Handle exact match filters (excluding studyMode)
     exactMatchFields.forEach(field => {
       const dbField = fieldMapping[field];
       const value = searchFields[field];
+      
+      console.log(`Processing ${field}:`, { dbField, value, valueType: typeof value });
 
-      if (Array.isArray(value) && value.length > 0 && value[0] !== '') {
-        where[dbField] = {
-          [Op.or]: value.map(val => ({ [Op.iLike]: val }))
-        };
-      } else if (typeof value === 'string' && value.trim() !== '') {
-        where[dbField] = { [Op.iLike]: value.trim() };
+      // Handle array values
+      if (Array.isArray(value) && value.length > 0) {
+        const nonEmptyValues = value.filter(v => v && v.trim() !== '');
+        if (nonEmptyValues.length > 0) {
+          console.log(`Adding array condition for ${field}:`, nonEmptyValues);
+          // Push to andConditions instead of setting directly on where
+          andConditions.push({
+            [dbField]: {
+              [Op.or]: nonEmptyValues.map(val => ({ [Op.iLike]: val }))
+            }
+          });
+        }
+      } 
+      // Handle string values
+      else if (typeof value === 'string' && value.trim() !== '') {
+        console.log(`Adding string condition for ${field}:`, value.trim());
+        // Push to andConditions instead of setting directly on where
+        andConditions.push({
+          [dbField]: { [Op.iLike]: value.trim() }
+        });
+      }
+      // Handle number or other types
+      else if (typeof value === 'number' || (value && typeof value !== 'object')) {
+        console.log(`Adding ${typeof value} condition for ${field}:`, value);
+        andConditions.push({
+          [dbField]: value
+        });
       }
     });
 
-    // Range filters
+    // Handle studyMode separately with NULL inclusion
+    if (searchFields.studyMode && searchFields.studyMode.trim() !== '') {
+      const studyModeValue = searchFields.studyMode.trim();
+      console.log(`Handling studyMode filter: include '${studyModeValue}' AND NULL values`);
+      
+      andConditions.push({
+        [Op.or]: [
+          { study_mode: { [Op.iLike]: studyModeValue } },
+          { study_mode: null }
+        ]
+      });
+    } else {
+      console.log('No studyMode filter applied - all courses included');
+    }
+
+    // Range filters - add to andConditions
     if (totalFees.min !== undefined || totalFees.max !== undefined) {
-      where[fieldMapping.totalFees] = {};
+      const feeCondition = {};
       if (totalFees.min !== undefined) {
-        where[fieldMapping.totalFees][Op.gte] = totalFees.min;
+        feeCondition[Op.gte] = totalFees.min;
       }
       if (totalFees.max !== undefined) {
-        where[fieldMapping.totalFees][Op.lte] = totalFees.max;
+        feeCondition[Op.lte] = totalFees.max;
       }
+      andConditions.push({ [fieldMapping.totalFees]: feeCondition });
     }
 
     if (duration.min !== undefined || duration.max !== undefined) {
-      where[fieldMapping.duration] = {};
+      const durationCondition = {};
       if (duration.min !== undefined) {
-        where[fieldMapping.duration][Op.gte] = duration.min;
+        durationCondition[Op.gte] = duration.min;
       }
       if (duration.max !== undefined) {
-        where[fieldMapping.duration][Op.lte] = duration.max;
+        durationCondition[Op.lte] = duration.max;
       }
+      andConditions.push({ [fieldMapping.duration]: durationCondition });
     }
 
     if (semesterFees.min !== undefined || semesterFees.max !== undefined) {
-      where[fieldMapping.semesterFees] = {};
+      const semesterCondition = {};
       if (semesterFees.min !== undefined) {
-        where[fieldMapping.semesterFees][Op.gte] = semesterFees.min;
+        semesterCondition[Op.gte] = semesterFees.min;
       }
       if (semesterFees.max !== undefined) {
-        where[fieldMapping.semesterFees][Op.lte] = semesterFees.max;
+        semesterCondition[Op.lte] = semesterFees.max;
       }
+      andConditions.push({ [fieldMapping.semesterFees]: semesterCondition });
     }
 
     // Partial search (LIKE queries)
-    const partialConditions = [];
     Object.keys(partialSearch).forEach(key => {
       const dbField = fieldMapping[key] || key;
       const terms = partialSearch[key];
 
       if (Array.isArray(terms)) {
         const orConditions = terms
-          .filter(term => !!term)
+          .filter(term => term && term.toString().trim() !== '')
           .map(term => ({
-            [dbField]: { [Op.iLike]: `%${term}%` }
+            [dbField]: { [Op.iLike]: `%${term.toString().trim()}%` }
           }));
-        if (orConditions.length) partialConditions.push({ [Op.or]: orConditions });
+        if (orConditions.length) {
+          andConditions.push({ [Op.or]: orConditions });
+        }
       } else if (typeof terms === 'string' && terms.trim() !== '') {
-        partialConditions.push({
+        andConditions.push({
           [dbField]: { [Op.iLike]: `%${terms.trim()}%` }
+        });
+      } else if (terms && typeof terms === 'object') {
+        andConditions.push({
+          [dbField]: terms
         });
       }
     });
 
-    if (partialConditions.length > 0) {
-      where[Op.and] = where[Op.and] || [];
-      where[Op.and].push(...partialConditions);
+    // Apply all AND conditions if any exist
+    if (andConditions.length > 0) {
+      where[Op.and] = andConditions;
     }
+
+    console.log('Final WHERE clause:', JSON.stringify(where, null, 2));
 
     // Pagination
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const limitVal = parseInt(limit);
 
-    // Build query with optional CourseStatus join
-    console.log('Unified Search - Where Clause:', JSON.stringify(where, null, 2));
     const queryOptions = {
       where,
       offset,
@@ -620,9 +669,14 @@ export const unifiedSearch = async (req, res) => {
         'status',
         'brochure_url',
         'usp',
-        'eligibility'
+        'eligibility',
+        'created_at'
       ],
-      order: [['created_at', 'DESC']]
+      // Group by university first
+      order: [
+        ['university_name', 'ASC'],
+        ['created_at', 'DESC']
+      ]
     };
 
     // Add CourseStatus join if studentId provided
@@ -631,11 +685,32 @@ export const unifiedSearch = async (req, res) => {
         model: CourseStatus,
         as: 'latest_course_statuses',
         where: { student_id: studentId },
-        required: false
+        required: false,
+        attributes: ['latest_course_status', 'student_id', 'course_id']
       }];
     }
 
+    console.log('Final Query Options:', JSON.stringify(queryOptions, null, 2));
+
     const { count, rows: courses } = await UniversityCourse.findAndCountAll(queryOptions);
+    
+    console.log(`Found ${count} total courses, returning ${courses.length} courses`);
+    
+    // Log the distribution of universities in the results
+    const universityDistribution = {};
+    courses.forEach(course => {
+      const uniName = course.university_name;
+      universityDistribution[uniName] = (universityDistribution[uniName] || 0) + 1;
+    });
+    console.log('University distribution in results:', universityDistribution);
+    
+    // Log city distribution to verify filter is working
+    const cityDistribution = {};
+    courses.forEach(course => {
+      const city = course.university_city;
+      cityDistribution[city] = (cityDistribution[city] || 0) + 1;
+    });
+    console.log('City distribution in results:', cityDistribution);
 
     const transformedCourses = courses.map(transformCourseData);
 
@@ -650,6 +725,7 @@ export const unifiedSearch = async (req, res) => {
     });
   } catch (error) {
     console.error('Error in unified search:', error.message);
+    console.error('Error stack:', error.stack);
     return res.status(500).json({
       success: false,
       message: 'Error searching courses',

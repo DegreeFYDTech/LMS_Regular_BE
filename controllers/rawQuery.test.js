@@ -15,11 +15,11 @@ const APPLICATION_STATUSES = [
   "Form Submitted – Offline",
   "Form Filled_Degreefyd",
   "Exam/Interview Scheduled",
-  "Form Submitted – Completed"
+  "Form Submitted – Completed",
 ];
 
 export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
-  console.log(filters)
+  console.log(filters);
   try {
     const {
       page = 1,
@@ -157,9 +157,17 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       if (val === undefined || val === null || val === "") return "";
 
       if (typeof val === "string") {
-        if (val.toLowerCase() === "connected" || val === "true" || val === "1") {
+        if (
+          val.toLowerCase() === "connected" ||
+          val === "true" ||
+          val === "1"
+        ) {
           return `${field} = true`;
-        } else if (val.toLowerCase() === "not connected" || val === "false" || val === "0") {
+        } else if (
+          val.toLowerCase() === "not connected" ||
+          val === "false" ||
+          val === "0"
+        ) {
           return `${field} = false`;
         }
       }
@@ -304,7 +312,13 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     let supervisorCounsellorIds = [];
     let isSupervisorView = false;
 
-    if (selectedagent && data && data !== "to" && data !== "l3" && userRole !== "to_l3") {
+    if (
+      selectedagent &&
+      data &&
+      data !== "to" &&
+      data !== "l3" &&
+      userRole !== "to_l3"
+    ) {
       const teamMembersQuery = `
         SELECT counsellor_id 
         FROM counsellors 
@@ -344,23 +358,47 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
 
     // Handle connection filters
     if (data === "l3") {
-      if (isConnectedYet !== undefined && isConnectedYet !== null && isConnectedYet !== "") {
-        const value = isConnectedYet === true || isConnectedYet === "true" || isConnectedYet === "1" || isConnectedYet === "Connected"
-          ? "true"
-          : "false";
+      if (
+        isConnectedYet !== undefined &&
+        isConnectedYet !== null &&
+        isConnectedYet !== ""
+      ) {
+        const value =
+          isConnectedYet === true ||
+          isConnectedYet === "true" ||
+          isConnectedYet === "1" ||
+          isConnectedYet === "Connected"
+            ? "true"
+            : "false";
         where.push(`s.is_connected_yet_l3 = ${value}`);
       }
-      if (isConnectedYetL3 !== undefined && isConnectedYetL3 !== null && isConnectedYetL3 !== "") {
-        const value = isConnectedYetL3 === true || isConnectedYetL3 === "true" || isConnectedYetL3 === "1" || isConnectedYetL3 === "Connected"
-          ? "true"
-          : "false";
+      if (
+        isConnectedYetL3 !== undefined &&
+        isConnectedYetL3 !== null &&
+        isConnectedYetL3 !== ""
+      ) {
+        const value =
+          isConnectedYetL3 === true ||
+          isConnectedYetL3 === "true" ||
+          isConnectedYetL3 === "1" ||
+          isConnectedYetL3 === "Connected"
+            ? "true"
+            : "false";
         where.push(`s.is_connected_yet_l3 = ${value}`);
       }
     } else {
-      if (isConnectedYet !== undefined && isConnectedYet !== null && isConnectedYet !== "") {
-        const value = isConnectedYet === true || isConnectedYet === "true" || isConnectedYet === "1" || isConnectedYet === "Connected"
-          ? "true"
-          : "false";
+      if (
+        isConnectedYet !== undefined &&
+        isConnectedYet !== null &&
+        isConnectedYet !== ""
+      ) {
+        const value =
+          isConnectedYet === true ||
+          isConnectedYet === "true" ||
+          isConnectedYet === "1" ||
+          isConnectedYet === "Connected"
+            ? "true"
+            : "false";
         where.push(`s.is_connected_yet = ${value}`);
       }
     }
@@ -443,7 +481,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     if (leadSubStatus && data !== "l3") {
       where.push(inSQL("s.current_student_ni_sub_status", leadSubStatus));
     }
-    
+
     if (callingStatus) where.push(inSQL("lr.calling_status", callingStatus));
     if (subCallingStatus)
       where.push(inSQL("lr.sub_calling_status", subCallingStatus));
@@ -581,23 +619,39 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     const latestRemarkWhere =
       data === "l3" && userRole === "l3"
         ? `WHERE sr.counsellor_id = ${escape(userId)}`
-        : data === "l3" && userRole === "to_l3" && selectedagent && l3TeamIds.includes(selectedagent)
+        : data === "l3" &&
+            userRole === "to_l3" &&
+            selectedagent &&
+            l3TeamIds.includes(selectedagent)
           ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
-          : data === "l3" && userRole === "to_l3" && !selectedagent && l3TeamIds.length > 0
+          : data === "l3" &&
+              userRole === "to_l3" &&
+              !selectedagent &&
+              l3TeamIds.length > 0
             ? `WHERE sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})`
-          : data === "l3" && userRole === "to" && selectedagent && l3TeamIds.includes(selectedagent)
-            ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
-          : data === "l3" && userRole === "to" && !selectedagent && l3TeamIds.length > 0
-            ? `WHERE sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})`
-          : data === "l3" && selectedagent
-            ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
-          : data === "l3" && !selectedagent
-            ? `WHERE 1=1`
-          : selectedagent && isSupervisorView && data && data !== "to" && data !== "l3"
-            ? `WHERE sr.counsellor_id IN (${supervisorCounsellorIds.map(escape).join(",")})`
-          : selectedagent && data && data !== "to" && data !== "l3"
-            ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
-          : "";
+            : data === "l3" &&
+                userRole === "to" &&
+                selectedagent &&
+                l3TeamIds.includes(selectedagent)
+              ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
+              : data === "l3" &&
+                  userRole === "to" &&
+                  !selectedagent &&
+                  l3TeamIds.length > 0
+                ? `WHERE sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})`
+                : data === "l3" && selectedagent
+                  ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
+                  : data === "l3" && !selectedagent
+                    ? `WHERE 1=1`
+                    : selectedagent &&
+                        isSupervisorView &&
+                        data &&
+                        data !== "to" &&
+                        data !== "l3"
+                      ? `WHERE sr.counsellor_id IN (${supervisorCounsellorIds.map(escape).join(",")})`
+                      : selectedagent && data && data !== "to" && data !== "l3"
+                        ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
+                        : "";
 
     let l3CounsellorFilter = "";
     if (data === "l3") {
@@ -838,7 +892,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
                 SELECT 1 FROM course_status_journeys csj 
                 WHERE csj.student_id = s.student_id 
                 AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}
-              ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
+              ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`,
             );
           } else {
             whereClauses.push(
@@ -846,7 +900,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
                 SELECT 1 FROM course_status_journeys csj 
                 WHERE csj.student_id = s.student_id 
                 AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}
-              ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
+              ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`,
             );
           }
         } else if (userRole === "l3") {
@@ -855,7 +909,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
               SELECT 1 FROM course_status_journeys csj 
               WHERE csj.student_id = s.student_id 
               AND csj.assigned_l3_counsellor_id = ${escape(userId)}
-            ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
+            ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`,
           );
         } else if (userRole === "to_l3" && l3TeamIds && l3TeamIds.length > 0) {
           whereClauses.push(
@@ -863,7 +917,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
               SELECT 1 FROM course_status_journeys csj 
               WHERE csj.student_id = s.student_id 
               AND csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})
-            ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
+            ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`,
           );
         } else if (userRole === "to" && l3TeamIds && l3TeamIds.length > 0) {
           whereClauses.push(
@@ -871,99 +925,108 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
               SELECT 1 FROM course_status_journeys csj 
               WHERE csj.student_id = s.student_id 
               AND csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})
-            ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
+            ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`,
           );
         } else {
-          whereClauses.push(`COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0`);
+          whereClauses.push(
+            `COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0`,
+          );
         }
       } else if (leadStatus === "Application") {
         // Application leads: Filter by specific journey statuses
-        const applicationStatuses = APPLICATION_STATUSES.map(status => escape(status)).join(",");
-        whereClauses.push(`lje.journey_course_status IN (${applicationStatuses})`);
+        const applicationStatuses = APPLICATION_STATUSES.map((status) =>
+          escape(status),
+        ).join(",");
+        whereClauses.push(
+          `lje.journey_course_status IN (${applicationStatuses})`,
+        );
       } else {
         // For other statuses, filter by journey course_status
         const statuses = Array.isArray(leadStatus)
           ? leadStatus
           : leadStatus.split(",").map((v) => v.trim());
         if (statuses.length) {
-          whereClauses.push(`lje.journey_course_status IN (${statuses.map(escape).join(",")})`);
+          whereClauses.push(
+            `lje.journey_course_status IN (${statuses.map(escape).join(",")})`,
+          );
         }
       }
     }
 
     // Handle freshLeads flag for L3
- // Handle freshLeads flag for L3
-if (freshLeads === "Fresh" && data === "l3") {
-  if (selectedagent) {
-    if (userRole === "to_l3" && l3TeamIds.includes(selectedagent)) {
-      whereClauses.push(
-        `(NOT EXISTS (
+    // Handle freshLeads flag for L3
+    if (freshLeads === "Fresh" && data === "l3") {
+      if (selectedagent) {
+        if (userRole === "to_l3" && l3TeamIds.includes(selectedagent)) {
+          whereClauses.push(
+            `(NOT EXISTS (
           SELECT 1 FROM course_status_journeys csj 
           WHERE csj.student_id = s.student_id 
           AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}
-        ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
-      );
-    } else if (userRole === "to_l3") {
-      whereClauses.push("1 = 0");
-    } else {
-      whereClauses.push(
-        `(NOT EXISTS (
+        ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`,
+          );
+        } else if (userRole === "to_l3") {
+          whereClauses.push("1 = 0");
+        } else {
+          whereClauses.push(
+            `(NOT EXISTS (
           SELECT 1 FROM course_status_journeys csj 
           WHERE csj.student_id = s.student_id 
           AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}
-        ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
-      );
-    }
-  } else if (userRole === "l3") {
-    whereClauses.push(
-      `(NOT EXISTS (
+        ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`,
+          );
+        }
+      } else if (userRole === "l3") {
+        whereClauses.push(
+          `(NOT EXISTS (
         SELECT 1 FROM course_status_journeys csj 
         WHERE csj.student_id = s.student_id 
         AND csj.assigned_l3_counsellor_id = ${escape(userId)}
-      ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
-    );
-  } else if (userRole === "to_l3" && l3TeamIds && l3TeamIds.length > 0) {
-    whereClauses.push(
-      `(NOT EXISTS (
+      ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`,
+        );
+      } else if (userRole === "to_l3" && l3TeamIds && l3TeamIds.length > 0) {
+        whereClauses.push(
+          `(NOT EXISTS (
         SELECT 1 FROM course_status_journeys csj 
         WHERE csj.student_id = s.student_id 
         AND csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})
-      ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
-    );
-  } else if (userRole === "to" && l3TeamIds && l3TeamIds.length > 0) {
-    whereClauses.push(
-      `(NOT EXISTS (
+      ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`,
+        );
+      } else if (userRole === "to" && l3TeamIds && l3TeamIds.length > 0) {
+        whereClauses.push(
+          `(NOT EXISTS (
         SELECT 1 FROM course_status_journeys csj 
         WHERE csj.student_id = s.student_id 
         AND csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})
-      ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
-    );
-  } else {
-    whereClauses.push(`COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0`);
-  }
-} 
-// Handle freshLeads flag for L2
-else if (freshLeads === "Fresh" && data === "l2") {
-  // Fresh leads for L2: Students with current_student_status = 'Fresh'
-  whereClauses.push(`s.current_student_status = 'Fresh'`);
-}
-else if (freshLeads !== "Fresh" && data !== "l3") {
-  const hasRemarkFilters =
-    leadStatus ||
-    leadSubStatus ||
-    callingStatus ||
-    subCallingStatus ||
-    callbackDate_start ||
-    callbackDate_end ||
-    nextCallDate_start ||
-    nextCallDate_end ||
-    remarks ||
-    callback;
+      ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`,
+        );
+      } else {
+        whereClauses.push(
+          `COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0`,
+        );
+      }
+    }
+    // Handle freshLeads flag for L2
+    else if (freshLeads === "Fresh" && data === "l2") {
+      // Fresh leads for L2: Students with current_student_status = 'Fresh'
+      whereClauses.push(`s.current_student_status = 'Fresh'`);
+    } else if (freshLeads !== "Fresh" && data !== "l3") {
+      const hasRemarkFilters =
+        leadStatus ||
+        leadSubStatus ||
+        callingStatus ||
+        subCallingStatus ||
+        callbackDate_start ||
+        callbackDate_end ||
+        nextCallDate_start ||
+        nextCallDate_end ||
+        remarks ||
+        callback;
 
-  if (hasRemarkFilters && data !== "l3") {
-    whereClauses.push("lr.student_id IS NOT NULL");
-  }
-}
+      if (hasRemarkFilters && data !== "l3") {
+        whereClauses.push("lr.student_id IS NOT NULL");
+      }
+    }
 
     if (utmWhere.length) {
       whereClauses.push("fla.student_id IS NOT NULL");
@@ -1054,7 +1117,7 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
         
         -- Use journey course_status as lead_status for L3, but map application statuses to 'Application'
         CASE 
-          WHEN lje.journey_course_status IS NOT NULL AND lje.journey_course_status IN (${APPLICATION_STATUSES.map(status => escape(status)).join(",")}) THEN 'Application'
+          WHEN lje.journey_course_status IS NOT NULL AND lje.journey_course_status IN (${APPLICATION_STATUSES.map((status) => escape(status)).join(",")}) THEN 'Application'
           WHEN lje.journey_course_status IS NOT NULL THEN lje.journey_course_status
           WHEN COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0 THEN 'Fresh'
           ELSE 'No Status'
@@ -1098,7 +1161,8 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
       LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
       LEFT JOIN remarks_count_by_counsellor rcc ON s.student_id = rcc.student_id
       LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
-      ${isDownload
+      ${
+        isDownload
           ? `
       LEFT JOIN first_remark_l2 frl2 ON s.student_id = frl2.student_id
       LEFT JOIN first_remark_l3 frl3 ON s.student_id = frl3.student_id
@@ -1110,7 +1174,7 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
       LEFT JOIN first_application_remark far ON s.student_id = far.student_id
       `
           : ""
-        }
+      }
       ${whereSQL}
       ${orderBySQL}
       ${!isDownload ? `LIMIT ${limitNum} OFFSET ${offset}` : ""}`
@@ -1167,7 +1231,8 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
       LEFT JOIN counsellors c2_single ON c2_single.counsellor_id = s.assigned_counsellor_l3_id
       LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
       LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
-      ${isDownload
+      ${
+        isDownload
           ? `
       LEFT JOIN first_remark_l2 frl2 ON s.student_id = frl2.student_id
       LEFT JOIN first_remark_l3 frl3 ON s.student_id = frl3.student_id
@@ -1179,7 +1244,7 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
       LEFT JOIN first_application_remark far ON s.student_id = far.student_id
       `
           : ""
-        }
+      }
       ${whereSQL}
       GROUP BY 
         s.student_id, 
@@ -1190,8 +1255,9 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
         fla.utm_source, fla.utm_medium, fla.utm_campaign, fla.utm_keyword,
         fla.utm_campaign_id, fla.utm_adgroup_id, fla.utm_creative_id,
         fla.source, fla.source_url, fla.activity_created_at
-        ${isDownload
-          ? `,
+        ${
+          isDownload
+            ? `,
         frl2.first_call_date_l2,
         frl3.first_call_date_l3,
         ficc.first_icc_date,
@@ -1201,7 +1267,7 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
         hia.student_id,
         pns.student_id
         `
-          : ""
+            : ""
         }
       ${orderBySQL}
       ${!isDownload ? `LIMIT ${limitNum} OFFSET ${offset}` : ""}`;
@@ -1219,7 +1285,8 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
       LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
       LEFT JOIN remarks_count_by_counsellor rcc ON s.student_id = rcc.student_id
       LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
-      ${isDownload
+      ${
+        isDownload
           ? `
       LEFT JOIN first_remark_l2 frl2 ON s.student_id = frl2.student_id
       LEFT JOIN first_remark_l3 frl3 ON s.student_id = frl3.student_id
@@ -1231,7 +1298,7 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
       LEFT JOIN first_application_remark far ON s.student_id = far.student_id
       `
           : ""
-        }
+      }
       ${whereSQL}`
         : `
       ${ctesSQL}
@@ -1241,7 +1308,8 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
       LEFT JOIN counsellors c2_single ON c2_single.counsellor_id = s.assigned_counsellor_l3_id
       LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
       LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
-      ${isDownload
+      ${
+        isDownload
           ? `
       LEFT JOIN first_remark_l2 frl2 ON s.student_id = frl2.student_id
       LEFT JOIN first_remark_l3 frl3 ON s.student_id = frl3.student_id
@@ -1253,7 +1321,7 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
       LEFT JOIN first_application_remark far ON s.student_id = far.student_id
       `
           : ""
-        }
+      }
       ${whereSQL}`;
 
     const studentWhereStr =
@@ -1297,7 +1365,7 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
 
     // Determine which overall stats function to use
     let overallStats = {};
-    
+
     if (!isDownload && freshLeads !== "Fresh" && leadStatus !== "Fresh") {
       if (data === "l3") {
         // For L3 view, use the stats function that calculates fresh from student.current_student_status
@@ -1313,8 +1381,9 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
           userId,
           userRole,
           l3TeamIds,
-          leadStatus, // Pass the converted string leadStatus
-          studentWhere: studentWhereStr
+          leadStatus,
+          freshLeads,
+          studentWhere: studentWhereStr,
         });
       } else {
         overallStats = await getOptimizedOverallStatsFromHelper({
@@ -1351,7 +1420,8 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
             is_connected_yet_l3: item?.is_connected_yet_l3,
             remark_count: item.remarks_count,
             created_at: item.created_at_l3 || item.created_at,
-            assigned_l3_date: item.assigned_l3_date_from_journey || item?.assigned_l3_date,
+            assigned_l3_date:
+              item.assigned_l3_date_from_journey || item?.assigned_l3_date,
             is_reactivity: item?.is_reactivity,
             assigned_team_owner_date: item?.assigned_team_owner_date,
             mode: item.mode,
@@ -1387,18 +1457,20 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
                 ]
               : [],
             lead_activities: item.activity_created_at
-              ? [{
-                utm_source: item.utm_source,
-                utm_medium: item.utm_medium,
-                utm_campaign: item.utm_campaign,
-                utm_keyword: item.utm_keyword,
-                utm_campaign_id: item.utm_campaign_id,
-                utm_adgroup_id: item.utm_adgroup_id,
-                utm_creative_id: item.utm_creative_id,
-                created_at: item.activity_created_at,
-                source: item.source,
-                source_url: item.source_url,
-              }]
+              ? [
+                  {
+                    utm_source: item.utm_source,
+                    utm_medium: item.utm_medium,
+                    utm_campaign: item.utm_campaign,
+                    utm_keyword: item.utm_keyword,
+                    utm_campaign_id: item.utm_campaign_id,
+                    utm_adgroup_id: item.utm_adgroup_id,
+                    utm_creative_id: item.utm_creative_id,
+                    created_at: item.activity_created_at,
+                    source: item.source,
+                    source_url: item.source_url,
+                  },
+                ]
               : [],
           };
 
@@ -1473,11 +1545,11 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
             },
             assignedCounsellorL3: item.counsellor_l3_id
               ? {
-                counsellor_id: item.counsellor_l3_id,
-                counsellor_name: item.counsellor_l3_name,
-                counsellor_email: item.counsellor_l3_email,
-                role: item.counsellor_l3_role,
-              }
+                  counsellor_id: item.counsellor_l3_id,
+                  counsellor_name: item.counsellor_l3_name,
+                  counsellor_email: item.counsellor_l3_email,
+                  role: item.counsellor_l3_role,
+                }
               : null,
             student_remarks: item.remark_id
               ? [
@@ -1606,10 +1678,12 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
           note: "Team Owner view - showing leads based on role and filters",
         }),
       },
-      mask_note: "Phone numbers and emails are masked for privacy across all roles",
+      mask_note:
+        "Phone numbers and emails are masked for privacy across all roles",
       mask_details: {
         phone: "Shows first 4 digits followed by XXXXXX",
-        email: "Shows first 3 characters of username followed by ***@xxxxxx.com",
+        email:
+          "Shows first 3 characters of username followed by ***@xxxxxx.com",
       },
     };
 
@@ -1621,42 +1695,43 @@ else if (freshLeads !== "Fresh" && data !== "l3") {
 };
 
 async function getL3OverallStatsFromJourney({
-  journeyWhere = '1=1',
-  remarkWhere = '1=1',
-  utmWhere = '1=1',
+  journeyWhere = "1=1",
+  remarkWhere = "1=1",
+  utmWhere = "1=1",
   todayStart,
   todayEnd,
   callback,
   selectedagent,
-  role = 'l3',
+  role = "l3",
   userId,
   userRole,
   l3TeamIds = [],
   leadStatus = null,
-  studentWhere = '1=1'
+  studentWhere = "1=1",
+  freshLeads = null
 }) {
   try {
     const formatDateForPostgres = (date) => {
       const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      const seconds = String(date.getSeconds()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      const hours = String(date.getHours()).padStart(2, "0");
+      const minutes = String(date.getMinutes()).padStart(2, "0");
+      const seconds = String(date.getSeconds()).padStart(2, "0");
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     };
 
     const todayStartFormatted = formatDateForPostgres(todayStart);
     const todayEndFormatted = formatDateForPostgres(todayEnd);
 
-    const isToL3View = userRole === 'to_l3';
-    const isToView = userRole === 'to';
+    const isToL3View = userRole === "to_l3";
+    const isToView = userRole === "to";
 
     let remarkCounsellorFilter = "";
     let journeyCounsellorFilter = "";
-    
+
     // Build filters for counsellor access
-    if (role === 'l3') {
+    if (role === "l3") {
       if (selectedagent) {
         if ((isToL3View || isToView) && l3TeamIds.includes(selectedagent)) {
           remarkCounsellorFilter = `AND sr.counsellor_id = ${escape(selectedagent)}`;
@@ -1664,11 +1739,15 @@ async function getL3OverallStatsFromJourney({
         } else if (!isToL3View && !isToView) {
           remarkCounsellorFilter = `AND sr.counsellor_id = ${escape(selectedagent)}`;
           journeyCounsellorFilter = `AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}`;
-        } else if ((isToL3View || isToView) && selectedagent && !l3TeamIds.includes(selectedagent)) {
+        } else if (
+          (isToL3View || isToView) &&
+          selectedagent &&
+          !l3TeamIds.includes(selectedagent)
+        ) {
           remarkCounsellorFilter = `AND 1 = 0`;
           journeyCounsellorFilter = `AND 1 = 0`;
         }
-      } else if (userRole === 'l3') {
+      } else if (userRole === "l3") {
         remarkCounsellorFilter = `AND sr.counsellor_id = ${escape(userId)}`;
         journeyCounsellorFilter = `AND csj.assigned_l3_counsellor_id = ${escape(userId)}`;
       } else if ((isToL3View || isToView) && l3TeamIds.length > 0) {
@@ -1684,7 +1763,9 @@ async function getL3OverallStatsFromJourney({
     let leadStatusFilter = "";
     if (leadStatus && leadStatus !== "Fresh") {
       if (leadStatus === "Application") {
-        const applicationStatuses = APPLICATION_STATUSES.map(status => escape(status)).join(",");
+        const applicationStatuses = APPLICATION_STATUSES.map((status) =>
+          escape(status),
+        ).join(",");
         leadStatusFilter = `AND bj.latest_course_status IN (${applicationStatuses})`;
       } else {
         const statuses = Array.isArray(leadStatus)
@@ -1700,7 +1781,9 @@ async function getL3OverallStatsFromJourney({
     let baseStudentFilter = "";
     if (leadStatus && leadStatus !== "Fresh") {
       if (leadStatus === "Application") {
-        const applicationStatuses = APPLICATION_STATUSES.map(status => escape(status)).join(",");
+        const applicationStatuses = APPLICATION_STATUSES.map((status) =>
+          escape(status),
+        ).join(",");
         baseStudentFilter = `AND bs.latest_course_status IN (${applicationStatuses})`;
       } else {
         const statuses = Array.isArray(leadStatus)
@@ -1714,17 +1797,17 @@ async function getL3OverallStatsFromJourney({
 
     // Add student where clause for fresh leads calculation
     let studentWhereClause = "";
-    if (studentWhere && studentWhere !== '1=1') {
+    if (studentWhere && studentWhere !== "1=1") {
       studentWhereClause = `AND (${studentWhere})`;
     }
 
     // Add callback filter for stats
     let callbackFilter = "";
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = today.toISOString().split("T")[0];
     const todayStartStr = todayStr + " 00:00:00";
     const todayEndStr = todayStr + " 23:59:59";
-    
+
     if (callback) {
       switch (callback.toLowerCase()) {
         case "today":
@@ -1744,10 +1827,20 @@ async function getL3OverallStatsFromJourney({
 
     // Clean remarkWhere to remove references to sr and lr tables for base_students
     let cleanRemarkWhere = "1=1";
-    if (remarkWhere && remarkWhere !== '1=1') {
-      cleanRemarkWhere = remarkWhere
-        .replace(/sr\./g, '')
-        .replace(/lr\./g, '');
+    if (remarkWhere && remarkWhere !== "1=1") {
+      cleanRemarkWhere = remarkWhere.replace(/sr\./g, "").replace(/lr\./g, "");
+    }
+
+    // Build the counsellor filter string for fresh leads logic
+    let counsellorIdForFresh = "";
+    if (selectedagent) {
+      counsellorIdForFresh = `= ${escape(selectedagent)}`;
+    } else if (userRole === "l3") {
+      counsellorIdForFresh = `= ${escape(userId)}`;
+    } else if ((isToL3View || isToView) && l3TeamIds.length > 0) {
+      counsellorIdForFresh = `IN (${l3TeamIds.map(escape).join(",")})`;
+    } else {
+      counsellorIdForFresh = `= ''`; // No valid counsellor
     }
 
     const query = `
@@ -1785,19 +1878,30 @@ async function getL3OverallStatsFromJourney({
         FROM students s
         INNER JOIN base_students_with_journey bj ON s.student_id = bj.student_id
         LEFT JOIN remarks_count rc ON s.student_id = rc.student_id
-        ${utmWhere !== '1=1' ? `
+        ${
+          utmWhere !== "1=1"
+            ? `
           INNER JOIN student_lead_activities la ON s.student_id = la.student_id
           AND (${utmWhere})
-        ` : ''}
+        `
+            : ""
+        }
         WHERE 1=1
         ${studentWhereClause}
         ${leadStatusFilter}
       ),
-      -- Fresh leads: students with current_student_status = 'Fresh' in the students table
+      -- Fresh leads for L3: No journey entry OR no remarks from this counsellor
       fresh_leads AS (
         SELECT bs.student_id
         FROM base_students bs
-        WHERE bs.current_student_status = 'Fresh'
+        WHERE (
+          NOT EXISTS (
+            SELECT 1 FROM course_status_journeys csj 
+            WHERE csj.student_id = bs.student_id 
+            AND csj.assigned_l3_counsellor_id ${counsellorIdForFresh}
+          )
+          OR bs.remarks_count = 0
+        )
         ${baseStudentFilter}
       ),
       latest_remarks AS (
@@ -1833,7 +1937,7 @@ async function getL3OverallStatsFromJourney({
         FROM base_students bs
         INNER JOIN student_whishlist sw ON bs.student_id = sw.student_id
         WHERE 1=1
-        ${selectedagent && (isToL3View || isToView || userRole === 'l3') ? `AND sw.counsellor_id = ${escape(selectedagent)}` : ''}
+        ${selectedagent && (isToL3View || isToView || userRole === "l3") ? `AND sw.counsellor_id = ${escape(selectedagent)}` : ""}
       ),
       intent_stats AS (
         SELECT 
@@ -1879,7 +1983,7 @@ async function getL3OverallStatsFromJourney({
     `;
 
     const results = await sequelize.query(query, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
 
     const result = results[0] || {};
@@ -1896,10 +2000,10 @@ async function getL3OverallStatsFromJourney({
       allUnreadMessagesCount: parseInt(result.all_unread_messages_count) || 0,
       totalUnreadMessagesSum: parseInt(result.total_unread_messages_sum) || 0,
       reactivityCount: parseInt(result.reactivity_count) || 0,
-      createdToday: parseInt(result.created_today) || 0
+      createdToday: parseInt(result.created_today) || 0,
     };
   } catch (error) {
-    console.error('Error in getL3OverallStatsFromJourney:', error);
+    console.error("Error in getL3OverallStatsFromJourney:", error);
     return {
       total: 0,
       freshLeads: 0,
@@ -1912,7 +2016,7 @@ async function getL3OverallStatsFromJourney({
       allUnreadMessagesCount: 0,
       totalUnreadMessagesSum: 0,
       reactivityCount: 0,
-      createdToday: 0
+      createdToday: 0,
     };
   }
 }

@@ -593,6 +593,17 @@ export const updateStudentStatus = async (req, res) => {
     };
 
     const newRemark = await createRemark(remarkData);
+     try{
+         if(leadStatus === "NotInterested" || leadStatus === "Not Interested")
+         {
+           const niRuleResponse=await axios.post(`${process.env.PRIMARY_STORAGE_URL}/ni/transferlead`,{student_id:student?.primary_db_id,source_lms_id:process.env.LMS_ID,student_details:student})
+         }
+      }
+      catch(e)
+      {
+         console.log("erro",e)
+      }
+    // console.log("New remark created:", leadStatus, leadSubStatus, remarkData);
 
     if (
       leadStatus === "NotInterested" &&
@@ -637,7 +648,7 @@ export const updateStudentStatus = async (req, res) => {
         student_comment: studentleadActivityDetails.dataValues.student_comment,
         whatsapp_messages: formattedMessages,
       };
-      console.log(payload);
+        console.log(payload);
       const response = await axios.post(
         "https://lms-api-test.degreefyd.com/v1/student/create",
         payload,
@@ -1636,13 +1647,25 @@ export const bulkCreateLeads = async (req, res) => {
           });
           continue;
         }
-
-        const savedStudent = await Student.create({
+     const studentData={
           student_name: leadData.name,
           student_email: leadData.email,
           student_phone: leadData.phoneNumber,
           assigned_counsellor_id: agent.counsellorId,
-        });
+        }
+          try{
+      const apiResponse=await axios.post(`${process.env.PRIMARY_STORAGE_URL}/leads/batch`,{data:studentData})
+       const {data}=apiResponse
+       const {results}=data
+       if(results && results?.length>0)
+       {
+       studentData.primary_db_id=results[0].lead_id
+       }
+      }
+      catch(e){
+      console.log("error",e)
+      }
+        const savedStudent = await Student.create(studentData);
         try {
           const log = await LeadAssignmentLogs.create({
             assigned_counsellor_id: agent.counsellorId,
@@ -2011,16 +2034,28 @@ export const addLeadDirect = async (req, res) => {
             : "",
       };
     }
-
-    // Create lead
-    const lead = await Student.create({
+ const student_data={
       student_name: name,
       student_email: email,
       student_phone: phoneNumber,
       assigned_counsellor_id: counsellorId,
+      preferred_degree: preferred_degree,
       source,
-      preferred_degree: preferred_degree || [],
-    });
+      ...inheritedData}
+        try{
+      const apiResponse=await axios.post(`${process.env.PRIMARY_STORAGE_URL}/leads/batch`,{data:student_data})
+       const {data}=apiResponse
+       const {results}=data
+       if(results && results?.length>0)
+       {
+       student_data.primary_db_id=results[0].lead_id
+       }
+      }
+      catch(e){
+      console.log("error",e)
+      }
+    // Create lead
+    const lead = await Student.create(student_data);
 
     await StudentLeadActivity.create({
       student_name: name,

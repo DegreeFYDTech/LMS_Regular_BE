@@ -91,6 +91,11 @@ const Student = sequelize.define(
       allowNull: true,
       defaultValue: null,
     },
+    primary_db_id:{
+      type:DataTypes.STRING,
+       allowNull: true,
+      defaultValue: null,
+    }
   },
   {
     timestamps: true,

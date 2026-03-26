@@ -1061,15 +1061,8 @@ export const getStudentById = async (req, res) => {
       studentData.course_sub_status = latestJourney?.course_status || null;
 
       if (counsellorRole === "l3") {
-        if (
-          latestJourney?.course_status == "Partially Paid" ||
-          latestJourney?.course_status == "Semester Paid" ||
-          latestJourney?.course_status == "Admission Blocked" ||
-          latestJourney?.course_status == "Registration done" ||
-          latestJourney?.course_status == "Registration done" ||
-          latestJourney?.course_status == "Admission"
-        ) {
-          studentData.current_student_status = "Admission";
+        if (latestJourney?.course_status == "Walkin Marked") {
+          studentData.current_student_status = "Pre Application";
         } else if (
           latestJourney?.course_status == "Exam Interview Pending" ||
           latestJourney?.course_status == "Ready For Admission" ||
@@ -1078,6 +1071,7 @@ export const getStudentById = async (req, res) => {
           latestJourney?.course_status == "Form Submitted – Portal Pending" ||
           latestJourney?.course_status == "Offer Letter/Results Released" ||
           latestJourney?.course_status == "Application Fee Paid" ||
+          latestJourney?.course_status == "Walkin Completed" ||
           latestJourney?.course_status == "Form Submitted – Offline" ||
           latestJourney?.course_status == "Form Filled_Degreefyd" ||
           latestJourney?.course_status == "Exam/Interview Scheduled" ||

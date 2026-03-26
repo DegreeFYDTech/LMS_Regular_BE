@@ -2737,17 +2737,7 @@ export const sentStatustoCollege = async (req, res) => {
     );
     // Add this near other university detections
     const isJaypeeNoPaperForms = collegeName?.includes("Jaypee Institute");
-    console.log(`🏫 University Detection:`, {
-      isSpecialUniversity,
-      isLPUOnline,
-      isManipalOnline,
-      isVivekanandGlobal,
-      isGLAOnline,
-      isGalgotiasOnline,
-      isAmityOnline,
-      isShooliniOnline,
-      isMangalayatanOnline,
-    });
+  
 
     let statusResult;
 

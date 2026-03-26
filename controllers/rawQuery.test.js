@@ -892,71 +892,78 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     }
 
     // Handle freshLeads flag for L3
-    if (freshLeads === "Fresh" && data === "l3") {
-      if (selectedagent) {
-        if (userRole === "to_l3" && l3TeamIds.includes(selectedagent)) {
-          whereClauses.push(
-            `(NOT EXISTS (
-              SELECT 1 FROM course_status_journeys csj 
-              WHERE csj.student_id = s.student_id 
-              AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}
-            ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
-          );
-        } else if (userRole === "to_l3") {
-          whereClauses.push("1 = 0");
-        } else {
-          whereClauses.push(
-            `(NOT EXISTS (
-              SELECT 1 FROM course_status_journeys csj 
-              WHERE csj.student_id = s.student_id 
-              AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}
-            ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
-          );
-        }
-      } else if (userRole === "l3") {
-        whereClauses.push(
-          `(NOT EXISTS (
-            SELECT 1 FROM course_status_journeys csj 
-            WHERE csj.student_id = s.student_id 
-            AND csj.assigned_l3_counsellor_id = ${escape(userId)}
-          ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
-        );
-      } else if (userRole === "to_l3" && l3TeamIds && l3TeamIds.length > 0) {
-        whereClauses.push(
-          `(NOT EXISTS (
-            SELECT 1 FROM course_status_journeys csj 
-            WHERE csj.student_id = s.student_id 
-            AND csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})
-          ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
-        );
-      } else if (userRole === "to" && l3TeamIds && l3TeamIds.length > 0) {
-        whereClauses.push(
-          `(NOT EXISTS (
-            SELECT 1 FROM course_status_journeys csj 
-            WHERE csj.student_id = s.student_id 
-            AND csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})
-          ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
-        );
-      } else {
-        whereClauses.push(`COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0`);
-      }
-    } else if (freshLeads !== "Fresh" && data !== "l3") {
-      const hasRemarkFilters =
-        leadStatus ||
-        leadSubStatus ||
-        callingStatus ||
-        subCallingStatus ||
-        callbackDate_start ||
-        callbackDate_end ||
-        nextCallDate_start ||
-        nextCallDate_end ||
-        remarks ||
-        callback;
-
-      if (hasRemarkFilters && data !== "l3") {
-        whereClauses.push("lr.student_id IS NOT NULL");
-      }
+ // Handle freshLeads flag for L3
+if (freshLeads === "Fresh" && data === "l3") {
+  if (selectedagent) {
+    if (userRole === "to_l3" && l3TeamIds.includes(selectedagent)) {
+      whereClauses.push(
+        `(NOT EXISTS (
+          SELECT 1 FROM course_status_journeys csj 
+          WHERE csj.student_id = s.student_id 
+          AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}
+        ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
+      );
+    } else if (userRole === "to_l3") {
+      whereClauses.push("1 = 0");
+    } else {
+      whereClauses.push(
+        `(NOT EXISTS (
+          SELECT 1 FROM course_status_journeys csj 
+          WHERE csj.student_id = s.student_id 
+          AND csj.assigned_l3_counsellor_id = ${escape(selectedagent)}
+        ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
+      );
     }
+  } else if (userRole === "l3") {
+    whereClauses.push(
+      `(NOT EXISTS (
+        SELECT 1 FROM course_status_journeys csj 
+        WHERE csj.student_id = s.student_id 
+        AND csj.assigned_l3_counsellor_id = ${escape(userId)}
+      ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
+    );
+  } else if (userRole === "to_l3" && l3TeamIds && l3TeamIds.length > 0) {
+    whereClauses.push(
+      `(NOT EXISTS (
+        SELECT 1 FROM course_status_journeys csj 
+        WHERE csj.student_id = s.student_id 
+        AND csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})
+      ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
+    );
+  } else if (userRole === "to" && l3TeamIds && l3TeamIds.length > 0) {
+    whereClauses.push(
+      `(NOT EXISTS (
+        SELECT 1 FROM course_status_journeys csj 
+        WHERE csj.student_id = s.student_id 
+        AND csj.assigned_l3_counsellor_id IN (${l3TeamIds.map(escape).join(",")})
+      ) OR COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0)`
+    );
+  } else {
+    whereClauses.push(`COALESCE(rcc.total_remarks_by_this_counsellor, 0) = 0`);
+  }
+} 
+// Handle freshLeads flag for L2
+else if (freshLeads === "Fresh" && data === "l2") {
+  // Fresh leads for L2: Students with current_student_status = 'Fresh'
+  whereClauses.push(`s.current_student_status = 'Fresh'`);
+}
+else if (freshLeads !== "Fresh" && data !== "l3") {
+  const hasRemarkFilters =
+    leadStatus ||
+    leadSubStatus ||
+    callingStatus ||
+    subCallingStatus ||
+    callbackDate_start ||
+    callbackDate_end ||
+    nextCallDate_start ||
+    nextCallDate_end ||
+    remarks ||
+    callback;
+
+  if (hasRemarkFilters && data !== "l3") {
+    whereClauses.push("lr.student_id IS NOT NULL");
+  }
+}
 
     if (utmWhere.length) {
       whereClauses.push("fla.student_id IS NOT NULL");

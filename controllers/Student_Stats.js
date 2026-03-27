@@ -1,28 +1,28 @@
-import sequelize from '../config/database-config.js';
+import sequelize from "../config/database-config.js";
 
 const escape = (val) =>
-  typeof val === 'string'
+  typeof val === "string"
     ? "'" + val.replace(/'/g, "''") + "'"
     : val === null || val === undefined
-      ? 'NULL'
+      ? "NULL"
       : val;
 
 export const getOptimizedOverallStatsFromHelper = async ({
-  studentWhere = '1=1',
-  utmWhere = '1=1',
+  studentWhere = "1=1",
+  utmWhere = "1=1",
   selectedagent,
   callback,
-  role = 'l2'
+  role = "l2",
 }) => {
   try {
     const wishlistAgentFilter = selectedagent
       ? `AND sw.counsellor_id = ${escape(selectedagent)}`
-      : '';
+      : "";
 
     const todaycallbacks = selectedagent
       ? `AND lr.counsellor_id = ${escape(selectedagent)}`
-      : '';
-    
+      : "";
+
     const query = `
       WITH base_students AS (
         SELECT DISTINCT s.student_id,
@@ -35,25 +35,30 @@ export const getOptimizedOverallStatsFromHelper = async ({
                s.is_reactivity,
                s.current_student_status
         FROM students s
-        ${utmWhere !== '1=1' ? `
+        ${
+          utmWhere !== "1=1"
+            ? `
           INNER JOIN student_lead_activities la ON s.student_id = la.student_id
           AND (${utmWhere})
-        ` : ''}
+        `
+            : ""
+        }
         WHERE (${studentWhere})
       ),
      fresh_leads AS (
-        ${role === 'l3' 
-          ? `
+        ${
+          role === "l3"
+            ? `
           SELECT bs.student_id
           FROM base_students bs
           WHERE NOT EXISTS (
             SELECT 1 FROM student_remarks sr
             WHERE sr.student_id = bs.student_id
-            ${selectedagent ? `AND sr.counsellor_id = ${escape(selectedagent)}` : ''}
+            ${selectedagent ? `AND sr.counsellor_id = ${escape(selectedagent)}` : ""}
           )
-          ${!selectedagent ? 'OR bs.total_remarks_l3 = 0' : ''}
+          ${!selectedagent ? "OR bs.total_remarks_l3 = 0" : ""}
           `
-          : `
+            : `
           SELECT bs.student_id
           FROM base_students bs
           WHERE bs.current_student_status = 'Fresh'
@@ -81,7 +86,7 @@ export const getOptimizedOverallStatsFromHelper = async ({
         WHERE lr.student_id IS NOT NULL
           AND lr.callback_date >=current_date 
           AND lr.callback_date < current_date+1
-          AND bs.current_student_status in ('Admission','Application','Pre Application','Pre_Application')
+          AND bs.current_student_status in ('Admission','Application','Pre Application','Initial Counselling Completed','Enrolled')
         ${todaycallbacks}
       ),
       
@@ -122,14 +127,14 @@ export const getOptimizedOverallStatsFromHelper = async ({
       CROSS JOIN unread_messages um
       CROSS JOIN reactivity_stats rs;
     `;
-    
+
     const replacements = {
-      role
+      role,
     };
-    
+
     const results = await sequelize.query(query, {
       replacements,
-      type: sequelize.QueryTypes.SELECT
+      type: sequelize.QueryTypes.SELECT,
     });
 
     const result = results[0] || {};
@@ -143,12 +148,13 @@ export const getOptimizedOverallStatsFromHelper = async ({
       intentWarm: parseInt(result.intent_warm) || 0,
       intentCold: parseInt(result.intent_cold) || 0,
       notConnectedYet: parseInt(result.not_connected_yet) || 0,
-      allUnreadMessagesCount: parseInt(result.all_unread_messages_count) || 0,  
-      reactivityCount: parseInt(result.reactivity_count) || 0
+      allUnreadMessagesCount: parseInt(result.all_unread_messages_count) || 0,
+      reactivityCount: parseInt(result.reactivity_count) || 0,
     };
-
   } catch (error) {
-    console.error('Failed to fetch optimized overall stats:', error);
-    throw new Error(`Failed to fetch optimized overall stats: ${error.message}`);
+    console.error("Failed to fetch optimized overall stats:", error);
+    throw new Error(
+      `Failed to fetch optimized overall stats: ${error.message}`,
+    );
   }
 };

@@ -511,7 +511,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       switch (callback.toLowerCase()) {
         case "today":
           where.push(
-            `lr.callback_date >= '${todayStart}'::timestamp AND lr.callback_date <= '${todayEnd}'::timestamp AND s.current_student_status IN ('Admission','Application','Pre Application','Pre_Application')`,
+            `lr.callback_date >= '${todayStart}'::timestamp AND lr.callback_date <= '${todayEnd}'::timestamp AND s.current_student_status IN ('Admission','Application','Pre Application','Initial Counselling Completed','Enrolled')`,
           );
           break;
         case "overdue":

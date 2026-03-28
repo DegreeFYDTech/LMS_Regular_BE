@@ -660,7 +660,7 @@ export const getFormToAdmissionsReport = async (req, res) => {
           'Registration done',
           'Semester fee paid',
           'Partially Paid',
-          'Admission',
+          'Admission'
         ]) AS status
       ),
       -- Get FIRST form date for each student-course

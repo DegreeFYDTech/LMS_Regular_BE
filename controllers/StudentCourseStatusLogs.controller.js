@@ -659,7 +659,8 @@ export const getFormToAdmissionsReport = async (req, res) => {
         SELECT unnest(ARRAY[
           'Registration done',
           'Semester fee paid',
-          'Partially Paid'
+          'Partially Paid',
+          'Admission'
         ]) AS status
       ),
       -- Get FIRST form date for each student-course

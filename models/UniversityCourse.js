@@ -60,6 +60,14 @@ const UniversityCourse = sequelize.define('university_courses', {
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
+  hooks: {
+    beforeValidate: (course) => {
+      if (!course.course_id || course.course_id.trim() === '') {
+        const uniqueId = uuidv4().substring(0, 8).toUpperCase();
+        course.course_id = `CRS-${uniqueId}`;
+      }
+    }
+  },
   indexes: [
     { fields: ['university_name'] },
     { fields: ['stream'] },

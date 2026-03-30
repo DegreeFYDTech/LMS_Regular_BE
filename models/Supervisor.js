@@ -4,7 +4,7 @@ import sequelize from '../config/database-config.js';
 
 const Supervisor = sequelize.define('supervisors', {
   supervisor_id: {
-    type: DataTypes.STRING(20),
+    type: DataTypes.STRING(50),
     primaryKey: true,
     defaultValue: () => 'SUP-' + uuidv4().substring(0, 8).toUpperCase()
   },

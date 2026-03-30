@@ -4,7 +4,7 @@ import sequelize from '../config/database-config.js';
 
 const Counsellor = sequelize.define('counsellors', {
   counsellor_id: {
-    type: DataTypes.STRING(20),
+    type: DataTypes.STRING(50),
     primaryKey: true,
     defaultValue: () => 'CNS-' + uuidv4().substr(0, 8).toUpperCase(),
   },

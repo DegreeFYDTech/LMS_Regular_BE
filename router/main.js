@@ -35,8 +35,11 @@ import paymentRoutes from './payment.route.js';
 import couponRoutes from './coupon.route.js';
 import pricingRuleRoutes from './pricingRule.route.js';
 
+import centralMgmtRoutes from './centralMgmt.route.js';
+
 const router = express.Router();
 
+router.use('/central-mgmt', centralMgmtRoutes);
 router.use('/counsellor', counsellorRoutes);
 router.use('/supervisor', supervisorRoutes);
 router.use('/analyser', analyserRoutes);

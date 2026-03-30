@@ -107,7 +107,7 @@ const forwardToStudentAPI = async (formattedLead, mappedValues) => {
   try {
     console.log(formattedLead,"new trigger1")
     let student_extra_details = mapAnswersByKeyword(formattedLead?.additional_fields)
-    await axios.post('http://localhost:3031/v1/student/create', {
+    await axios.post('http://localhost:3006/v1/student/create', {
       name: formattedLead.full_name,
       phone_number: formattedLead.phone_number?.length === 13
         ? formattedLead.phone_number.slice(3)
@@ -220,7 +220,7 @@ export const Func1Controller = async (req, res) => {
 
 
 export const func1 = async (formattedLead) => {
-  const res = await axios.post('http://localhost:3031/v1/student/create', {
+  const res = await axios.post('http://localhost:3006/v1/student/create', {
     name: formattedLead.full_name,
     phone_number: formattedLead.phone_number
       ? formattedLead.phone_number.slice(-10)

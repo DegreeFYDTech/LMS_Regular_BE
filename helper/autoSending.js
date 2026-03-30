@@ -271,7 +271,7 @@ export async function autoSending(students_data = []) {
             // Use route parameter method (as per your route definition)
             const encodedCollege = encodeURIComponent(college);
             const courseResponse = await axios.get(
-              `http://localhost:3031/v1/universitycourse/getByCourseId/${encodedCollege}`
+              `http://localhost:3006/v1/universitycourse/getByCourseId/${encodedCollege}`
             );
 
             // if (!courseResponse.data || !courseResponse.data.response || !courseResponse.data.response.course_id) {
@@ -284,7 +284,7 @@ export async function autoSending(students_data = []) {
 
             // Update StudentCourseStatus
             const statusResponse = await axios.post(
-              'http://localhost:3031/v1/StudentCourseStatus/update',
+              'http://localhost:3006/v1/StudentCourseStatus/update',
               {
                 "courseId": courseId,
                 "isShortlisted": true,
@@ -296,7 +296,7 @@ export async function autoSending(students_data = []) {
             console.log('StudentCourseStatus update response:', statusResponse.data);
 
             const logResponse = await axios.post(
-              'http://localhost:3031/v1/StudentCourseStatusLogs/sentStatustoCollege',
+              'http://localhost:3006/v1/StudentCourseStatusLogs/sentStatustoCollege',
               {
                 collegeName: college,
                 studentId: studentId,

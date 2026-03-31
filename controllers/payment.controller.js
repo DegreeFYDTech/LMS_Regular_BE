@@ -423,7 +423,13 @@ export const createAdmissionOrder = async (req, res) => {
         );
         console.log("✅ Payment initiation log forwarded to Amity LMS");
       } catch (amityErr) {
-        console.error("❌ Failed to forward initiation log to Amity LMS:", amityErr.message);
+        console.error("❌ Failed to forward initiation log to Amity LMS:");
+        if (amityErr.response) {
+          console.error("Response Data:", JSON.stringify(amityErr.response.data, null, 2));
+          console.error("Status:", amityErr.response.status);
+        } else {
+          console.error("Error Message:", amityErr.message);
+        }
       }
     } else if (snapshotCollegeName.includes("cgc")) {
       try {
@@ -434,7 +440,13 @@ export const createAdmissionOrder = async (req, res) => {
         );
         console.log("✅ Payment initiation log forwarded to CGC LMS");
       } catch (cgcErr) {
-        console.error("❌ Failed to forward initiation log to CGC LMS:", cgcErr.message);
+        console.error("❌ Failed to forward initiation log to CGC LMS:");
+        if (cgcErr.response) {
+          console.error("Response Data:", JSON.stringify(cgcErr.response.data, null, 2));
+          console.error("Status:", cgcErr.response.status);
+        } else {
+          console.error("Error Message:", cgcErr.message);
+        }
       }
     } else {
       console.log("ℹ️ Payment initiation logged in regular DB for college:", snapshot.collegeName);

@@ -426,7 +426,7 @@ export const createAdmissionOrder = async (req, res) => {
     if (snapshotCollegeName.includes("amity")) {
       try {
         await axios.post(
-          "https://regular-amity-api.degreefyd.com/v1/payment/log",
+          "https://regular-amity-api.degreefyd.com/v1/payment/create-order",
           initiationLogPayload,
           { timeout: 10000 }
         );
@@ -437,7 +437,7 @@ export const createAdmissionOrder = async (req, res) => {
     } else if (snapshotCollegeName.includes("cgc")) {
       try {
         await axios.post(
-          "https://regular-cgc-api.degreefyd.com/v1/payment/log",
+          "https://regular-cgc-api.degreefyd.com/v1/payment/create-order",
           initiationLogPayload,
           { timeout: 10000 }
         );
@@ -633,7 +633,7 @@ export const handleWebhook = async (req, res) => {
           if (collegeName.includes("amity")) {
             try {
               await axios.post(
-                "https://regular-amity-api.degreefyd.com/v1/payment/log",
+                "https://regular-amity-api.degreefyd.com/v1/payment/webhook",
                 paymentLogPayload,
                 { timeout: 10000 }
               );
@@ -644,7 +644,7 @@ export const handleWebhook = async (req, res) => {
           } else if (collegeName.includes("cgc")) {
             try {
               await axios.post(
-                "https://regular-cgc-api.degreefyd.com/v1/payment/log",
+                "https://regular-cgc-api.degreefyd.com/v1/payment/webhook",
                 paymentLogPayload,
                 { timeout: 10000 }
               );
@@ -728,7 +728,7 @@ export const handleWebhook = async (req, res) => {
           if (failedCollegeName.includes("amity")) {
             try {
               await axios.post(
-                "https://regular-amity-api.degreefyd.com/v1/payment/log",
+                "https://regular-amity-api.degreefyd.com/v1/payment/webhook",
                 failedLogPayload,
                 { timeout: 10000 }
               );
@@ -739,7 +739,7 @@ export const handleWebhook = async (req, res) => {
           } else if (failedCollegeName.includes("cgc")) {
             try {
               await axios.post(
-                "https://regular-cgc-api.degreefyd.com/v1/payment/log",
+                "https://regular-cgc-api.degreefyd.com/v1/payment/webhook",
                 failedLogPayload,
                 { timeout: 10000 }
               );

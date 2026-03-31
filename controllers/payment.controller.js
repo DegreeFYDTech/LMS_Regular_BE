@@ -421,6 +421,7 @@ export const createAdmissionOrder = async (req, res) => {
           initiationForwardPayload,
           { timeout: 10000 }
         );
+        console.log("initiationForwardPayload", initiationForwardPayload);
         console.log("✅ Payment initiation log forwarded to Amity LMS");
       } catch (amityErr) {
         console.error("❌ Failed to forward initiation log to Amity LMS:");

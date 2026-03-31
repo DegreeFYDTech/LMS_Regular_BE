@@ -222,6 +222,112 @@ async function handleApiError(
 
   const errorStatus = "Failed due to Technical Issues";
 
+  if (error.response) {
+    const statusCode = error.response.status;
+    const responseData = error.response.data;
+
+    console.log(`📊 Error Response for ${collegeName}:`, {
+      statusCode,
+      response: responseData,
+    });
+
+    if (statusCode === 400 || statusCode === 422) {
+      // Only log once with correct status
+      if (studentId && collegeName) {
+        await updateStudentShortlistStatus(
+          studentId,
+          collegeName,
+          "Field Missing",
+          payloadData,
+          responseData,
+          headers,
+          sendType,
+          studentEmail,
+          studentPhone,
+          isPrimary,
+        );
+      }
+      return res.status(400).json({
+        success: false,
+        message: "Field match issue",
+        status: "Field Missing",
+        error: responseData,
+      });
+    } else if (statusCode === 409) {
+      // Only log once with correct status
+      if (studentId && collegeName) {
+        await updateStudentShortlistStatus(
+          studentId,
+          collegeName,
+          "Do not Proceed",
+          payloadData,
+          responseData,
+          headers,
+          sendType,
+          studentEmail,
+          studentPhone,
+          isPrimary,
+        );
+      }
+      return res.status(409).json({
+        success: false,
+        message: "Lead already exists",
+        status: "Do not Proceed",
+        error: responseData,
+      });
+    } else if (statusCode >= 500) {
+      // Only log once for server errors
+      if (studentId && collegeName) {
+        await updateStudentShortlistStatus(
+          studentId,
+          collegeName,
+          errorStatus,
+          payloadData,
+          responseData,
+          headers,
+          sendType,
+          studentEmail,
+          studentPhone,
+          isPrimary,
+        ).catch((err) =>
+          console.error("❌ Failed to update student status on error:", err),
+        );
+      }
+      return res.status(500).json({
+        success: false,
+        message: "Failed due to technical issue",
+        status: errorStatus,
+        error: responseData,
+      });
+    }
+  } else if (error.request) {
+    console.error(`⏰ No response received from ${collegeName} API`);
+    // Log timeout/no-response as technical failure
+    if (studentId && collegeName) {
+      await updateStudentShortlistStatus(
+        studentId,
+        collegeName,
+        errorStatus,
+        payloadData,
+        null,
+        headers,
+        sendType,
+        studentEmail,
+        studentPhone,
+        isPrimary,
+      ).catch((err) =>
+        console.error("❌ Failed to update student status on timeout:", err),
+      );
+    }
+    return res.status(504).json({
+      success: false,
+      message: "No response received from API",
+      status: errorStatus,
+      error: "Gateway Timeout",
+    });
+  }
+
+  // Generic fallback - log once
   if (studentId && collegeName) {
     await updateStudentShortlistStatus(
       studentId,
@@ -237,76 +343,6 @@ async function handleApiError(
     ).catch((err) =>
       console.error("❌ Failed to update student status on error:", err),
     );
-  }
-  if (error.response) {
-    const statusCode = error.response.status;
-    const responseData = error.response.data;
-
-    console.log(`📊 Error Response for ${collegeName}:`, {
-      statusCode,
-      response: responseData,
-    });
-
-    if (statusCode === 400 || statusCode === 422) {
-      if (studentId && collegeName) {
-        await updateStudentShortlistStatus(
-          studentId,
-          collegeName,
-          "Field Missing",
-          payloadData,
-          responseData,
-          headers,
-          sendType,
-          studentEmail,
-          studentPhone,
-          isPrimary,
-        );
-      }
-
-      return res.status(400).json({
-        success: false,
-        message: "Field match issue",
-        status: "Field Missing",
-        error: responseData,
-      });
-    } else if (statusCode === 409) {
-      if (studentId && collegeName) {
-        await updateStudentShortlistStatus(
-          studentId,
-          collegeName,
-          "Do not Proceed",
-          payloadData,
-          responseData,
-          headers,
-          sendType,
-          studentEmail,
-          studentPhone,
-          isPrimary,
-        );
-      }
-
-      return res.status(409).json({
-        success: false,
-        message: "Lead already exists",
-        status: "Do not Proceed",
-        error: responseData,
-      });
-    } else if (statusCode >= 500) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed due to technical issue",
-        status: errorStatus,
-        error: responseData,
-      });
-    }
-  } else if (error.request) {
-    console.error(`⏰ No response received from ${collegeName} API`);
-    return res.status(504).json({
-      success: false,
-      message: "No response received from API",
-      status: errorStatus,
-      error: "Gateway Timeout",
-    });
   }
 
   return res.status(500).json({

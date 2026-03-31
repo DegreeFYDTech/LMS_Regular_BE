@@ -613,28 +613,14 @@ export const handleWebhook = async (req, res) => {
             });
           }
 
-          // Forward payment log to Amity or CGC LMS based on college name
+          // Forward full Razorpay webhook payload to Amity or CGC LMS base on college name
           const collegeName = (snapshot.collegeName || "").toLowerCase();
-          const paymentLogPayload = {
-            student_id: snapshot.admissionId,
-            college_name: snapshot.collegeName,
-            course_name: snapshot.interestedCourse,
-            payment_for: snapshot.paymentFor,
-            base_amount: snapshot.baseAmount,
-            final_amount: snapshot.finalAmount,
-            discount_amount: snapshot.discountAmount,
-            currency: snapshot.currency,
-            razorpay_payment_id: paymentEntity.id,
-            razorpay_order_id: paymentEntity.order_id,
-            status: "PAID",
-            paid_at: new Date().toISOString(),
-          };
 
           if (collegeName.includes("amity")) {
             try {
               await axios.post(
                 "https://regular-amity-api.degreefyd.com/v1/payment/webhook",
-                paymentLogPayload,
+                req.body, // Forward entire original Razorpay payload
                 { timeout: 10000 }
               );
               console.log("✅ Payment log forwarded to Amity LMS");
@@ -645,7 +631,7 @@ export const handleWebhook = async (req, res) => {
             try {
               await axios.post(
                 "https://regular-cgc-api.degreefyd.com/v1/payment/webhook",
-                paymentLogPayload,
+                req.body, // Forward entire original Razorpay payload
                 { timeout: 10000 }
               );
               console.log("✅ Payment log forwarded to CGC LMS");
@@ -706,30 +692,14 @@ export const handleWebhook = async (req, res) => {
             );
           }
 
-          // Forward payment FAILED log to Amity or CGC LMS
+          // Forward full Razorpay webhook payload to Amity or CGC LMS
           const failedCollegeName = (snapshot.collegeName || "").toLowerCase();
-          const failedLogPayload = {
-            student_id: snapshot.admissionId,
-            college_name: snapshot.collegeName,
-            course_name: snapshot.interestedCourse,
-            payment_for: snapshot.paymentFor,
-            base_amount: snapshot.baseAmount,
-            final_amount: snapshot.finalAmount,
-            discount_amount: snapshot.discountAmount,
-            currency: snapshot.currency,
-            razorpay_payment_id: paymentEntity.id,
-            razorpay_order_id: paymentEntity.order_id,
-            status: "FAILED",
-            error_code: paymentEntity.error_code,
-            error_description: paymentEntity.error_description,
-            failed_at: new Date().toISOString(),
-          };
 
           if (failedCollegeName.includes("amity")) {
             try {
               await axios.post(
                 "https://regular-amity-api.degreefyd.com/v1/payment/webhook",
-                failedLogPayload,
+                req.body, // Forward entire original Razorpay payload
                 { timeout: 10000 }
               );
               console.log("✅ Failed payment log forwarded to Amity LMS");
@@ -740,7 +710,7 @@ export const handleWebhook = async (req, res) => {
             try {
               await axios.post(
                 "https://regular-cgc-api.degreefyd.com/v1/payment/webhook",
-                failedLogPayload,
+                req.body, // Forward entire original Razorpay payload
                 { timeout: 10000 }
               );
               console.log("✅ Failed payment log forwarded to CGC LMS");

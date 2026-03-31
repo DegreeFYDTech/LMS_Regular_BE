@@ -1,5 +1,5 @@
 import { StudentCollegeApiSentStatus, UniversityCourse, CourseStatus, Student, Counsellor, StudentLeadActivity, sequelize, StudentCollegeApiClickLog } from '../models/index.js';
-import sendMail from '../utils/email/Email.js';
+import sendMail from '../config/SendTechIssueMail.js';
 import { Op, Sequelize } from 'sequelize';
 
 export const createCollegeApiSentStatus = async ({
@@ -83,8 +83,10 @@ export const createCollegeApiSentStatus = async ({
         await updatedIncourseStatus(status, flatCourseIds, studentId);
       }
 
-      // Send email for every status
-      await sendStatusEmail(student, collegeName, status, existingEntry.updated_at);
+      // Send email only for errors/technical failures
+      if (status !== 'Proceed') {
+        await sendStatusEmail(student, collegeName, status, existingEntry.updated_at, responseFromApi, studentPhone || student.student_phone);
+      }
 
       return {
         message: 'Status updated successfully',
@@ -111,8 +113,10 @@ export const createCollegeApiSentStatus = async ({
         await updatedIncourseStatus(status, flatCourseIds, studentId);
       }
 
-      // Send email for every status
-      await sendStatusEmail(student, collegeName, status, newEntry.created_at);
+      // Send email only for errors/technical failures
+      if (status !== 'Proceed') {
+        await sendStatusEmail(student, collegeName, status, newEntry.created_at, responseFromApi, studentPhone || student.student_phone);
+      }
 
       return {
         message: 'Status created successfully',
@@ -126,36 +130,22 @@ export const createCollegeApiSentStatus = async ({
   }
 };
 
-async function sendStatusEmail(student, collegeName, status, timestamp) {
+async function sendStatusEmail(student, collegeName, status, timestamp, responseData, studentPhone) {
   try {
-    // Convert UTC to IST
-    const istDate = new Date(timestamp).toLocaleString("en-IN", {
-      timeZone: "Asia/Kolkata",
-      hour12: true,
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit"
-    });
+    // Pass object data as required by SendTechIssueMail.js
+    const data = {
+      timestamp: new Date(timestamp).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+      name: `Student ID: ${student.student_id}`,
+      phone: studentPhone || 'N/A',
+      stream: collegeName,
+      responseData: responseData ? JSON.stringify(responseData) : "No response data available"
+    };
 
-    const htmlContent = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-        <h2 style="color: #2c3e50;">College API Status Update</h2>
-        <p><strong>Student Name:</strong> ${student.student_name}</p>
-        <p><strong>Student ID:</strong> ${student.student_id}</p>
-        <p><strong>College Name:</strong> ${collegeName}</p>
-        <p><strong>Status:</strong> <span style="color: ${status === 'Proceed' ? '#27ae60' : '#e74c3c'};">${status}</span></p>
-        <p><strong>Trigger Time (IST):</strong> ${istDate}</p>
-        <hr style="border: 0; border-top: 1px solid #eee;" />
-        <p style="font-size: 0.8em; color: #7f8c8d;">This is an automated notification from Degreefyd LMS.</p>
-      </div>
-    `;
+    // The SendTechIssueMail.js sends to the hardcoded/provided "to" address
+    // But since we are reusing that template, we call it with data
+    // It's internal sendMail function already defines the default recipients
+    await sendMail(data); 
 
-    const subject = `API Status: ${status} | ${collegeName} | ${student.student_name}`;
-    
-    await sendMail(htmlContent, subject);
   } catch (error) {
     console.error('Error sending status email:', error);
   }

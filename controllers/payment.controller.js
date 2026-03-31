@@ -250,6 +250,7 @@ export const createAdmissionOrder = async (req, res) => {
     });
 
     if (!pricingRule && campusLocation) {
+      // Fallback to generic rule if campus specific rule not found
       pricingRule = await PricingRule.findOne({
         where: { pageSlug, campusLocation: null, isActive: true },
         transaction,
@@ -405,62 +406,6 @@ export const createAdmissionOrder = async (req, res) => {
         ? "Admission Initiated but not Completed"
         : "Application Initiated but not Completed",
     );
-
-    const snapshotCollegeName = (snapshot.collegeName || "").toLowerCase();
-    const initiationForwardPayload = {
-      ...req.body,
-      razorpay_order_id: order.id,
-      status: "INITIATED"
-    };
-
-    if (snapshotCollegeName.includes("amity") || snapshotCollegeName.includes("cgc")) {
-      const destinationBaseUrl = snapshotCollegeName.includes("amity") 
-        ? "https://regular-amity-api.degreefyd.com" 
-        : "https://regular-cgc-api.degreefyd.com";
-
-      try {
-        // 1️⃣ Step One: Ensure the student exists on the other LMS first
-        // Prepare the lead data for transfer (matching your student.controller.js pattern)
-        const transferPayload = {
-          name: lead.name || lead.student_name || req.body.fullName,
-          email: lead.email || lead.student_email || req.body.email,
-          phoneNumber: lead.mobile || lead.student_phone || req.body.mobile,
-          source: lead.source || req.body.source || "Regular LMS Forward",
-          first_source_url: lead.first_source_url || lead.pageUrl || req.body.pageUrl,
-          is_transfered: true,
-          utm_campaign: req.body.utmCampaign || req.body.utm_campaign,
-          utm_campaign_id: req.body.utmCampaignId || req.body.utm_campaign_id,
-          student_comment: req.body.studentComment || req.body.student_comment,
-        };
-
-        console.log(`📦 Step 1: Transferring student to ${snapshotCollegeName.toUpperCase()} LMS...`);
-        await axios.post(`${destinationBaseUrl}/v1/student/create`, transferPayload, { timeout: 10000 });
-        console.log(`✅ Student transferred successfully to ${snapshotCollegeName.toUpperCase()}`);
-
-        // 2️⃣ Step Two: Forward the Payment Initiation
-        console.log(`💳 Step 2: Forwarding payment initiation to ${snapshotCollegeName.toUpperCase()} LMS...`);
-        console.log("initiationForwardPayload", initiationForwardPayload);
-        
-        await axios.post(
-          `${destinationBaseUrl}/v1/payment/create-order`,
-          initiationForwardPayload,
-          { timeout: 10000 }
-        );
-        console.log(`✅ Payment initiation forwarded to ${snapshotCollegeName.toUpperCase()} LMS`);
-
-      } catch (err) {
-        console.error(`❌ Failed to forward to ${snapshotCollegeName.toUpperCase()} LMS:`);
-        if (err.response) {
-          console.error("Response Data:", JSON.stringify(err.response.data));
-          console.error("Status:", err.response.status);
-        } else {
-          console.error("Error Message:", err.message);
-        }
-      }
-    } else {
-      console.log("ℹ️ Payment initiation logged in regular DB for college:", snapshot.collegeName);
-    }
-
     await transaction.commit();
 
     res.status(200).json({
@@ -624,36 +569,6 @@ export const handleWebhook = async (req, res) => {
               transaction,
             });
           }
-
-          // Forward full Razorpay webhook payload to Amity or CGC LMS base on college name
-          const collegeName = (snapshot.collegeName || "").toLowerCase();
-
-          if (collegeName.includes("amity")) {
-            try {
-              await axios.post(
-                "https://regular-amity-api.degreefyd.com/v1/payment/webhook",
-                req.body, // Forward entire original Razorpay payload
-                { timeout: 10000 }
-              );
-              console.log("✅ Payment log forwarded to Amity LMS");
-            } catch (amityErr) {
-              console.error("❌ Failed to forward payment log to Amity LMS:", amityErr.message);
-            }
-          } else if (collegeName.includes("cgc")) {
-            try {
-              await axios.post(
-                "https://regular-cgc-api.degreefyd.com/v1/payment/webhook",
-                req.body, // Forward entire original Razorpay payload
-                { timeout: 10000 }
-              );
-              console.log("✅ Payment log forwarded to CGC LMS");
-            } catch (cgcErr) {
-              console.error("❌ Failed to forward payment log to CGC LMS:", cgcErr.message);
-            }
-          } else {
-            // Non-Amity/CGC college — PAID log stays in regular DB (already saved via PaymentOrder + PricingSnapshot)
-            console.log("ℹ️ PAID payment log stored in regular DB for college:", snapshot.collegeName);
-          }
         }
       }
     } else if (event === "payment.failed") {
@@ -702,36 +617,6 @@ export const handleWebhook = async (req, res) => {
               "Application Payment Failed",
               paymentEntity.error_description || "Internal Payment Link Error",
             );
-          }
-
-          // Forward full Razorpay webhook payload to Amity or CGC LMS
-          const failedCollegeName = (snapshot.collegeName || "").toLowerCase();
-
-          if (failedCollegeName.includes("amity")) {
-            try {
-              await axios.post(
-                "https://regular-amity-api.degreefyd.com/v1/payment/webhook",
-                req.body, // Forward entire original Razorpay payload
-                { timeout: 10000 }
-              );
-              console.log("✅ Failed payment log forwarded to Amity LMS");
-            } catch (amityErr) {
-              console.error("❌ Failed to forward failed log to Amity LMS:", amityErr.message);
-            }
-          } else if (failedCollegeName.includes("cgc")) {
-            try {
-              await axios.post(
-                "https://regular-cgc-api.degreefyd.com/v1/payment/webhook",
-                req.body, // Forward entire original Razorpay payload
-                { timeout: 10000 }
-              );
-              console.log("✅ Failed payment log forwarded to CGC LMS");
-            } catch (cgcErr) {
-              console.error("❌ Failed to forward failed log to CGC LMS:", cgcErr.message);
-            }
-          } else {
-            // Non-Amity/CGC college — FAILED log stays in regular DB (already saved via PaymentOrder)
-            console.log("ℹ️ FAILED payment log stored in regular DB for college:", snapshot.collegeName);
           }
         }
       }

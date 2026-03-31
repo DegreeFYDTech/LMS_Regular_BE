@@ -416,12 +416,12 @@ export const createAdmissionOrder = async (req, res) => {
 
     if (snapshotCollegeName.includes("amity")) {
       try {
+        console.log("initiationForwardPayload", initiationForwardPayload);
         await axios.post(
           "https://regular-amity-api.degreefyd.com/v1/payment/create-order",
           initiationForwardPayload,
           { timeout: 10000 }
         );
-        console.log("initiationForwardPayload", initiationForwardPayload);
         console.log("✅ Payment initiation log forwarded to Amity LMS");
       } catch (amityErr) {
         console.error("❌ Failed to forward initiation log to Amity LMS:");

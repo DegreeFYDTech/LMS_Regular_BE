@@ -408,26 +408,17 @@ export const createAdmissionOrder = async (req, res) => {
     );
 
     const snapshotCollegeName = (snapshot.collegeName || "").toLowerCase();
-    const initiationLogPayload = {
-      student_id: lead[idField].toString(),
-      college_name: snapshot.collegeName,
-      course_name: snapshot.interestedCourse,
-      payment_for: snapshot.paymentFor,
-      base_amount: snapshot.baseAmount,
-      final_amount: snapshot.finalAmount,
-      discount_amount: snapshot.discountAmount,
-      currency: snapshot.currency,
+    const initiationForwardPayload = {
+      ...req.body,
       razorpay_order_id: order.id,
-      razorpay_payment_id: null,
-      status: "INITIATED",
-      initiated_at: new Date().toISOString(),
+      status: "INITIATED"
     };
 
     if (snapshotCollegeName.includes("amity")) {
       try {
         await axios.post(
           "https://regular-amity-api.degreefyd.com/v1/payment/create-order",
-          initiationLogPayload,
+          initiationForwardPayload,
           { timeout: 10000 }
         );
         console.log("✅ Payment initiation log forwarded to Amity LMS");
@@ -438,7 +429,7 @@ export const createAdmissionOrder = async (req, res) => {
       try {
         await axios.post(
           "https://regular-cgc-api.degreefyd.com/v1/payment/create-order",
-          initiationLogPayload,
+          initiationForwardPayload,
           { timeout: 10000 }
         );
         console.log("✅ Payment initiation log forwarded to CGC LMS");

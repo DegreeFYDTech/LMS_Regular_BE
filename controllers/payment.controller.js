@@ -425,7 +425,7 @@ export const createAdmissionOrder = async (req, res) => {
       } catch (amityErr) {
         console.error("❌ Failed to forward initiation log to Amity LMS:");
         if (amityErr.response) {
-          console.error("Response Data:", JSON.stringify(amityErr.response.data, null, 2));
+          console.error("Response Data:", JSON.stringify(amityErr.response.data));
           console.error("Status:", amityErr.response.status);
         } else {
           console.error("Error Message:", amityErr.message);

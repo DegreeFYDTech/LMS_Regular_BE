@@ -85,7 +85,7 @@ export const initiateLead = async (req, res) => {
       paymentStatus: "PENDING",
       lastQualificationPercentage:
         req.body.lastQualificationPercentage === "" ||
-        req.body.lastQualificationPercentage === undefined
+          req.body.lastQualificationPercentage === undefined
           ? null
           : req.body.lastQualificationPercentage,
     };
@@ -135,41 +135,41 @@ export const updateLead = async (req, res) => {
     const safeFields =
       Model === Student
         ? [
-            "highest_degree",
-            "completion_year",
-            "current_profession",
-            "current_role",
-            "work_experience",
-            "student_age",
-            "objective",
-            "mode",
-            "preferred_stream",
-            "preferred_budget",
-            "preferred_degree",
-            "preferred_level",
-            "preferred_specialization",
-            "preferred_city",
-            "preferred_state",
-            "preferred_university",
-          ]
+          "highest_degree",
+          "completion_year",
+          "current_profession",
+          "current_role",
+          "work_experience",
+          "student_age",
+          "objective",
+          "mode",
+          "preferred_stream",
+          "preferred_budget",
+          "preferred_degree",
+          "preferred_level",
+          "preferred_specialization",
+          "preferred_city",
+          "preferred_state",
+          "preferred_university",
+        ]
         : [
-            "alternateNumber",
-            "gender",
-            "dob",
-            "state",
-            "city",
-            "address",
-            "fatherName",
-            "fatherPhone",
-            "fatherOccupation",
-            "fatherEmail",
-            "campusLocation",
-            "interestedCourse",
-            "specialization",
-            "lastQualification",
-            "lastQualificationPercentage",
-            "collegeForApplied",
-          ];
+          "alternateNumber",
+          "gender",
+          "dob",
+          "state",
+          "city",
+          "address",
+          "fatherName",
+          "fatherPhone",
+          "fatherOccupation",
+          "fatherEmail",
+          "campusLocation",
+          "interestedCourse",
+          "specialization",
+          "lastQualification",
+          "lastQualificationPercentage",
+          "collegeForApplied",
+        ];
 
     safeFields.forEach((field) => {
       if (formData[field] !== undefined) lead[field] = formData[field];
@@ -321,30 +321,30 @@ export const createAdmissionOrder = async (req, res) => {
       const leadData =
         Model === Student
           ? {
-              student_email: email?.toLowerCase(),
-              student_phone: mobile,
-              preferred_university: collegeForApplied
-                ? [collegeForApplied]
-                : [],
-              ...req.body,
-              lastQualificationPercentage:
-                req.body.lastQualificationPercentage === "" ||
+            student_email: email?.toLowerCase(),
+            student_phone: mobile,
+            preferred_university: collegeForApplied
+              ? [collegeForApplied]
+              : [],
+            ...req.body,
+            lastQualificationPercentage:
+              req.body.lastQualificationPercentage === "" ||
                 req.body.lastQualificationPercentage === undefined
-                  ? null
-                  : req.body.lastQualificationPercentage,
-            }
+                ? null
+                : req.body.lastQualificationPercentage,
+          }
           : {
-              email: email?.toLowerCase(),
-              mobile: mobile,
-              collegeForApplied: collegeForApplied,
-              name: req.body.fullName,
-              ...req.body,
-              lastQualificationPercentage:
-                req.body.lastQualificationPercentage === "" ||
+            email: email?.toLowerCase(),
+            mobile: mobile,
+            collegeForApplied: collegeForApplied,
+            name: req.body.fullName,
+            ...req.body,
+            lastQualificationPercentage:
+              req.body.lastQualificationPercentage === "" ||
                 req.body.lastQualificationPercentage === undefined
-                  ? null
-                  : req.body.lastQualificationPercentage,
-            };
+                ? null
+                : req.body.lastQualificationPercentage,
+          };
       lead = await Model.create(leadData, { transaction });
     }
 
@@ -406,6 +406,49 @@ export const createAdmissionOrder = async (req, res) => {
         ? "Admission Initiated but not Completed"
         : "Application Initiated but not Completed",
     );
+
+    const snapshotCollegeName = (snapshot.collegeName || "").toLowerCase();
+    const initiationLogPayload = {
+      student_id: lead[idField].toString(),
+      college_name: snapshot.collegeName,
+      course_name: snapshot.interestedCourse,
+      payment_for: snapshot.paymentFor,
+      base_amount: snapshot.baseAmount,
+      final_amount: snapshot.finalAmount,
+      discount_amount: snapshot.discountAmount,
+      currency: snapshot.currency,
+      razorpay_order_id: order.id,
+      razorpay_payment_id: null,
+      status: "INITIATED",
+      initiated_at: new Date().toISOString(),
+    };
+
+    if (snapshotCollegeName.includes("amity")) {
+      try {
+        await axios.post(
+          "https://regular-amity-api.degreefyd.com/v1/payment/log",
+          initiationLogPayload,
+          { timeout: 10000 }
+        );
+        console.log("✅ Payment initiation log forwarded to Amity LMS");
+      } catch (amityErr) {
+        console.error("❌ Failed to forward initiation log to Amity LMS:", amityErr.message);
+      }
+    } else if (snapshotCollegeName.includes("cgc")) {
+      try {
+        await axios.post(
+          "https://regular-cgc-api.degreefyd.com/v1/payment/log",
+          initiationLogPayload,
+          { timeout: 10000 }
+        );
+        console.log("✅ Payment initiation log forwarded to CGC LMS");
+      } catch (cgcErr) {
+        console.error("❌ Failed to forward initiation log to CGC LMS:", cgcErr.message);
+      }
+    } else {
+      console.log("ℹ️ Payment initiation logged in regular DB for college:", snapshot.collegeName);
+    }
+
     await transaction.commit();
 
     res.status(200).json({
@@ -569,6 +612,50 @@ export const handleWebhook = async (req, res) => {
               transaction,
             });
           }
+
+          // Forward payment log to Amity or CGC LMS based on college name
+          const collegeName = (snapshot.collegeName || "").toLowerCase();
+          const paymentLogPayload = {
+            student_id: snapshot.admissionId,
+            college_name: snapshot.collegeName,
+            course_name: snapshot.interestedCourse,
+            payment_for: snapshot.paymentFor,
+            base_amount: snapshot.baseAmount,
+            final_amount: snapshot.finalAmount,
+            discount_amount: snapshot.discountAmount,
+            currency: snapshot.currency,
+            razorpay_payment_id: paymentEntity.id,
+            razorpay_order_id: paymentEntity.order_id,
+            status: "PAID",
+            paid_at: new Date().toISOString(),
+          };
+
+          if (collegeName.includes("amity")) {
+            try {
+              await axios.post(
+                "https://regular-amity-api.degreefyd.com/v1/payment/log",
+                paymentLogPayload,
+                { timeout: 10000 }
+              );
+              console.log("✅ Payment log forwarded to Amity LMS");
+            } catch (amityErr) {
+              console.error("❌ Failed to forward payment log to Amity LMS:", amityErr.message);
+            }
+          } else if (collegeName.includes("cgc")) {
+            try {
+              await axios.post(
+                "https://regular-cgc-api.degreefyd.com/v1/payment/log",
+                paymentLogPayload,
+                { timeout: 10000 }
+              );
+              console.log("✅ Payment log forwarded to CGC LMS");
+            } catch (cgcErr) {
+              console.error("❌ Failed to forward payment log to CGC LMS:", cgcErr.message);
+            }
+          } else {
+            // Non-Amity/CGC college — PAID log stays in regular DB (already saved via PaymentOrder + PricingSnapshot)
+            console.log("ℹ️ PAID payment log stored in regular DB for college:", snapshot.collegeName);
+          }
         }
       }
     } else if (event === "payment.failed") {
@@ -617,6 +704,52 @@ export const handleWebhook = async (req, res) => {
               "Application Payment Failed",
               paymentEntity.error_description || "Internal Payment Link Error",
             );
+          }
+
+          // Forward payment FAILED log to Amity or CGC LMS
+          const failedCollegeName = (snapshot.collegeName || "").toLowerCase();
+          const failedLogPayload = {
+            student_id: snapshot.admissionId,
+            college_name: snapshot.collegeName,
+            course_name: snapshot.interestedCourse,
+            payment_for: snapshot.paymentFor,
+            base_amount: snapshot.baseAmount,
+            final_amount: snapshot.finalAmount,
+            discount_amount: snapshot.discountAmount,
+            currency: snapshot.currency,
+            razorpay_payment_id: paymentEntity.id,
+            razorpay_order_id: paymentEntity.order_id,
+            status: "FAILED",
+            error_code: paymentEntity.error_code,
+            error_description: paymentEntity.error_description,
+            failed_at: new Date().toISOString(),
+          };
+
+          if (failedCollegeName.includes("amity")) {
+            try {
+              await axios.post(
+                "https://regular-amity-api.degreefyd.com/v1/payment/log",
+                failedLogPayload,
+                { timeout: 10000 }
+              );
+              console.log("✅ Failed payment log forwarded to Amity LMS");
+            } catch (amityErr) {
+              console.error("❌ Failed to forward failed log to Amity LMS:", amityErr.message);
+            }
+          } else if (failedCollegeName.includes("cgc")) {
+            try {
+              await axios.post(
+                "https://regular-cgc-api.degreefyd.com/v1/payment/log",
+                failedLogPayload,
+                { timeout: 10000 }
+              );
+              console.log("✅ Failed payment log forwarded to CGC LMS");
+            } catch (cgcErr) {
+              console.error("❌ Failed to forward failed log to CGC LMS:", cgcErr.message);
+            }
+          } else {
+            // Non-Amity/CGC college — FAILED log stays in regular DB (already saved via PaymentOrder)
+            console.log("ℹ️ FAILED payment log stored in regular DB for college:", snapshot.collegeName);
           }
         }
       }
@@ -924,13 +1057,13 @@ export const getPaymentReports = async (req, res) => {
         updated_at: order.updatedAt,
         student: lead
           ? {
-              student_id: snap.admissionId,
-              student_name: lead.student_name || lead.name || "N/A",
-              student_phone: lead.student_phone || lead.mobile || "N/A",
-              student_email: lead.student_email || lead.email || "N/A",
-              assigned_counsellor_id:
-                lead.assigned_counsellor_id || lead.counsellor_id || "N/A",
-            }
+            student_id: snap.admissionId,
+            student_name: lead.student_name || lead.name || "N/A",
+            student_phone: lead.student_phone || lead.mobile || "N/A",
+            student_email: lead.student_email || lead.email || "N/A",
+            assigned_counsellor_id:
+              lead.assigned_counsellor_id || lead.counsellor_id || "N/A",
+          }
           : null,
       };
     });

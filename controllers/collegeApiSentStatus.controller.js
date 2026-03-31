@@ -1,4 +1,5 @@
-import { StudentCollegeApiSentStatus, UniversityCourse, CourseStatus, Student, Counsellor, StudentLeadActivity, sequelize } from '../models/index.js';
+import { StudentCollegeApiSentStatus, UniversityCourse, CourseStatus, Student, Counsellor, StudentLeadActivity, sequelize, StudentCollegeApiClickLog } from '../models/index.js';
+import sendMail from '../utils/email/Email.js';
 import { Op, Sequelize } from 'sequelize';
 
 export const createCollegeApiSentStatus = async ({
@@ -12,7 +13,8 @@ export const createCollegeApiSentStatus = async ({
   sendType = 'manual',
   studentEmail = null,
   studentPhone = null,
-  isPrimary = true
+  isPrimary = true,
+  retryTag = null
 }) => {
   try {
     const course_ids = await Promise.all([
@@ -37,6 +39,24 @@ export const createCollegeApiSentStatus = async ({
       },
     });
 
+    // Log every click/trigger
+    await StudentCollegeApiClickLog.create({
+      college_name: collegeName,
+      student_id: studentId,
+      student_email: studentEmail || student.student_email,
+      student_phone: studentPhone || student.student_phone,
+      isPrimary: isPrimary,
+      api_sent_status: status,
+      request_to_api: requestToApi,
+      response_from_api: responseFromApi,
+      request_header_to_api: requestHeaderToApi,
+      response_header_from_api: responseHeaderFromApi,
+      sent_type: sendType,
+      retry_tag: retryTag
+    });
+
+    const trigger_count = (existingEntry?.trigger_count || 0) + 1;
+
     if (existingEntry) {
       if (existingEntry.api_sent_status === 'Proceed' && status !== 'Proceed') {
         await updatedIncourseStatus(status, flatCourseIds, studentId);
@@ -55,11 +75,17 @@ export const createCollegeApiSentStatus = async ({
       if (requestHeaderToApi) existingEntry.request_header_to_api = requestHeaderToApi;
       if (responseHeaderFromApi) existingEntry.response_header_from_api = responseHeaderFromApi;
       existingEntry.sent_type = sendType;
+      existingEntry.trigger_count = trigger_count;
+      existingEntry.retry_tag = retryTag;
 
       await existingEntry.save();
       if (isPrimary) {
         await updatedIncourseStatus(status, flatCourseIds, studentId);
       }
+
+      // Send email for every status
+      await sendStatusEmail(student, collegeName, status, existingEntry.updated_at);
+
       return {
         message: 'Status updated successfully',
         updated: true,
@@ -77,11 +103,17 @@ export const createCollegeApiSentStatus = async ({
         response_from_api: responseFromApi,
         request_header_to_api: requestHeaderToApi,
         response_header_from_api: responseHeaderFromApi,
-        sent_type: sendType
+        sent_type: sendType,
+        trigger_count: 1,
+        retry_tag: retryTag
       });
       if (isPrimary) {
         await updatedIncourseStatus(status, flatCourseIds, studentId);
       }
+
+      // Send email for every status
+      await sendStatusEmail(student, collegeName, status, newEntry.created_at);
+
       return {
         message: 'Status created successfully',
         updated: false,
@@ -93,6 +125,41 @@ export const createCollegeApiSentStatus = async ({
     throw new Error('Failed to create or update College API sent status');
   }
 };
+
+async function sendStatusEmail(student, collegeName, status, timestamp) {
+  try {
+    // Convert UTC to IST
+    const istDate = new Date(timestamp).toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      hour12: true,
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <h2 style="color: #2c3e50;">College API Status Update</h2>
+        <p><strong>Student Name:</strong> ${student.student_name}</p>
+        <p><strong>Student ID:</strong> ${student.student_id}</p>
+        <p><strong>College Name:</strong> ${collegeName}</p>
+        <p><strong>Status:</strong> <span style="color: ${status === 'Proceed' ? '#27ae60' : '#e74c3c'};">${status}</span></p>
+        <p><strong>Trigger Time (IST):</strong> ${istDate}</p>
+        <hr style="border: 0; border-top: 1px solid #eee;" />
+        <p style="font-size: 0.8em; color: #7f8c8d;">This is an automated notification from Degreefyd LMS.</p>
+      </div>
+    `;
+
+    const subject = `API Status: ${status} | ${collegeName} | ${student.student_name}`;
+    
+    await sendMail(htmlContent, subject);
+  } catch (error) {
+    console.error('Error sending status email:', error);
+  }
+}
 async function updatedIncourseStatus(status, course_ids, studentId) {
   if (!course_ids || course_ids.length === 0) {
     throw new Error('No course IDs provided for updating status');

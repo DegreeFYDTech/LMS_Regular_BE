@@ -1159,8 +1159,8 @@ async function handleShooliniOnline(
         } else if (actualKey === "preferredCity") {
           finalValue =
             userValue?.trim() &&
-            !userValue.toLowerCase().includes("himachal") &&
-            !userValue.toLowerCase().includes("pradesh")
+              !userValue.toLowerCase().includes("himachal") &&
+              !userValue.toLowerCase().includes("pradesh")
               ? userValue
               : "Solan";
         } else if (actualKey === "program") {
@@ -1201,8 +1201,8 @@ async function handleShooliniOnline(
         } else if (actualKey === "preferredCity") {
           finalValue =
             userValue?.trim() &&
-            !userValue.toLowerCase().includes("himachal") &&
-            !userValue.toLowerCase().includes("pradesh")
+              !userValue.toLowerCase().includes("himachal") &&
+              !userValue.toLowerCase().includes("pradesh")
               ? userValue
               : "Solan";
         } else if (actualKey === "phoneNumber" && userValue) {
@@ -2646,7 +2646,7 @@ export const sentStatustoCollege = async (req, res) => {
     );
     // Add this near other university detections
     const isJaypeeNoPaperForms = collegeName?.includes("Jaypee Institute");
-  
+
 
     let statusResult;
 
@@ -2782,7 +2782,7 @@ export const sentStatustoCollege = async (req, res) => {
       );
     } else if (
       collegeName.toLowerCase() ===
-        "chandigarh group of colleges, landran (cgc)" ||
+      "chandigarh group of colleges, landran (cgc)" ||
       collegeName.toLowerCase().includes("cgc")
     ) {
       statusResult = await CgcLandran(

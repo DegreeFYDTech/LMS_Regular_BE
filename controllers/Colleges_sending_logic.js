@@ -1,5 +1,5 @@
 import axios from "axios";
-import { Student, UniversityCourse } from "../models/index.js";
+import { Student, UniversityCourse, StudentCollegeApiSentStatus } from "../models/index.js";
 import { createCollegeApiSentStatus } from "./collegeApiSentStatus.controller.js";
 import CourseHeaderValue from "../models/university_header_values.js";
 import { Op, fn, col, where } from "sequelize";
@@ -2653,6 +2653,27 @@ export const sentStatustoCollege = async (req, res) => {
       phone: userResponse.student_phone,
       name: userResponse.student_name,
     });
+
+    const restrictedCollege = (collegeName || "").toLowerCase().includes("chandigarh university");
+    if (restrictedCollege) {
+      const existingEntry = await StudentCollegeApiSentStatus.findOne({
+        where: {
+          college_name: collegeName,
+          student_id: studentId,
+          isPrimary: isPrimary
+        }
+      });
+
+      const terminalStatuses = ['Proceed', 'Do Not Proceed', 'Field Missing', 'Failed due to Technical Issues'];
+      if (existingEntry && terminalStatuses.includes(existingEntry.api_sent_status)) {
+        console.log(`⚠️ EXIT: Chandigarh University hit already exists (${existingEntry.api_sent_status}). Skipping API call.`);
+        return res.status(200).json({
+          success: existingEntry.api_sent_status === "Proceed",
+          message: existingEntry.api_sent_status,
+          status: existingEntry.api_sent_status,
+        });
+      }
+    }
 
     const isSpecialUniversity =
       collegeName &&

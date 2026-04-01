@@ -144,7 +144,7 @@ async function sendStatusEmail(student, collegeName, status, timestamp, response
     // The SendTechIssueMail.js sends to the hardcoded/provided "to" address
     // But since we are reusing that template, we call it with data
     // It's internal sendMail function already defines the default recipients
-    await sendMail(data); 
+    await sendMail(data);
 
   } catch (error) {
     console.error('Error sending status email:', error);

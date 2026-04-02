@@ -1,5 +1,9 @@
 import axios from "axios";
-import { Student, UniversityCourse, StudentCollegeApiSentStatus } from "../models/index.js";
+import {
+  Student,
+  UniversityCourse,
+  StudentCollegeApiSentStatus,
+} from "../models/index.js";
 import { createCollegeApiSentStatus } from "./collegeApiSentStatus.controller.js";
 import CourseHeaderValue from "../models/university_header_values.js";
 import { Op, fn, col, where } from "sequelize";
@@ -359,7 +363,7 @@ async function getStudentDataForRequest(
   studentEmail,
   studentPhone,
   isPrimary,
-  isPartnerPortal
+  isPartnerPortal,
 ) {
   console.log(`👤 Getting student data:`, {
     studentId,
@@ -1195,8 +1199,8 @@ async function handleShooliniOnline(
         } else if (actualKey === "preferredCity") {
           finalValue =
             userValue?.trim() &&
-              !userValue.toLowerCase().includes("himachal") &&
-              !userValue.toLowerCase().includes("pradesh")
+            !userValue.toLowerCase().includes("himachal") &&
+            !userValue.toLowerCase().includes("pradesh")
               ? userValue
               : "Solan";
         } else if (actualKey === "program") {
@@ -1237,8 +1241,8 @@ async function handleShooliniOnline(
         } else if (actualKey === "preferredCity") {
           finalValue =
             userValue?.trim() &&
-              !userValue.toLowerCase().includes("himachal") &&
-              !userValue.toLowerCase().includes("pradesh")
+            !userValue.toLowerCase().includes("himachal") &&
+            !userValue.toLowerCase().includes("pradesh")
               ? userValue
               : "Solan";
         } else if (actualKey === "phoneNumber" && userValue) {
@@ -2641,7 +2645,7 @@ export const sentStatustoCollege = async (req, res) => {
       studentEmail,
       studentPhone,
       isPrimary,
-      isPartnerPortal
+      isPartnerPortal,
     );
     console.log(
       `✅ Student data retrieved successfully for studentId: ${studentData}`,
@@ -2654,24 +2658,27 @@ export const sentStatustoCollege = async (req, res) => {
       name: userResponse.student_name,
     });
 
-  
+    if (isPartnerPortal) {
       const existingEntry = await StudentCollegeApiSentStatus.findOne({
         where: {
           college_name: collegeName,
-          student_id: userResponse.student_id ||studentId,
-          isPrimary: isPrimary
-        }
+          student_id: userResponse.student_id || studentId,
+          isPrimary: isPrimary,
+        },
       });
 
       if (existingEntry) {
-        console.log(`⚠️ EXIT: Chandigarh University hit already exists (${existingEntry.api_sent_status}). Skipping API call.`);
+        console.log(
+          `⚠️ EXIT: Chandigarh University hit already exists (${existingEntry.api_sent_status}). Skipping API call.`,
+        );
         return res.status(200).json({
           success: existingEntry.api_sent_status === "Proceed",
           message: existingEntry.api_sent_status,
           status: existingEntry.api_sent_status,
         });
       }
-    
+    }
+
     const isSpecialUniversity =
       collegeName &&
       (collegeName.includes("Chandigarh University") ||
@@ -2700,7 +2707,6 @@ export const sentStatustoCollege = async (req, res) => {
     );
     // Add this near other university detections
     const isJaypeeNoPaperForms = collegeName?.includes("Jaypee Institute");
-
 
     let statusResult;
 
@@ -2836,7 +2842,7 @@ export const sentStatustoCollege = async (req, res) => {
       );
     } else if (
       collegeName.toLowerCase() ===
-      "chandigarh group of colleges, landran (cgc)" ||
+        "chandigarh group of colleges, landran (cgc)" ||
       collegeName.toLowerCase().includes("cgc")
     ) {
       statusResult = await CgcLandran(

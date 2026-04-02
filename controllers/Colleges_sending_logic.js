@@ -2658,13 +2658,12 @@ export const sentStatustoCollege = async (req, res) => {
       const existingEntry = await StudentCollegeApiSentStatus.findOne({
         where: {
           college_name: collegeName,
-          student_id: studentId,
+          student_id: userResponse.student_id ||studentId,
           isPrimary: isPrimary
         }
       });
 
-      const terminalStatuses = ['Proceed', 'Do Not Proceed', 'Field Missing', 'Failed due to Technical Issues'];
-      if (existingEntry && terminalStatuses.includes(existingEntry.api_sent_status)) {
+      if (existingEntry) {
         console.log(`⚠️ EXIT: Chandigarh University hit already exists (${existingEntry.api_sent_status}). Skipping API call.`);
         return res.status(200).json({
           success: existingEntry.api_sent_status === "Proceed",

@@ -2658,7 +2658,7 @@ export const sentStatustoCollege = async (req, res) => {
       name: userResponse.student_name,
     });
 
-    if (isPartnerPortal) {
+    if (!isPartnerPortal) {
       const existingEntry = await StudentCollegeApiSentStatus.findOne({
         where: {
           college_name: collegeName,

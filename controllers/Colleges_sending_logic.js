@@ -2654,8 +2654,7 @@ export const sentStatustoCollege = async (req, res) => {
       name: userResponse.student_name,
     });
 
-    const restrictedCollege = (collegeName || "").toLowerCase().includes("chandigarh university");
-    if (restrictedCollege) {
+  
       const existingEntry = await StudentCollegeApiSentStatus.findOne({
         where: {
           college_name: collegeName,
@@ -2673,8 +2672,7 @@ export const sentStatustoCollege = async (req, res) => {
           status: existingEntry.api_sent_status,
         });
       }
-    }
-
+    
     const isSpecialUniversity =
       collegeName &&
       (collegeName.includes("Chandigarh University") ||

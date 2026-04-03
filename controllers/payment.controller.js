@@ -818,8 +818,8 @@ export const getPaymentReports = async (req, res) => {
 
     if (req.originalUrl.includes("amity")) {
       collegeFilters = ["amity"];
-    } else if (req.originalUrl.includes("chandigarh group of colleges")) {
-      collegeFilters = ["cgc"];
+    } else if (req.originalUrl.includes("cgc")) {
+      collegeFilters = ["CGC Landran"];
     } else if (req.originalUrl.includes("cu/lpu")) {
       collegeFilters = ["chandigarh University", "lovely professional university"];
     }
@@ -827,7 +827,7 @@ export const getPaymentReports = async (req, res) => {
     if (college) {
       collegeFilters = college.split(",").map((c) => c.trim().toLowerCase());
     }
-
+console.log(collegeFilters);
     const orderWhere = {};
 
     if (status) {

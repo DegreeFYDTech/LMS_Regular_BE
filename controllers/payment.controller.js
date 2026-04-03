@@ -827,7 +827,6 @@ export const getPaymentReports = async (req, res) => {
     if (college) {
       collegeFilters = college.split(",").map((c) => c.trim().toLowerCase());
     }
-console.log(collegeFilters);
     const orderWhere = {};
 
     if (status) {

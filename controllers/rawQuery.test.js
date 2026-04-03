@@ -1007,7 +1007,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       }
     }
     // Handle freshLeads flag for L2
-    else if (freshLeads === "Fresh" && data === "l2") {
+    else if (freshLeads === "Fresh" && (data === "l2" || data === "to")) {
       // Fresh leads for L2: Students with current_student_status = 'Fresh'
       whereClauses.push(`s.current_student_status = 'Fresh'`);
     } else if (freshLeads !== "Fresh" && data !== "l3") {
@@ -1708,7 +1708,7 @@ async function getL3OverallStatsFromJourney({
   l3TeamIds = [],
   leadStatus = null,
   studentWhere = "1=1",
-  freshLeads = null
+  freshLeads = null,
 }) {
   try {
     const formatDateForPostgres = (date) => {

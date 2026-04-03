@@ -818,8 +818,8 @@ export const getPaymentReports = async (req, res) => {
 
     if (req.originalUrl.includes("amity")) {
       collegeFilters = ["amity"];
-    } else if (req.originalUrl.includes("chandigarh group of colleges")) {
-      collegeFilters = ["cgc"];
+    } else if (req.originalUrl.includes("cgc")) {
+      collegeFilters = ["chandigarh group of colleges"];
     } else if (req.originalUrl.includes("cu/lpu")) {
       collegeFilters = ["chandigarh University", "lovely professional university"];
     }

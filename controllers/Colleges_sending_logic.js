@@ -1,5 +1,9 @@
 import axios from "axios";
-import { Student, UniversityCourse } from "../models/index.js";
+import {
+  Student,
+  UniversityCourse,
+  StudentCollegeApiSentStatus,
+} from "../models/index.js";
 import { createCollegeApiSentStatus } from "./collegeApiSentStatus.controller.js";
 import CourseHeaderValue from "../models/university_header_values.js";
 import { Op, fn, col, where } from "sequelize";
@@ -222,6 +226,112 @@ async function handleApiError(
 
   const errorStatus = "Failed due to Technical Issues";
 
+  if (error.response) {
+    const statusCode = error.response.status;
+    const responseData = error.response.data;
+
+    console.log(`📊 Error Response for ${collegeName}:`, {
+      statusCode,
+      response: responseData,
+    });
+
+    if (statusCode === 400 || statusCode === 422) {
+      // Only log once with correct status
+      if (studentId && collegeName) {
+        await updateStudentShortlistStatus(
+          studentId,
+          collegeName,
+          "Field Missing",
+          payloadData,
+          responseData,
+          headers,
+          sendType,
+          studentEmail,
+          studentPhone,
+          isPrimary,
+        );
+      }
+      return res.status(400).json({
+        success: false,
+        message: "Field match issue",
+        status: "Field Missing",
+        error: responseData,
+      });
+    } else if (statusCode === 409) {
+      // Only log once with correct status
+      if (studentId && collegeName) {
+        await updateStudentShortlistStatus(
+          studentId,
+          collegeName,
+          "Do not Proceed",
+          payloadData,
+          responseData,
+          headers,
+          sendType,
+          studentEmail,
+          studentPhone,
+          isPrimary,
+        );
+      }
+      return res.status(409).json({
+        success: false,
+        message: "Lead already exists",
+        status: "Do not Proceed",
+        error: responseData,
+      });
+    } else if (statusCode >= 500) {
+      // Only log once for server errors
+      if (studentId && collegeName) {
+        await updateStudentShortlistStatus(
+          studentId,
+          collegeName,
+          errorStatus,
+          payloadData,
+          responseData,
+          headers,
+          sendType,
+          studentEmail,
+          studentPhone,
+          isPrimary,
+        ).catch((err) =>
+          console.error("❌ Failed to update student status on error:", err),
+        );
+      }
+      return res.status(500).json({
+        success: false,
+        message: "Failed due to technical issue",
+        status: errorStatus,
+        error: responseData,
+      });
+    }
+  } else if (error.request) {
+    console.error(`⏰ No response received from ${collegeName} API`);
+    // Log timeout/no-response as technical failure
+    if (studentId && collegeName) {
+      await updateStudentShortlistStatus(
+        studentId,
+        collegeName,
+        errorStatus,
+        payloadData,
+        null,
+        headers,
+        sendType,
+        studentEmail,
+        studentPhone,
+        isPrimary,
+      ).catch((err) =>
+        console.error("❌ Failed to update student status on timeout:", err),
+      );
+    }
+    return res.status(504).json({
+      success: false,
+      message: "No response received from API",
+      status: errorStatus,
+      error: "Gateway Timeout",
+    });
+  }
+
+  // Generic fallback - log once
   if (studentId && collegeName) {
     await updateStudentShortlistStatus(
       studentId,
@@ -238,76 +348,6 @@ async function handleApiError(
       console.error("❌ Failed to update student status on error:", err),
     );
   }
-  if (error.response) {
-    const statusCode = error.response.status;
-    const responseData = error.response.data;
-
-    console.log(`📊 Error Response for ${collegeName}:`, {
-      statusCode,
-      response: responseData,
-    });
-
-    if (statusCode === 400 || statusCode === 422) {
-      if (studentId && collegeName) {
-        await updateStudentShortlistStatus(
-          studentId,
-          collegeName,
-          "Field Missing",
-          payloadData,
-          responseData,
-          headers,
-          sendType,
-          studentEmail,
-          studentPhone,
-          isPrimary,
-        );
-      }
-
-      return res.status(400).json({
-        success: false,
-        message: "Field match issue",
-        status: "Field Missing",
-        error: responseData,
-      });
-    } else if (statusCode === 409) {
-      if (studentId && collegeName) {
-        await updateStudentShortlistStatus(
-          studentId,
-          collegeName,
-          "Do not Proceed",
-          payloadData,
-          responseData,
-          headers,
-          sendType,
-          studentEmail,
-          studentPhone,
-          isPrimary,
-        );
-      }
-
-      return res.status(409).json({
-        success: false,
-        message: "Lead already exists",
-        status: "Do not Proceed",
-        error: responseData,
-      });
-    } else if (statusCode >= 500) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed due to technical issue",
-        status: errorStatus,
-        error: responseData,
-      });
-    }
-  } else if (error.request) {
-    console.error(`⏰ No response received from ${collegeName} API`);
-    return res.status(504).json({
-      success: false,
-      message: "No response received from API",
-      status: errorStatus,
-      error: "Gateway Timeout",
-    });
-  }
 
   return res.status(500).json({
     success: false,
@@ -323,7 +363,7 @@ async function getStudentDataForRequest(
   studentEmail,
   studentPhone,
   isPrimary,
-  isPartnerPortal
+  isPartnerPortal,
 ) {
   console.log(`👤 Getting student data:`, {
     studentId,
@@ -2605,7 +2645,7 @@ export const sentStatustoCollege = async (req, res) => {
       studentEmail,
       studentPhone,
       isPrimary,
-      isPartnerPortal
+      isPartnerPortal,
     );
     console.log(
       `✅ Student data retrieved successfully for studentId: ${studentData}`,
@@ -2617,6 +2657,27 @@ export const sentStatustoCollege = async (req, res) => {
       phone: userResponse.student_phone,
       name: userResponse.student_name,
     });
+
+    if (!isPartnerPortal) {
+      const existingEntry = await StudentCollegeApiSentStatus.findOne({
+        where: {
+          college_name: collegeName,
+          student_id: userResponse.student_id || studentId,
+          isPrimary: isPrimary,
+        },
+      });
+
+      if (existingEntry) {
+        console.log(
+          `⚠️ EXIT: Chandigarh University hit already exists (${existingEntry.api_sent_status}). Skipping API call.`,
+        );
+        return res.status(200).json({
+          success: existingEntry.api_sent_status === "Proceed",
+          message: existingEntry.api_sent_status,
+          status: existingEntry.api_sent_status,
+        });
+      }
+    }
 
     const isSpecialUniversity =
       collegeName &&
@@ -2646,7 +2707,6 @@ export const sentStatustoCollege = async (req, res) => {
     );
     // Add this near other university detections
     const isJaypeeNoPaperForms = collegeName?.includes("Jaypee Institute");
-  
 
     let statusResult;
 

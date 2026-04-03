@@ -1,4 +1,5 @@
-import { StudentCollegeApiSentStatus, UniversityCourse, CourseStatus, Student, Counsellor, StudentLeadActivity, sequelize } from '../models/index.js';
+import { StudentCollegeApiSentStatus, UniversityCourse, CourseStatus, Student, Counsellor, StudentLeadActivity, sequelize, StudentCollegeApiClickLog } from '../models/index.js';
+import sendMail from '../config/SendTechIssueMail.js';
 import { Op, Sequelize } from 'sequelize';
 
 export const createCollegeApiSentStatus = async ({
@@ -12,7 +13,8 @@ export const createCollegeApiSentStatus = async ({
   sendType = 'manual',
   studentEmail = null,
   studentPhone = null,
-  isPrimary = true
+  isPrimary = true,
+  retryTag = null
 }) => {
   try {
     const course_ids = await Promise.all([
@@ -37,6 +39,24 @@ export const createCollegeApiSentStatus = async ({
       },
     });
 
+    // Log every click/trigger
+    await StudentCollegeApiClickLog.create({
+      college_name: collegeName,
+      student_id: studentId,
+      student_email: studentEmail || student.student_email,
+      student_phone: studentPhone || student.student_phone,
+      isPrimary: isPrimary,
+      api_sent_status: status,
+      request_to_api: requestToApi,
+      response_from_api: responseFromApi,
+      request_header_to_api: requestHeaderToApi,
+      response_header_from_api: responseHeaderFromApi,
+      sent_type: sendType,
+      retry_tag: retryTag
+    });
+
+    const trigger_count = (existingEntry?.trigger_count || 0) + 1;
+
     if (existingEntry) {
       if (existingEntry.api_sent_status === 'Proceed' && status !== 'Proceed') {
         await updatedIncourseStatus(status, flatCourseIds, studentId);
@@ -55,11 +75,19 @@ export const createCollegeApiSentStatus = async ({
       if (requestHeaderToApi) existingEntry.request_header_to_api = requestHeaderToApi;
       if (responseHeaderFromApi) existingEntry.response_header_from_api = responseHeaderFromApi;
       existingEntry.sent_type = sendType;
+      existingEntry.trigger_count = trigger_count;
+      existingEntry.retry_tag = retryTag;
 
       await existingEntry.save();
       if (isPrimary) {
         await updatedIncourseStatus(status, flatCourseIds, studentId);
       }
+
+      // Send email only for errors/technical failures
+      if (status !== 'Proceed') {
+        await sendStatusEmail(student, collegeName, status, existingEntry.updated_at, responseFromApi, studentPhone || student.student_phone);
+      }
+
       return {
         message: 'Status updated successfully',
         updated: true,
@@ -77,11 +105,19 @@ export const createCollegeApiSentStatus = async ({
         response_from_api: responseFromApi,
         request_header_to_api: requestHeaderToApi,
         response_header_from_api: responseHeaderFromApi,
-        sent_type: sendType
+        sent_type: sendType,
+        trigger_count: 1,
+        retry_tag: retryTag
       });
       if (isPrimary) {
         await updatedIncourseStatus(status, flatCourseIds, studentId);
       }
+
+      // Send email only for errors/technical failures
+      if (status !== 'Proceed') {
+        await sendStatusEmail(student, collegeName, status, newEntry.created_at, responseFromApi, studentPhone || student.student_phone);
+      }
+
       return {
         message: 'Status created successfully',
         updated: false,
@@ -93,6 +129,27 @@ export const createCollegeApiSentStatus = async ({
     throw new Error('Failed to create or update College API sent status');
   }
 };
+
+async function sendStatusEmail(student, collegeName, status, timestamp, responseData, studentPhone) {
+  try {
+    // Pass object data as required by SendTechIssueMail.js
+    const data = {
+      timestamp: new Date(timestamp).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+      name: `Student ID: ${student.student_id}`,
+      phone: studentPhone || 'N/A',
+      stream: collegeName,
+      responseData: responseData ? JSON.stringify(responseData) : "No response data available"
+    };
+
+    // The SendTechIssueMail.js sends to the hardcoded/provided "to" address
+    // But since we are reusing that template, we call it with data
+    // It's internal sendMail function already defines the default recipients
+    await sendMail(data);
+
+  } catch (error) {
+    console.error('Error sending status email:', error);
+  }
+}
 async function updatedIncourseStatus(status, course_ids, studentId) {
   if (!course_ids || course_ids.length === 0) {
     throw new Error('No course IDs provided for updating status');

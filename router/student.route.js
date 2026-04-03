@@ -35,7 +35,7 @@ router.post("/mark-walkin",   authorize(["l2", "l3", "supervisor", "Supervisor",
 
 router.get(
   "/export",
-  authorize(["supervisor", "Supervisor", "analyser"]),
+  authorize(["supervisor", "Supervisor", "analyser","to","to_l3"]),
   exportStudentsCSV,
 );
 router.get("/getDataTolooker", getAllLeadsofDatatest);

@@ -85,7 +85,7 @@ export const initiateLead = async (req, res) => {
       paymentStatus: "PENDING",
       lastQualificationPercentage:
         req.body.lastQualificationPercentage === "" ||
-        req.body.lastQualificationPercentage === undefined
+          req.body.lastQualificationPercentage === undefined
           ? null
           : req.body.lastQualificationPercentage,
     };
@@ -135,41 +135,41 @@ export const updateLead = async (req, res) => {
     const safeFields =
       Model === Student
         ? [
-            "highest_degree",
-            "completion_year",
-            "current_profession",
-            "current_role",
-            "work_experience",
-            "student_age",
-            "objective",
-            "mode",
-            "preferred_stream",
-            "preferred_budget",
-            "preferred_degree",
-            "preferred_level",
-            "preferred_specialization",
-            "preferred_city",
-            "preferred_state",
-            "preferred_university",
-          ]
+          "highest_degree",
+          "completion_year",
+          "current_profession",
+          "current_role",
+          "work_experience",
+          "student_age",
+          "objective",
+          "mode",
+          "preferred_stream",
+          "preferred_budget",
+          "preferred_degree",
+          "preferred_level",
+          "preferred_specialization",
+          "preferred_city",
+          "preferred_state",
+          "preferred_university",
+        ]
         : [
-            "alternateNumber",
-            "gender",
-            "dob",
-            "state",
-            "city",
-            "address",
-            "fatherName",
-            "fatherPhone",
-            "fatherOccupation",
-            "fatherEmail",
-            "campusLocation",
-            "interestedCourse",
-            "specialization",
-            "lastQualification",
-            "lastQualificationPercentage",
-            "collegeForApplied",
-          ];
+          "alternateNumber",
+          "gender",
+          "dob",
+          "state",
+          "city",
+          "address",
+          "fatherName",
+          "fatherPhone",
+          "fatherOccupation",
+          "fatherEmail",
+          "campusLocation",
+          "interestedCourse",
+          "specialization",
+          "lastQualification",
+          "lastQualificationPercentage",
+          "collegeForApplied",
+        ];
 
     safeFields.forEach((field) => {
       if (formData[field] !== undefined) lead[field] = formData[field];
@@ -321,30 +321,30 @@ export const createAdmissionOrder = async (req, res) => {
       const leadData =
         Model === Student
           ? {
-              student_email: email?.toLowerCase(),
-              student_phone: mobile,
-              preferred_university: collegeForApplied
-                ? [collegeForApplied]
-                : [],
-              ...req.body,
-              lastQualificationPercentage:
-                req.body.lastQualificationPercentage === "" ||
+            student_email: email?.toLowerCase(),
+            student_phone: mobile,
+            preferred_university: collegeForApplied
+              ? [collegeForApplied]
+              : [],
+            ...req.body,
+            lastQualificationPercentage:
+              req.body.lastQualificationPercentage === "" ||
                 req.body.lastQualificationPercentage === undefined
-                  ? null
-                  : req.body.lastQualificationPercentage,
-            }
+                ? null
+                : req.body.lastQualificationPercentage,
+          }
           : {
-              email: email?.toLowerCase(),
-              mobile: mobile,
-              collegeForApplied: collegeForApplied,
-              name: req.body.fullName,
-              ...req.body,
-              lastQualificationPercentage:
-                req.body.lastQualificationPercentage === "" ||
+            email: email?.toLowerCase(),
+            mobile: mobile,
+            collegeForApplied: collegeForApplied,
+            name: req.body.fullName,
+            ...req.body,
+            lastQualificationPercentage:
+              req.body.lastQualificationPercentage === "" ||
                 req.body.lastQualificationPercentage === undefined
-                  ? null
-                  : req.body.lastQualificationPercentage,
-            };
+                ? null
+                : req.body.lastQualificationPercentage,
+          };
       lead = await Model.create(leadData, { transaction });
     }
 
@@ -924,13 +924,13 @@ export const getPaymentReports = async (req, res) => {
         updated_at: order.updatedAt,
         student: lead
           ? {
-              student_id: snap.admissionId,
-              student_name: lead.student_name || lead.name || "N/A",
-              student_phone: lead.student_phone || lead.mobile || "N/A",
-              student_email: lead.student_email || lead.email || "N/A",
-              assigned_counsellor_id:
-                lead.assigned_counsellor_id || lead.counsellor_id || "N/A",
-            }
+            student_id: snap.admissionId,
+            student_name: lead.student_name || lead.name || "N/A",
+            student_phone: lead.student_phone || lead.mobile || "N/A",
+            student_email: lead.student_email || lead.email || "N/A",
+            assigned_counsellor_id:
+              lead.assigned_counsellor_id || lead.counsellor_id || "N/A",
+          }
           : null,
       };
     });

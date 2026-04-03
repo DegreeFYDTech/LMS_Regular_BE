@@ -406,14 +406,13 @@ async function getStudentDataForRequest(
   throw new Error("Either studentId or studentData is required");
 }
 
-function processSpecialUniversityApiResponse(apiResponse, collegeName) {
+function  processSpecialUniversityApiResponse(apiResponse, collegeName) {
   console.log(`📊 Processing special university response for ${collegeName}:`, {
     status: apiResponse?.status,
     data: apiResponse?.data,
     error: apiResponse?.error,
   });
 
-  // Check for error responses first
   if (apiResponse?.error) {
     console.error(`❌ API Error from ${collegeName}:`, {
       error: apiResponse.error,
@@ -479,7 +478,10 @@ function processSpecialUniversityApiResponse(apiResponse, collegeName) {
       return "Proceed";
     }
 
-    if (message.IsCreated === false) {
+    if (
+      message.IsCreated === false ||
+      responseData?.error === "A Lead with same Email already exists."
+    ) {
       console.log(`⚠️ ${collegeName} - Lead already exists, do not proceed`);
       console.log(`   Existing lead ID: ${message.RelatedId || message.Id}`);
       return "Do not Proceed";

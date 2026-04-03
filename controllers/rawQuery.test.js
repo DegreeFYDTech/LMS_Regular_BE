@@ -92,11 +92,14 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       isPreNi,
     } = filters;
 
-    // Convert leadStatus from array to string if needed
+    // Convert leadStatus from array to string if needed - BUT keep as array for multiple values
     let leadStatus = rawLeadStatus;
-    if (Array.isArray(leadStatus)) {
+    if (Array.isArray(leadStatus) && leadStatus.length === 1) {
       leadStatus = leadStatus[0];
       console.log("Converted leadStatus from array to string:", leadStatus);
+    } else if (Array.isArray(leadStatus) && leadStatus.length > 1) {
+      console.log("Keeping leadStatus as array with multiple values:", leadStatus);
+      // Keep as array for multiple OR conditions
     }
 
     const isAnalyser = userrole === "Analyser";
@@ -131,6 +134,17 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         : values.split(",").map((v) => v.trim());
       if (arr.length === 0) return "";
       return `${field} IN (${arr.map(escape).join(",")})`;
+    };
+
+    // NEW: Case-insensitive IN clause for lead_status
+    const inSQLCaseInsensitive = (field, values) => {
+      if (!values) return "";
+      const arr = Array.isArray(values)
+        ? values
+        : values.split(",").map((v) => v.trim());
+      if (arr.length === 0) return "";
+      const conditions = arr.map(v => `${field} ILIKE ${escape(v)}`).join(" OR ");
+      return `(${conditions})`;
     };
 
     const textSQL = (field, val, exact = false) =>
@@ -472,10 +486,10 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     if (subCallingStatusL3)
       where.push(inSQL("s.sub_calling_status_l3", subCallingStatusL3));
 
-    // Handle lead_status filter - For L3, filter based on journey status
-    // For non-L3, filter based on students table current_student_status
+    // Handle lead_status filter - FIXED: Use case-insensitive OR condition for non-L3
     if (leadStatus && data !== "l3") {
-      where.push(inSQL("s.current_student_status", leadStatus));
+      // Use case-insensitive OR condition for multiple statuses
+      where.push(inSQLCaseInsensitive("s.current_student_status", leadStatus));
     }
 
     if (leadSubStatus && data !== "l3") {
@@ -953,7 +967,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       }
     }
 
-    // Handle freshLeads flag for L3
     // Handle freshLeads flag for L3
     if (freshLeads === "Fresh" && data === "l3") {
       if (selectedagent) {

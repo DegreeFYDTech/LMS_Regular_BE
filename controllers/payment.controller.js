@@ -490,12 +490,16 @@ export const handleWebhook = async (req, res) => {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
   const signature = req.headers["x-razorpay-signature"];
   const body = JSON.stringify(req.body);
+
   console.log("triggered webhook with body:", body);
+
+  // ✅ Signature Verification
   if (secret) {
     const expectedSignature = crypto
       .createHmac("sha256", secret)
       .update(body)
       .digest("hex");
+
     if (expectedSignature !== signature) {
       return res
         .status(400)
@@ -506,31 +510,83 @@ export const handleWebhook = async (req, res) => {
   const { event, payload } = req.body;
   const eventId = req.headers["x-razorpay-event-id"];
 
-  const existingEvent = await WebhookEvent.findOne({ where: { eventId } });
-  if (existingEvent)
-    return res
-      .status(200)
-      .json({ status: "success", message: "Event already processed" });
-
-  const webhookEvent = await WebhookEvent.create({
-    eventId,
-    eventType: event,
-    payload: payload,
-    status: "PENDING",
-  });
-
-  const transaction = await sequelize.transaction();
   try {
-    if (event === "payment.captured" || event === "order.paid") {
-      const paymentEntity = payload.payment.entity;
-      const orderId = paymentEntity.order_id;
+    const paymentEntity = payload?.payment?.entity;
+    const orderId = paymentEntity?.order_id;
 
-      const paymentOrder = await PaymentOrder.findOne({
-        where: { razorpayOrderId: orderId },
-        transaction,
-      });
+    // 🔹 Minimal lookup (NO transaction yet)
+    const paymentOrder = await PaymentOrder.findOne({
+      where: { razorpayOrderId: orderId },
+    });
 
-      if (paymentOrder) {
+    const snapshot = paymentOrder
+      ? await PricingSnapshot.findByPk(paymentOrder.pricingSnapshotId)
+      : null;
+
+    const collegeName = (snapshot?.collegeName || "").toLowerCase();
+
+    // ============================================================
+    // ✅ STEP 1: HANDLE AMITY / CGC FIRST (NO DB PROCESSING)
+    // ============================================================
+
+    if (collegeName.includes("amity")) {
+      try {
+        await axios.post(
+          "https://regular-amity-api.degreefyd.com/v1/payment/webhook",
+          req.body,
+          { timeout: 10000 }
+        );
+        console.log("✅ Forwarded to Amity LMS");
+        return res.status(200).json({ status: "success" });
+      } catch (err) {
+        console.error("❌ Amity forward failed:", err.message);
+        return res.status(500).json({ status: "failure" });
+      }
+    }
+
+    if (collegeName.includes("cgc")) {
+      try {
+        await axios.post(
+          "https://regular-cgc-api.degreefyd.com/v1/payment/webhook",
+          req.body,
+          { timeout: 10000 }
+        );
+        console.log("✅ Forwarded to CGC LMS");
+        return res.status(200).json({ status: "success" });
+      } catch (err) {
+        console.error("❌ CGC forward failed:", err.message);
+        return res.status(500).json({ status: "failure" });
+      }
+    }
+
+    // ============================================================
+    // ✅ STEP 2: DEFAULT FLOW → YOUR DB
+    // ============================================================
+
+    // 🔁 Idempotency check
+    const existingEvent = await WebhookEvent.findOne({ where: { eventId } });
+    if (existingEvent) {
+      return res
+        .status(200)
+        .json({ status: "success", message: "Event already processed" });
+    }
+
+    const webhookEvent = await WebhookEvent.create({
+      eventId,
+      eventType: event,
+      payload: payload,
+      status: "PENDING",
+    });
+
+    const transaction = await sequelize.transaction();
+
+    try {
+      // ===========================
+      // ✅ SUCCESS EVENTS
+      // ===========================
+      if (event === "payment.captured" || event === "order.paid") {
+        if (!paymentOrder) throw new Error("PaymentOrder not found");
+
         paymentOrder.status = "PAID";
         paymentOrder.amountPaid = paymentEntity.amount / 100;
         paymentOrder.amountDue = 0;
@@ -538,6 +594,7 @@ export const handleWebhook = async (req, res) => {
         const currentPayments = Array.isArray(paymentOrder.payments)
           ? paymentOrder.payments
           : [];
+
         currentPayments.push({
           razorpayPaymentId: paymentEntity.id,
           status: paymentEntity.status,
@@ -546,19 +603,17 @@ export const handleWebhook = async (req, res) => {
           contact: paymentEntity.contact,
           createdAt: new Date(),
         });
+
         paymentOrder.payments = currentPayments;
         await paymentOrder.save({ transaction });
 
-        const snapshot = await PricingSnapshot.findByPk(
-          paymentOrder.pricingSnapshotId,
-          { transaction },
-        );
         if (snapshot) {
           snapshot.status = "PAID";
           await snapshot.save({ transaction });
 
           const Model = getModel(snapshot.onModel);
           const idField = Model === Student ? "student_id" : "id";
+
           const lead = await Model.findByPk(snapshot.admissionId, {
             transaction,
           });
@@ -566,28 +621,33 @@ export const handleWebhook = async (req, res) => {
           if (lead) {
             lead.paymentStatus = "COMPLETED";
             if (Model !== Student) lead.UTRNumber = paymentEntity.id;
+
             await lead.save({ transaction });
 
             await GenerateEmailFunction(
               lead,
               snapshot.onModel === "registrations"
                 ? "Application Received"
-                : "Admission Received",
+                : "Admission Received"
             );
 
-            let targetStudentId = Model === Student ? lead.student_id : null;
+            let targetStudentId =
+              Model === Student ? lead.student_id : null;
 
             if (!targetStudentId) {
-              const phoneToSearch = lead.mobile || lead.student_phone;
+              const phoneToSearch =
+                lead.mobile || lead.student_phone;
+
               if (phoneToSearch) {
                 const linkedStudent = await Student.findOne({
                   where: { student_phone: phoneToSearch },
                   transaction,
                 });
-                if (linkedStudent) targetStudentId = linkedStudent.student_id;
+                if (linkedStudent)
+                  targetStudentId = linkedStudent.student_id;
               }
             }
-            console.log(targetStudentId);
+
             if (targetStudentId) {
               await StudentRemark.create(
                 {
@@ -606,13 +666,19 @@ export const handleWebhook = async (req, res) => {
                   fees: snapshot.finalAmount,
                   created_at: new Date(),
                 },
-                { transaction },
+                { transaction }
               );
+
               await Student.update(
                 {
-                  remarks_count: sequelize.literal("remarks_count + 1"),
+                  remarks_count: sequelize.literal(
+                    "remarks_count + 1"
+                  ),
                 },
-                { where: { student_id: targetStudentId }, transaction },
+                {
+                  where: { student_id: targetStudentId },
+                  transaction,
+                }
               );
             }
           }
@@ -624,54 +690,22 @@ export const handleWebhook = async (req, res) => {
               transaction,
             });
           }
-
-          // Forward full Razorpay webhook payload to Amity or CGC LMS base on college name
-          const collegeName = (snapshot.collegeName || "").toLowerCase();
-
-          if (collegeName.includes("amity")) {
-            try {
-              await axios.post(
-                "https://regular-amity-api.degreefyd.com/v1/payment/webhook",
-                req.body, 
-                { timeout: 10000 }
-              );
-              console.log("✅ Payment log forwarded to Amity LMS");
-              return res.status(200).json({ status: "success" });
-            } catch (amityErr) {
-              console.error("❌ Failed to forward payment log to Amity LMS:", amityErr.message);
-            }
-          } else if (collegeName.includes("cgc")) {
-            try {
-              await axios.post(
-                "https://regular-cgc-api.degreefyd.com/v1/payment/webhook",
-                req.body, // Forward entire original Razorpay payload
-                { timeout: 10000 }
-              );
-              console.log("✅ Payment log forwarded to CGC LMS");
-            } catch (cgcErr) {
-              console.error("❌ Failed to forward payment log to CGC LMS:", cgcErr.message);
-            }
-          } else {
-            // Non-Amity/CGC college — PAID log stays in regular DB (already saved via PaymentOrder + PricingSnapshot)
-            console.log("ℹ️ PAID payment log stored in regular DB for college:", snapshot.collegeName);
-          }
         }
       }
-    } else if (event === "payment.failed") {
-      const paymentEntity = payload.payment.entity;
-      const orderId = paymentEntity.order_id;
 
-      const paymentOrder = await PaymentOrder.findOne({
-        where: { razorpayOrderId: orderId },
-        transaction,
-      });
+      // ===========================
+      // ❌ FAILED EVENTS
+      // ===========================
+      else if (event === "payment.failed") {
+        if (!paymentOrder) throw new Error("PaymentOrder not found");
 
-      if (paymentOrder) {
         paymentOrder.status = "FAILED";
         paymentOrder.attempts += 1;
+
         const currentPayments = Array.isArray(paymentOrder.payments)
           ? paymentOrder.payments
           : [];
+
         currentPayments.push({
           razorpayPaymentId: paymentEntity.id,
           status: paymentEntity.status,
@@ -682,75 +716,62 @@ export const handleWebhook = async (req, res) => {
           error_code: paymentEntity.error_code,
           error_description: paymentEntity.error_description,
         });
+
         paymentOrder.payments = currentPayments;
         await paymentOrder.save({ transaction });
 
-        const snapshot = await PricingSnapshot.findByPk(
-          paymentOrder.pricingSnapshotId,
-          { transaction },
-        );
         if (snapshot) {
           snapshot.status = "FAILED";
           await snapshot.save({ transaction });
 
           const Model = getModel(snapshot.onModel);
-          const lead = await Model.findByPk(snapshot.admissionId, {
-            transaction,
-          });
+
+          const lead = await Model.findByPk(
+            snapshot.admissionId,
+            { transaction }
+          );
+
           if (lead) {
             await GenerateEmailFunction(
               lead,
               "Application Payment Failed",
-              paymentEntity.error_description || "Internal Payment Link Error",
+              paymentEntity.error_description ||
+                "Internal Payment Link Error"
             );
-          }
-
-          // Forward full Razorpay webhook payload to Amity or CGC LMS
-          const failedCollegeName = (snapshot.collegeName || "").toLowerCase();
-
-          if (failedCollegeName.includes("amity")) {
-            try {
-              await axios.post(
-                "https://regular-amity-api.degreefyd.com/v1/payment/webhook",
-                req.body, // Forward entire original Razorpay payload
-                { timeout: 10000 }
-              );
-              console.log("✅ Failed payment log forwarded to Amity LMS");
-            } catch (amityErr) {
-              console.error("❌ Failed to forward failed log to Amity LMS:", amityErr.message);
-            }
-          } else if (failedCollegeName.includes("cgc")) {
-            try {
-              await axios.post(
-                "https://regular-cgc-api.degreefyd.com/v1/payment/webhook",
-                req.body, // Forward entire original Razorpay payload
-                { timeout: 10000 }
-              );
-              console.log("✅ Failed payment log forwarded to CGC LMS");
-            } catch (cgcErr) {
-              console.error("❌ Failed to forward failed log to CGC LMS:", cgcErr.message);
-            }
-          } else {
-            // Non-Amity/CGC college — FAILED log stays in regular DB (already saved via PaymentOrder)
-            console.log("ℹ️ FAILED payment log stored in regular DB for college:", snapshot.collegeName);
           }
         }
       }
+
+      // ===========================
+      // ✅ FINALIZE EVENT
+      // ===========================
+      webhookEvent.status = "PROCESSED";
+      webhookEvent.processedAt = new Date();
+
+      await webhookEvent.save({ transaction });
+
+      await transaction.commit();
+
+      return res.status(200).json({ status: "success" });
+    } catch (error) {
+      await transaction.rollback();
+
+      console.error("Webhook processing error:", error);
+
+      webhookEvent.status = "FAILED";
+      webhookEvent.errorLog = error.message;
+
+      await webhookEvent.save();
+
+      return res
+        .status(500)
+        .json({ status: "failure", message: error.message });
     }
-
-    webhookEvent.status = "PROCESSED";
-    webhookEvent.processedAt = new Date();
-    await webhookEvent.save({ transaction });
-
-    await transaction.commit();
-    res.status(200).json({ status: "success" });
-  } catch (error) {
-    if (transaction) await transaction.rollback();
-    console.error("Webhook processing error:", error);
-    webhookEvent.status = "FAILED";
-    webhookEvent.errorLog = error.message;
-    await webhookEvent.save();
-    res.status(500).json({ status: "failure", message: error.message });
+  } catch (outerError) {
+    console.error("Webhook outer error:", outerError);
+    return res
+      .status(500)
+      .json({ status: "failure", message: outerError.message });
   }
 };
 

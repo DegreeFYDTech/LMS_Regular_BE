@@ -715,6 +715,56 @@ export const updateStudentStatus = async (req, res) => {
       );
       console.log(response.data);
     }
+    if (
+      leadStatus === "NotInterested" &&
+      leadSubStatus === "Only_LPU/CU Regular course"
+    ) {
+      console.log("Only_LPU/CU Regular course");
+      const studentDetails = await Student.findByPk(studentId);
+      const studentleadActivityDetails = await StudentLeadActivity.findOne({
+        where: { student_id: studentId },
+      });
+      const studentPhoneWithCountryCode = ensureCountryCode(
+        studentDetails.dataValues.student_phone,
+      );
+      const messages = await Message.findAll({
+        where: {
+          [Op.or]: [
+            { sender: studentPhoneWithCountryCode },
+            { receiver: studentPhoneWithCountryCode },
+          ],
+        },
+        order: [["timestamp", "ASC"]],
+      });
+      const formattedMessages = messages.map((msg) => ({
+        message_id: msg.message_id,
+        message: msg.message,
+        message_type: msg.message_type,
+        sender: msg.sender,
+        receiver: msg.receiver,
+        direction: msg.direction,
+        timestamp: msg.timestamp,
+        is_read: msg.is_read,
+      }));
+      const payload = {
+        name: studentDetails.dataValues.student_name,
+        email: studentDetails.dataValues.student_email,
+        phoneNumber: studentDetails.dataValues.student_phone,
+        source: studentDetails.dataValues.source,
+        first_source_url: studentDetails.dataValues.first_source_url,
+        is_transfered: true,
+        utm_campaign: studentleadActivityDetails.dataValues.utm_campaign,
+        utm_campaign_id: studentleadActivityDetails.dataValues.utm_campaign_id,
+        student_comment: studentleadActivityDetails.dataValues.student_comment,
+        whatsapp_messages: formattedMessages,
+      };
+      console.log(payload);
+      const response = await axios.post(
+        "https://lms-regular.degreefyd.com/v1/student/create",
+        payload,
+      );
+      console.log(response.data);
+    }
 
     if (
       leadStatus === "enrolled" &&

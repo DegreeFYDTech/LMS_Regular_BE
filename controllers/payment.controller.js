@@ -632,10 +632,11 @@ export const handleWebhook = async (req, res) => {
             try {
               await axios.post(
                 "https://regular-amity-api.degreefyd.com/v1/payment/webhook",
-                req.body, // Forward entire original Razorpay payload
+                req.body, 
                 { timeout: 10000 }
               );
               console.log("✅ Payment log forwarded to Amity LMS");
+              return res.status(200).json({ status: "success" });
             } catch (amityErr) {
               console.error("❌ Failed to forward payment log to Amity LMS:", amityErr.message);
             }

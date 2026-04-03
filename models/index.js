@@ -25,6 +25,8 @@ import StudentCollegeSentStatus from './student_collge_status.js';
 import LeadAssignmentLogs from './lead_logs.js';
 import LastassignOnline from './last_assign_online.js'
 import LastAssignRegular from './last_assign_regular.js';
+import StudentCollegeApiClickLog from './StudentCollegeApiClickLog.js';
+import UserActionLog from './UserActionLog.js';
 
 //whish list schema
 import WhishList from './WhishList.js'
@@ -143,6 +145,10 @@ StudentCollegeSentStatus.belongsTo(Student, { foreignKey: 'student_id', as: 'stu
 Student.hasMany(StudentCollegeApiSentStatus, { foreignKey: 'student_id', as: 'collegeApiSentStatus', onDelete: 'CASCADE' });
 StudentCollegeApiSentStatus.belongsTo(Student, { foreignKey: 'student_id', as: 'student' });
 
+//StudentCollegeApiClickLog
+Student.hasMany(StudentCollegeApiClickLog, { foreignKey: 'student_id', as: 'collegeApiClickLogs', onDelete: 'CASCADE' });
+StudentCollegeApiClickLog.belongsTo(Student, { foreignKey: 'student_id', as: 'student' });
+
 
 //student credentials
 Student.hasMany(StudentCollegeCred, { foreignKey: 'student_id', as: 'collegeCredentials', onDelete: 'CASCADE' });
@@ -211,7 +217,7 @@ export {
   PaymentOrder,
   WebhookEvent,
   Admission,
-  Registration
+  Registration,
+  StudentCollegeApiClickLog,
+  UserActionLog
 };
-
-

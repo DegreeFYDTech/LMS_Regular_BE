@@ -1,4 +1,4 @@
-import { Counsellor, Student, counsellorBreak, sequelize } from '../models/index.js';
+import { Counsellor, Student, counsellorBreak, sequelize, UserActionLog } from '../models/index.js';
 import bcrypt from 'bcryptjs';
 import { generateTokenAndSetCookie } from '../helper/getTimeForCookieExpires.js';
 import { Op, fn, col, literal } from 'sequelize';
@@ -263,6 +263,23 @@ export const updateCounsellorStatus = async (req, res) => {
     console.log(': Counsellor not found', updated)
 
     if (updated === 0) return res.status(404).json({ message: 'Counsellor not found' });
+
+    if (req.user && ["to", "to_l3", "Supervisor"].includes(req.user.role)) {
+      try {
+        await UserActionLog.create({
+          user_id: req.user.id,
+          user_role: req.user.role,
+          action: "Update Counsellor Status",
+          target_id: id,
+          target_type: "counsellor",
+          details: { status: status },
+          ip_address: req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress
+        });
+      } catch (logError) {
+        console.error("Error logging user action:", logError);
+      }
+    }
+
     res.status(200).json({ message: 'Status updated successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Error updating status', error });
@@ -287,6 +304,23 @@ export const changeCounsellorPassword = async (req, res) => {
     );
 
     if (updated === 0) return res.status(404).json({ message: 'Counsellor not found' });
+
+    if (req.user && ["to", "to_l3", "Supervisor"].includes(req.user.role)) {
+      try {
+        await UserActionLog.create({
+          user_id: req.user.id,
+          user_role: req.user.role,
+          action: "Change Counsellor Password",
+          target_id: id,
+          target_type: "counsellor",
+          details: { action: "Password changed" },
+          ip_address: req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress
+        });
+      } catch (logError) {
+        console.error("Error logging user action:", logError);
+      }
+    }
+
     res.status(200).json({ message: 'Password updated successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Error changing password', error });
@@ -307,6 +341,23 @@ export const updateCounsellorPreferredMode = async (req, res) => {
       { where: { counsellor_id: id } }
     );
     if (updated === 0) return res.status(404).json({ message: 'Counsellor not found' });
+
+    if (req.user && ["to", "to_l3", "Supervisor"].includes(req.user.role)) {
+      try {
+        await UserActionLog.create({
+          user_id: req.user.id,
+          user_role: req.user.role,
+          action: "Update Counsellor Mode",
+          target_id: id,
+          target_type: "counsellor",
+          details: { preferredMode: preferredMode },
+          ip_address: req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress
+        });
+      } catch (logError) {
+        console.error("Error logging user action:", logError);
+      }
+    }
+
     res.status(200).json({ message: 'Preferred mode updated successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Error updating preferred mode', error });

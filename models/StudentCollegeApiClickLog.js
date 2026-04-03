@@ -1,7 +1,7 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database-config.js';
 
-const StudentCollegeApiSentStatus = sequelize.define('student_college_api_sent_status', {
+const StudentCollegeApiClickLog = sequelize.define('student_college_api_click_log', {
   student_id: {
     type: DataTypes.STRING,
     allowNull: true,
@@ -46,18 +46,14 @@ const StudentCollegeApiSentStatus = sequelize.define('student_college_api_sent_s
     type: DataTypes.STRING,
     defaultValue: "manual"
   },
-  trigger_count: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0
-  },
   retry_tag: {
     type: DataTypes.STRING,
     allowNull: true
   }
 }, {
-  tableName: 'student_college_api_sent_status',
+  tableName: 'student_college_api_click_logs',
   timestamps: true,
   underscored: true,
 });
 
-export default StudentCollegeApiSentStatus;
+export default StudentCollegeApiClickLog;

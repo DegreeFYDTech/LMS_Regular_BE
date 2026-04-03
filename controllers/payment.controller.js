@@ -250,6 +250,7 @@ export const createAdmissionOrder = async (req, res) => {
     });
 
     if (!pricingRule && campusLocation) {
+      // Fallback to generic rule if campus specific rule not found
       pricingRule = await PricingRule.findOne({
         where: { pageSlug, campusLocation: null, isActive: true },
         transaction,
@@ -405,62 +406,6 @@ export const createAdmissionOrder = async (req, res) => {
         ? "Admission Initiated but not Completed"
         : "Application Initiated but not Completed",
     );
-
-    const snapshotCollegeName = (snapshot.collegeName || "").toLowerCase();
-    const initiationForwardPayload = {
-      ...req.body,
-      razorpay_order_id: order.id,
-      status: "INITIATED"
-    };
-
-    if (snapshotCollegeName.includes("amity") || snapshotCollegeName.includes("cgc")) {
-      const destinationBaseUrl = snapshotCollegeName.includes("amity") 
-        ? "https://regular-amity-api.degreefyd.com" 
-        : "https://regular-cgc-api.degreefyd.com";
-
-      try {
-        // 1️⃣ Step One: Ensure the student exists on the other LMS first
-        // Prepare the lead data for transfer (matching your student.controller.js pattern)
-        const transferPayload = {
-          name: lead.name || lead.student_name || req.body.fullName,
-          email: lead.email || lead.student_email || req.body.email,
-          phoneNumber: lead.mobile || lead.student_phone || req.body.mobile,
-          source: lead.source || req.body.source || "Regular LMS Forward",
-          first_source_url: lead.first_source_url || lead.pageUrl || req.body.pageUrl,
-          is_transfered: true,
-          utm_campaign: req.body.utmCampaign || req.body.utm_campaign,
-          utm_campaign_id: req.body.utmCampaignId || req.body.utm_campaign_id,
-          student_comment: req.body.studentComment || req.body.student_comment,
-        };
-
-        console.log(`📦 Step 1: Transferring student to ${snapshotCollegeName.toUpperCase()} LMS...`);
-        await axios.post(`${destinationBaseUrl}/v1/student/create`, transferPayload, { timeout: 10000 });
-        console.log(`✅ Student transferred successfully to ${snapshotCollegeName.toUpperCase()}`);
-
-        // 2️⃣ Step Two: Forward the Payment Initiation
-        console.log(`💳 Step 2: Forwarding payment initiation to ${snapshotCollegeName.toUpperCase()} LMS...`);
-        console.log("initiationForwardPayload", initiationForwardPayload);
-        
-        await axios.post(
-          `${destinationBaseUrl}/v1/payment/create-order`,
-          initiationForwardPayload,
-          { timeout: 10000 }
-        );
-        console.log(`✅ Payment initiation forwarded to ${snapshotCollegeName.toUpperCase()} LMS`);
-
-      } catch (err) {
-        console.error(`❌ Failed to forward to ${snapshotCollegeName.toUpperCase()} LMS:`);
-        if (err.response) {
-          console.error("Response Data:", JSON.stringify(err.response.data));
-          console.error("Status:", err.response.status);
-        } else {
-          console.error("Error Message:", err.message);
-        }
-      }
-    } else {
-      console.log("ℹ️ Payment initiation logged in regular DB for college:", snapshot.collegeName);
-    }
-
     await transaction.commit();
 
     res.status(200).json({
@@ -490,20 +435,13 @@ export const handleWebhook = async (req, res) => {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
   const signature = req.headers["x-razorpay-signature"];
   const body = JSON.stringify(req.body);
-
-  console.log("🔥 MASTER webhook triggered");
-
-  // ===========================
-  // ✅ SIGNATURE VALIDATION
-  // ===========================
+  console.log("triggered webhook with body:", body);
   if (secret) {
     const expectedSignature = crypto
       .createHmac("sha256", secret)
       .update(body)
       .digest("hex");
-
     if (expectedSignature !== signature) {
-      console.error("❌ Invalid Signature");
       return res
         .status(400)
         .json({ status: "failure", message: "Invalid Signature" });
@@ -511,207 +449,192 @@ export const handleWebhook = async (req, res) => {
   }
 
   const { event, payload } = req.body;
+  const eventId = req.headers["x-razorpay-event-id"];
 
-  // ✅ Safe eventId
-  const eventId =
-    req.headers["x-razorpay-event-id"] ||
-    payload?.payment?.entity?.id ||
-    `fallback_${Date.now()}`;
+  const existingEvent = await WebhookEvent.findOne({ where: { eventId } });
+  if (existingEvent)
+    return res
+      .status(200)
+      .json({ status: "success", message: "Event already processed" });
 
-  console.log("Event:", event);
-  console.log("Event ID:", eventId);
+  const webhookEvent = await WebhookEvent.create({
+    eventId,
+    eventType: event,
+    payload: payload,
+    status: "PENDING",
+  });
 
+  const transaction = await sequelize.transaction();
   try {
-    const paymentEntity = payload?.payment?.entity;
-    const orderId = paymentEntity?.order_id;
+    if (event === "payment.captured" || event === "order.paid") {
+      const paymentEntity = payload.payment.entity;
+      const orderId = paymentEntity.order_id;
 
-    // ===========================
-    // 🔍 GET SNAPSHOT (for routing)
-    // ===========================
-    const snapshotId = paymentEntity?.notes?.snapshot_id;
-
-    const snapshot = snapshotId
-      ? await PricingSnapshot.findByPk(snapshotId)
-      : null;
-
-    const collegeName = (snapshot?.collegeName || "").toLowerCase();
-
-    console.log("College:", collegeName);
-
-    // ============================================================
-    // 🚀 FORWARDING FUNCTION
-    // ============================================================
-    const forwardWebhook = async (url, label) => {
-      try {
-        await axios.post(url, req.body, {
-          timeout: 10000,
-          headers: {
-            "Content-Type": "application/json",
-            "x-razorpay-signature":
-              req.headers["x-razorpay-signature"],
-            "x-razorpay-event-id":
-              req.headers["x-razorpay-event-id"],
-          },
-        });
-
-        console.log(`✅ Forwarded to ${label}`);
-      } catch (err) {
-        console.error(`❌ ${label} forward failed:`, err.message);
-
-        // 🔁 Retry once
-        setTimeout(async () => {
-          try {
-            await axios.post(url, req.body, {
-              timeout: 10000,
-              headers: {
-                "Content-Type": "application/json",
-                "x-razorpay-signature":
-                  req.headers["x-razorpay-signature"],
-                "x-razorpay-event-id":
-                  req.headers["x-razorpay-event-id"],
-              },
-            });
-            console.log(`✅ Retry success (${label})`);
-          } catch (retryErr) {
-            console.error(
-              `❌ Retry failed (${label}):`,
-              retryErr.message
-            );
-          }
-        }, 2000);
-      }
-    };
-
-    // ============================================================
-    // 🟢 ROUTING (NO DB PROCESSING)
-    // ============================================================
-    if (collegeName.includes("amity")) {
-      await forwardWebhook(
-        "https://regular-amity-api.degreefyd.com/v1/payment/webhook",
-        "Amity"
-      );
-      return res.status(200).json({ status: "success" });
-    }
-
-    if (collegeName.includes("cgc")) {
-      await forwardWebhook(
-        "https://regular-cgc-api.degreefyd.com/v1/payment/webhook",
-        "CGC"
-      );
-      return res.status(200).json({ status: "success" });
-    }
-
-    // ============================================================
-    // 🔁 DEFAULT FLOW → MASTER DB
-    // ============================================================
-
-    const existingEvent = await WebhookEvent.findOne({
-      where: { eventId },
-    });
-
-    if (existingEvent) {
-      console.log("⚠️ Duplicate event");
-      return res
-        .status(200)
-        .json({ status: "success", message: "Already processed" });
-    }
-
-    const webhookEvent = await WebhookEvent.create({
-      eventId,
-      eventType: event,
-      payload,
-      status: "PENDING",
-    });
-
-    const transaction = await sequelize.transaction();
-
-    try {
       const paymentOrder = await PaymentOrder.findOne({
         where: { razorpayOrderId: orderId },
         transaction,
       });
 
-      if (!paymentOrder) {
-        throw new Error("PaymentOrder not found");
-      }
-
-      const snapshot = await PricingSnapshot.findByPk(
-        paymentOrder.pricingSnapshotId,
-        { transaction }
-      );
-
-      // ===========================
-      // ✅ SUCCESS
-      // ===========================
-      if (event === "payment.captured" || event === "order.paid") {
+      if (paymentOrder) {
         paymentOrder.status = "PAID";
         paymentOrder.amountPaid = paymentEntity.amount / 100;
         paymentOrder.amountDue = 0;
 
-        const payments = Array.isArray(paymentOrder.payments)
+        const currentPayments = Array.isArray(paymentOrder.payments)
           ? paymentOrder.payments
           : [];
-
-        payments.push({
+        currentPayments.push({
           razorpayPaymentId: paymentEntity.id,
           status: paymentEntity.status,
           method: paymentEntity.method,
+          email: paymentEntity.email,
+          contact: paymentEntity.contact,
+          createdAt: new Date(),
         });
-
-        paymentOrder.payments = payments;
+        paymentOrder.payments = currentPayments;
         await paymentOrder.save({ transaction });
 
+        const snapshot = await PricingSnapshot.findByPk(
+          paymentOrder.pricingSnapshotId,
+          { transaction },
+        );
         if (snapshot) {
           snapshot.status = "PAID";
           await snapshot.save({ transaction });
+
+          const Model = getModel(snapshot.onModel);
+          const idField = Model === Student ? "student_id" : "id";
+          const lead = await Model.findByPk(snapshot.admissionId, {
+            transaction,
+          });
+
+          if (lead) {
+            lead.paymentStatus = "COMPLETED";
+            if (Model !== Student) lead.UTRNumber = paymentEntity.id;
+            await lead.save({ transaction });
+
+            await GenerateEmailFunction(
+              lead,
+              snapshot.onModel === "registrations"
+                ? "Application Received"
+                : "Admission Received",
+            );
+
+            let targetStudentId = Model === Student ? lead.student_id : null;
+
+            if (!targetStudentId) {
+              const phoneToSearch = lead.mobile || lead.student_phone;
+              if (phoneToSearch) {
+                const linkedStudent = await Student.findOne({
+                  where: { student_phone: phoneToSearch },
+                  transaction,
+                });
+                if (linkedStudent) targetStudentId = linkedStudent.student_id;
+              }
+            }
+            console.log(targetStudentId);
+            if (targetStudentId) {
+              await StudentRemark.create(
+                {
+                  student_id: targetStudentId,
+                  lead_status:
+                    snapshot.paymentFor === "admission"
+                      ? "Admission"
+                      : "Application",
+                  lead_sub_status:
+                    snapshot.paymentFor === "admission"
+                      ? "Partially Paid"
+                      : "Form Filled_Degreefyd",
+                  calling_status: "Connected",
+                  sub_calling_status: "Warm",
+                  remarks: `Payment of amount ${snapshot.finalAmount} completed successfully via ${snapshot.onModel}. Payment ID: ${paymentEntity.id}`,
+                  fees: snapshot.finalAmount,
+                  created_at: new Date(),
+                },
+                { transaction },
+              );
+              await Student.update(
+                {
+                  remarks_count: sequelize.literal("remarks_count + 1"),
+                },
+                { where: { student_id: targetStudentId }, transaction },
+              );
+            }
+          }
+
+          if (snapshot.appliedCouponCode) {
+            await Coupon.increment("usedCount", {
+              by: 1,
+              where: { code: snapshot.appliedCouponCode },
+              transaction,
+            });
+          }
         }
       }
+    } else if (event === "payment.failed") {
+      const paymentEntity = payload.payment.entity;
+      const orderId = paymentEntity.order_id;
 
-      // ===========================
-      // ❌ FAILED
-      // ===========================
-      else if (event === "payment.failed") {
+      const paymentOrder = await PaymentOrder.findOne({
+        where: { razorpayOrderId: orderId },
+        transaction,
+      });
+
+      if (paymentOrder) {
         paymentOrder.status = "FAILED";
         paymentOrder.attempts += 1;
-
+        const currentPayments = Array.isArray(paymentOrder.payments)
+          ? paymentOrder.payments
+          : [];
+        currentPayments.push({
+          razorpayPaymentId: paymentEntity.id,
+          status: paymentEntity.status,
+          method: paymentEntity.method,
+          email: paymentEntity.email,
+          contact: paymentEntity.contact,
+          createdAt: new Date(),
+          error_code: paymentEntity.error_code,
+          error_description: paymentEntity.error_description,
+        });
+        paymentOrder.payments = currentPayments;
         await paymentOrder.save({ transaction });
 
+        const snapshot = await PricingSnapshot.findByPk(
+          paymentOrder.pricingSnapshotId,
+          { transaction },
+        );
         if (snapshot) {
           snapshot.status = "FAILED";
           await snapshot.save({ transaction });
+
+          const Model = getModel(snapshot.onModel);
+          const lead = await Model.findByPk(snapshot.admissionId, {
+            transaction,
+          });
+          if (lead) {
+            await GenerateEmailFunction(
+              lead,
+              "Application Payment Failed",
+              paymentEntity.error_description || "Internal Payment Link Error",
+            );
+          }
         }
       }
-
-      webhookEvent.status = "PROCESSED";
-      webhookEvent.processedAt = new Date();
-
-      await webhookEvent.save({ transaction });
-
-      await transaction.commit();
-
-      console.log("✅ MASTER DB processed");
-
-      return res.status(200).json({ status: "success" });
-    } catch (err) {
-      await transaction.rollback();
-
-      console.error("❌ DB processing error:", err.message);
-
-      webhookEvent.status = "FAILED";
-      webhookEvent.errorLog = err.message;
-
-      await webhookEvent.save();
-
-      return res
-        .status(500)
-        .json({ status: "failure", message: err.message });
     }
-  } catch (outerErr) {
-    console.error("❌ Outer error:", outerErr.message);
 
-    return res
-      .status(500)
-      .json({ status: "failure", message: outerErr.message });
+    webhookEvent.status = "PROCESSED";
+    webhookEvent.processedAt = new Date();
+    await webhookEvent.save({ transaction });
+
+    await transaction.commit();
+    res.status(200).json({ status: "success" });
+  } catch (error) {
+    if (transaction) await transaction.rollback();
+    console.error("Webhook processing error:", error);
+    webhookEvent.status = "FAILED";
+    webhookEvent.errorLog = error.message;
+    await webhookEvent.save();
+    res.status(500).json({ status: "failure", message: error.message });
   }
 };
 

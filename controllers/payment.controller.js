@@ -521,7 +521,7 @@ export const handleWebhook = async (req, res) => {
             );
 
             let targetStudentId = Model === Student ? lead.student_id : null;
-
+console.log("lead before searching student", lead,targetStudentId);
             if (!targetStudentId) {
               const phoneToSearch = lead.mobile || lead.student_phone;
               if (phoneToSearch) {

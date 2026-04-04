@@ -531,10 +531,9 @@ export const handleWebhook = async (req, res) => {
                 });
                 if (linkedStudent) targetStudentId = linkedStudent.student_id;
               }
+              
             }
-            console.log(targetStudentId);
-            if (targetStudentId) {
-              if (snapshot.collegeName.includes("amity")) {
+            if (snapshot.collegeName.includes("amity")) {
                 await axios.post(
                   `https://regular-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
                   {
@@ -552,7 +551,8 @@ export const handleWebhook = async (req, res) => {
                     paymentId: paymentEntity.id,
                   },
                 );
-              } else {
+              }
+            if (targetStudentId) {
                 await StudentRemark.create(
                   {
                     student_id: targetStudentId,
@@ -578,7 +578,7 @@ export const handleWebhook = async (req, res) => {
                   },
                   { where: { student_id: targetStudentId }, transaction },
                 );
-              }
+              
             }
           }
           if (snapshot.appliedCouponCode) {

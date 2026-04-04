@@ -10,7 +10,8 @@ import {
     updateLead,
     abandonLead,
     getPricingBySlug,
-    validateCoupon
+    validateCoupon,
+    updatePaymentRemarks
 } from "../controllers/payment.controller.js";
 
 const api = express.Router();
@@ -33,5 +34,6 @@ api.get("/reports", getPaymentReports);
 api.get("/amity-reports", getPaymentReports);
 api.get("/cgc-reports", getPaymentReports);
 api.get("/cu/lpu-reports", getPaymentReports);
+api.post("/updatePaymentRemarks", updatePaymentRemarks);
 
 export default api;

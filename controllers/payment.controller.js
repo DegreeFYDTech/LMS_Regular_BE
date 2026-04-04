@@ -534,18 +534,22 @@ export const handleWebhook = async (req, res) => {
             }
             console.log(targetStudentId);
             if (targetStudentId) {
-              if (snapshot.collegeName === "Amity University") {
+              if (snapshot.collegeName.includes("amity")) {
                 await axios.post(
                   `https://regular-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
                   {
-                    studentId: targetStudentId,
+                    phoneToSearch: phoneToSearch,
+                    snapshot,
+                    paymentId: paymentEntity.id,
                   },
                 );
-              } else if (snapshot.collegeName === "CGC Landran") {
+              } else if (snapshot.collegeName.includes("cgc")) {
                 await axios.post(
                   `https://cgc-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
                   {
-                    studentId: targetStudentId,
+                    phoneToSearch: phoneToSearch,
+                    snapshot,
+                    paymentId: paymentEntity.id,
                   },
                 );
               } else {

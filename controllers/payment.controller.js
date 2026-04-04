@@ -537,7 +537,7 @@ console.log("lead before searching student", lead,targetStudentId);
               await axios.post(
                 `https://regular-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
                 {
-                  phoneToSearch: phoneToSearch,
+                  phoneToSearch: targetStudentId.dataValues.mobile,
                   snapshot,
                   paymentId: paymentEntity.id,
                 },
@@ -547,7 +547,7 @@ console.log("lead before searching student", lead,targetStudentId);
               await axios.post(
                 `https://cgc-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
                 {
-                  phoneToSearch: phoneToSearch,
+                  phoneToSearch: targetStudentId.dataValues.mobile,
                   snapshot,
                   paymentId: paymentEntity.id,
                 },

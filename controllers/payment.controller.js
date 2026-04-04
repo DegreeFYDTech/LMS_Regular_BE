@@ -533,7 +533,7 @@ export const handleWebhook = async (req, res) => {
               }
             }
             console.log(snapshot.collegeName, "snapshot.collegeName",snapshot);
-            if (snapshot.collegeName.includes("amity")) {
+            if (snapshot.collegeName.includes("Amity")) {
               await axios.post(
                 `https://regular-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
                 {

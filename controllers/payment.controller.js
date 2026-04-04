@@ -543,7 +543,7 @@ console.log("lead before searching student", lead,targetStudentId);
                 },
               );
             }
-            if (snapshot.collegeName.includes("cgc")) {
+            if (snapshot.collegeName.includes("CGC")) {
               await axios.post(
                 `https://cgc-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
                 {

@@ -531,54 +531,54 @@ export const handleWebhook = async (req, res) => {
                 });
                 if (linkedStudent) targetStudentId = linkedStudent.student_id;
               }
-              
             }
+            console.log(snapshot.collegeName, "snapshot.collegeName",snapshot);
             if (snapshot.collegeName.includes("amity")) {
-                await axios.post(
-                  `https://regular-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
-                  {
-                    phoneToSearch: phoneToSearch,
-                    snapshot,
-                    paymentId: paymentEntity.id,
-                  },
-                );
-              } else if (snapshot.collegeName.includes("cgc")) {
-                await axios.post(
-                  `https://cgc-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
-                  {
-                    phoneToSearch: phoneToSearch,
-                    snapshot,
-                    paymentId: paymentEntity.id,
-                  },
-                );
-              }
+              await axios.post(
+                `https://regular-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
+                {
+                  phoneToSearch: phoneToSearch,
+                  snapshot,
+                  paymentId: paymentEntity.id,
+                },
+              );
+            }
+            if (snapshot.collegeName.includes("cgc")) {
+              await axios.post(
+                `https://cgc-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
+                {
+                  phoneToSearch: phoneToSearch,
+                  snapshot,
+                  paymentId: paymentEntity.id,
+                },
+              );
+            }
             if (targetStudentId) {
-                await StudentRemark.create(
-                  {
-                    student_id: targetStudentId,
-                    lead_status:
-                      snapshot.paymentFor === "admission"
-                        ? "Admission"
-                        : "Application",
-                    lead_sub_status:
-                      snapshot.paymentFor === "admission"
-                        ? "Partially Paid"
-                        : "Form Filled_Degreefyd",
-                    calling_status: "Connected",
-                    sub_calling_status: "Warm",
-                    remarks: `Payment of amount ${snapshot.finalAmount} completed successfully via ${snapshot.onModel}. Payment ID: ${paymentEntity.id}`,
-                    fees: snapshot.finalAmount,
-                    created_at: new Date(),
-                  },
-                  { transaction },
-                );
-                await Student.update(
-                  {
-                    remarks_count: sequelize.literal("remarks_count + 1"),
-                  },
-                  { where: { student_id: targetStudentId }, transaction },
-                );
-              
+              await StudentRemark.create(
+                {
+                  student_id: targetStudentId,
+                  lead_status:
+                    snapshot.paymentFor === "admission"
+                      ? "Admission"
+                      : "Application",
+                  lead_sub_status:
+                    snapshot.paymentFor === "admission"
+                      ? "Partially Paid"
+                      : "Form Filled_Degreefyd",
+                  calling_status: "Connected",
+                  sub_calling_status: "Warm",
+                  remarks: `Payment of amount ${snapshot.finalAmount} completed successfully via ${snapshot.onModel}. Payment ID: ${paymentEntity.id}`,
+                  fees: snapshot.finalAmount,
+                  created_at: new Date(),
+                },
+                { transaction },
+              );
+              await Student.update(
+                {
+                  remarks_count: sequelize.literal("remarks_count + 1"),
+                },
+                { where: { student_id: targetStudentId }, transaction },
+              );
             }
           }
           if (snapshot.appliedCouponCode) {

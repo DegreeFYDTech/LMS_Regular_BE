@@ -84,7 +84,7 @@ export const initiateLead = async (req, res) => {
       paymentStatus: "PENDING",
       lastQualificationPercentage:
         req.body.lastQualificationPercentage === "" ||
-          req.body.lastQualificationPercentage === undefined
+        req.body.lastQualificationPercentage === undefined
           ? null
           : req.body.lastQualificationPercentage,
     };
@@ -134,41 +134,41 @@ export const updateLead = async (req, res) => {
     const safeFields =
       Model === Student
         ? [
-          "highest_degree",
-          "completion_year",
-          "current_profession",
-          "current_role",
-          "work_experience",
-          "student_age",
-          "objective",
-          "mode",
-          "preferred_stream",
-          "preferred_budget",
-          "preferred_degree",
-          "preferred_level",
-          "preferred_specialization",
-          "preferred_city",
-          "preferred_state",
-          "preferred_university",
-        ]
+            "highest_degree",
+            "completion_year",
+            "current_profession",
+            "current_role",
+            "work_experience",
+            "student_age",
+            "objective",
+            "mode",
+            "preferred_stream",
+            "preferred_budget",
+            "preferred_degree",
+            "preferred_level",
+            "preferred_specialization",
+            "preferred_city",
+            "preferred_state",
+            "preferred_university",
+          ]
         : [
-          "alternateNumber",
-          "gender",
-          "dob",
-          "state",
-          "city",
-          "address",
-          "fatherName",
-          "fatherPhone",
-          "fatherOccupation",
-          "fatherEmail",
-          "campusLocation",
-          "interestedCourse",
-          "specialization",
-          "lastQualification",
-          "lastQualificationPercentage",
-          "collegeForApplied",
-        ];
+            "alternateNumber",
+            "gender",
+            "dob",
+            "state",
+            "city",
+            "address",
+            "fatherName",
+            "fatherPhone",
+            "fatherOccupation",
+            "fatherEmail",
+            "campusLocation",
+            "interestedCourse",
+            "specialization",
+            "lastQualification",
+            "lastQualificationPercentage",
+            "collegeForApplied",
+          ];
 
     safeFields.forEach((field) => {
       if (formData[field] !== undefined) lead[field] = formData[field];
@@ -320,30 +320,30 @@ export const createAdmissionOrder = async (req, res) => {
       const leadData =
         Model === Student
           ? {
-            student_email: email?.toLowerCase(),
-            student_phone: mobile,
-            preferred_university: collegeForApplied
-              ? [collegeForApplied]
-              : [],
-            ...req.body,
-            lastQualificationPercentage:
-              req.body.lastQualificationPercentage === "" ||
+              student_email: email?.toLowerCase(),
+              student_phone: mobile,
+              preferred_university: collegeForApplied
+                ? [collegeForApplied]
+                : [],
+              ...req.body,
+              lastQualificationPercentage:
+                req.body.lastQualificationPercentage === "" ||
                 req.body.lastQualificationPercentage === undefined
-                ? null
-                : req.body.lastQualificationPercentage,
-          }
+                  ? null
+                  : req.body.lastQualificationPercentage,
+            }
           : {
-            email: email?.toLowerCase(),
-            mobile: mobile,
-            collegeForApplied: collegeForApplied,
-            name: req.body.fullName,
-            ...req.body,
-            lastQualificationPercentage:
-              req.body.lastQualificationPercentage === "" ||
+              email: email?.toLowerCase(),
+              mobile: mobile,
+              collegeForApplied: collegeForApplied,
+              name: req.body.fullName,
+              ...req.body,
+              lastQualificationPercentage:
+                req.body.lastQualificationPercentage === "" ||
                 req.body.lastQualificationPercentage === undefined
-                ? null
-                : req.body.lastQualificationPercentage,
-          };
+                  ? null
+                  : req.body.lastQualificationPercentage,
+            };
       lead = await Model.create(leadData, { transaction });
     }
 
@@ -810,7 +810,6 @@ export const getPaymentsByStudentWithDetails = async (req, res) => {
   }
 };
 
-
 export const getPaymentReports = async (req, res) => {
   try {
     const { status, startDate, endDate, onModel, college } = req.query;
@@ -821,7 +820,10 @@ export const getPaymentReports = async (req, res) => {
     } else if (req.originalUrl.includes("cgc")) {
       collegeFilters = ["CGC Landran"];
     } else if (req.originalUrl.includes("cu/lpu")) {
-      collegeFilters = ["chandigarh University", "lovely professional university"];
+      collegeFilters = [
+        "chandigarh University",
+        "lovely professional university",
+      ];
     }
 
     if (college) {
@@ -916,9 +918,7 @@ export const getPaymentReports = async (req, res) => {
 
     // Admissions
     if (modelMap.admissions.size) {
-      const ids = Array.from(modelMap.admissions)
-        .map(Number)
-        .filter(Boolean);
+      const ids = Array.from(modelMap.admissions).map(Number).filter(Boolean);
 
       if (ids.length) {
         const admissions = await Admission.findAll({
@@ -952,8 +952,7 @@ export const getPaymentReports = async (req, res) => {
     const formattedData = orders.map((order) => {
       const snap = order.snapshot || {};
 
-      const lead =
-        leadsData[snap.onModel]?.[snap.admissionId] || null;
+      const lead = leadsData[snap.onModel]?.[snap.admissionId] || null;
 
       return {
         id: order.id,
@@ -978,9 +977,7 @@ export const getPaymentReports = async (req, res) => {
               student_phone: lead.student_phone || lead.mobile || "N/A",
               student_email: lead.student_email || lead.email || "N/A",
               assigned_counsellor_id:
-                lead.assigned_counsellor_id ||
-                lead.counsellor_id ||
-                "N/A",
+                lead.assigned_counsellor_id || lead.counsellor_id || "N/A",
             }
           : null,
       };
@@ -990,15 +987,13 @@ export const getPaymentReports = async (req, res) => {
       total_records: orders.length,
       success: orders.filter((o) => o.status === "PAID").length,
       failed: orders.filter((o) => o.status === "FAILED").length,
-      pending: orders.filter((o) =>
-        ["PENDING", "CREATED"].includes(o.status)
-      ).length,
+      pending: orders.filter((o) => ["PENDING", "CREATED"].includes(o.status))
+        .length,
 
       total_revenue: orders
         .filter((o) => o.status === "PAID")
         .reduce((sum, o) => sum + parseFloat(o.amount || 0), 0),
     };
-
 
     return res.status(200).json({
       success: true,
@@ -1018,22 +1013,24 @@ export const updatePaymentRemarks = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const { studentId, snapshot, paymentEntity } = req.body;
+    const { phoneToSearch, snapshot, paymentEntity } = req.body;
 
-    if (!studentId) {
+    if (!phoneToSearch) {
       return res.status(400).json({
         success: false,
-        message: "studentId is required",
+        message: "Phone number is required",
       });
     }
-
+    const student = await Student.findOne({
+      where: { student_phone: phoneToSearch },
+      transaction,
+    });
+    console.log(student);
     await StudentRemark.create(
       {
-        student_id: studentId,
+        student_id: student.student_id,
         lead_status:
-          snapshot?.paymentFor === "admission"
-            ? "Admission"
-            : "Application",
+          snapshot?.paymentFor === "admission" ? "Admission" : "Application",
 
         lead_sub_status:
           snapshot?.paymentFor === "admission"
@@ -1048,7 +1045,7 @@ export const updatePaymentRemarks = async (req, res) => {
         feesAmount: snapshot?.finalAmount,
         created_at: new Date(),
       },
-      { transaction }
+      { transaction },
     );
 
     await Student.update(
@@ -1056,9 +1053,9 @@ export const updatePaymentRemarks = async (req, res) => {
         remarks_count: sequelize.literal("remarks_count + 1"),
       },
       {
-        where: { student_id: studentId },
+        where: { student_id: student.student_id },
         transaction,
-      }
+      },
     );
 
     await transaction.commit();
@@ -1067,7 +1064,6 @@ export const updatePaymentRemarks = async (req, res) => {
       success: true,
       message: "Payment remark added successfully",
     });
-
   } catch (error) {
     await transaction.rollback();
 

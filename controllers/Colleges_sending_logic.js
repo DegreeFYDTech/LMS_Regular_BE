@@ -447,19 +447,16 @@ function  processSpecialUniversityApiResponse(apiResponse, collegeName) {
     id: message?.Id,
   });
 
-  // Handle invalid response structure
   if (status !== "Success") {
     console.error(`❌ Non-success status from ${collegeName}:`, status);
     return "Failed due to Technical Issues";
   }
 
-  // Handle missing message
   if (!message) {
     console.error(`❌ No message object in response from ${collegeName}`);
     return "Failed due to Technical Issues";
   }
 
-  // Handle case where message is a string error
   if (typeof message === "string") {
     console.log(`⚠️ String message from ${collegeName}:`, message);
 
@@ -471,7 +468,6 @@ function  processSpecialUniversityApiResponse(apiResponse, collegeName) {
     return "Failed due to Technical Issues";
   }
 
-  // Handle object message with IsCreated flag
   if (typeof message === "object") {
     if (message.IsCreated === true) {
       console.log(`✅ ${collegeName} - Lead created successfully, proceed`);

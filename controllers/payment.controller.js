@@ -532,7 +532,7 @@ console.log("lead before searching student", lead,targetStudentId);
                 if (linkedStudent) targetStudentId = linkedStudent.student_id;
               }
             }
-            console.log(snapshot.collegeName, "snapshot.collegeName",snapshot,lead);
+            console.log(snapshot.collegeName, "snapshot.collegeName",snapshot,targetStudentId.dataValues);
             if (snapshot.collegeName.includes("Amity")) {
               await axios.post(
                 `https://regular-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,

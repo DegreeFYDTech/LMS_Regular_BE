@@ -1349,7 +1349,7 @@ const getCollegesPivotReport = async (
                     AND csh.course_id = first_entry.course_id 
                     AND csh.created_at = first_entry.first_entry_date
       INNER JOIN university_courses uc ON csh.course_id = uc.course_id
-      WHERE 1=1
+      WHERE csh.course_status != 'Walkin Marked'
     `;
     
     // Add date range filter on the first entry date
@@ -1384,7 +1384,7 @@ const getCollegesPivotReport = async (
           csh_inner.course_id, 
           MAX(csh_inner.created_at) AS latest_date
         FROM course_status_journeys csh_inner
-        WHERE 1=1
+        WHERE csh_inner.course_status != 'Walkin Marked'
     `;
     
     if (startDate) {
@@ -1402,7 +1402,7 @@ const getCollegesPivotReport = async (
                AND csh.course_id = latest.course_id 
                AND csh.created_at = latest.latest_date
       INNER JOIN university_courses uc ON csh.course_id = uc.course_id
-      WHERE 1=1
+      WHERE csh.course_status != 'Walkin Marked'
     `;
     
     // Add course filter
@@ -1427,12 +1427,13 @@ const getCollegesPivotReport = async (
           course_id, 
           MAX(created_at) AS latest_date
         FROM course_status_journeys
+        WHERE course_status != 'Walkin Marked'
         GROUP BY student_id, course_id
       ) latest ON csh.student_id = latest.student_id 
                AND csh.course_id = latest.course_id 
                AND csh.created_at = latest.latest_date
       INNER JOIN university_courses uc ON csh.course_id = uc.course_id
-      WHERE 1=1
+      WHERE csh.course_status != 'Walkin Marked'
     `;
     
     // Add course filter
@@ -1530,12 +1531,13 @@ const getCounsellorPivotReport = async (
           course_id, 
           MIN(created_at) AS first_entry_date
         FROM course_status_journeys
+        WHERE course_status != 'Walkin Marked'
         GROUP BY student_id, course_id
       ) first_entry ON csh.student_id = first_entry.student_id 
                     AND csh.course_id = first_entry.course_id 
                     AND csh.created_at = first_entry.first_entry_date
       INNER JOIN university_courses uc ON csh.course_id = uc.course_id
-      WHERE 1=1
+      WHERE csh.course_status != 'Walkin Marked'
     `;
     
     // Add date range filter on the first entry date
@@ -1569,7 +1571,7 @@ const getCounsellorPivotReport = async (
           csh_inner.course_id, 
           MAX(csh_inner.created_at) AS latest_date
         FROM course_status_journeys csh_inner
-        WHERE 1=1
+        WHERE csh_inner.course_status != 'Walkin Marked'
     `;
     
     if (startDate) {
@@ -1587,7 +1589,7 @@ const getCounsellorPivotReport = async (
                AND csh.course_id = latest.course_id 
                AND csh.created_at = latest.latest_date
       INNER JOIN university_courses uc ON csh.course_id = uc.course_id
-      WHERE 1=1
+      WHERE csh.course_status != 'Walkin Marked'
     `;
     
     // Add course filter
@@ -1611,12 +1613,13 @@ const getCounsellorPivotReport = async (
           course_id, 
           MAX(created_at) AS latest_date
         FROM course_status_journeys
+        WHERE course_status != 'Walkin Marked'
         GROUP BY student_id, course_id
       ) latest ON csh.student_id = latest.student_id 
                AND csh.course_id = latest.course_id 
                AND csh.created_at = latest.latest_date
       INNER JOIN university_courses uc ON csh.course_id = uc.course_id
-      WHERE 1=1
+      WHERE csh.course_status != 'Walkin Marked'
     `;
     
     // Add course filter

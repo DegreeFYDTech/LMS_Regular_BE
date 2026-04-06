@@ -52,7 +52,8 @@ export const createLeadActivity = async (leadData, studentId) => {
       is_transfer: leadData.isTransfer || false,
       source: source,
       source_url: sourceurl,
-
+      lead_type: leadData.leadType || "",
+      preferred_college_cll: leadData.preferred_college_cll || [],
       utm_source: leadData.utmSource || "",
       utm_medium: leadData.utmMedium || "",
       utm_keyword: leadData.utmKeyword || "",

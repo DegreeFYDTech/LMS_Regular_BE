@@ -13,6 +13,8 @@ const StudentLeadActivity = sequelize.define(
     form_name: { type: DataTypes.STRING, defaultValue: "" },
     source: { type: DataTypes.STRING, defaultValue: "" },
     source_url: { type: DataTypes.TEXT, defaultValue: "" },
+    lead_type: DataTypes.STRING,
+    preferred_college_cll: DataTypes.ARRAY(DataTypes.TEXT),
     utm_source: { type: DataTypes.STRING, defaultValue: "" },
     utm_medium: { type: DataTypes.STRING, defaultValue: "" },
     utm_keyword: { type: DataTypes.STRING, defaultValue: "" },

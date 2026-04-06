@@ -797,7 +797,8 @@ export const processStudentLead = async (leadData) => {
       leadData.current_state ||
       leadData.CURRENT_STATE ||
       "",
-
+    lead_type: leadData.leadType || "",
+    preferred_college_cll: leadData.preferred_college_cll || [],
     preferred_university: leadData.preferred_university,
 
     degree:

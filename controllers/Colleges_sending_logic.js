@@ -476,7 +476,7 @@ function  processSpecialUniversityApiResponse(apiResponse, collegeName) {
 
     if (
       message.IsCreated === false ||
-      responseData?.error === "A Lead with same Email already exists."
+      responseData?.error == "A Lead with same Email already exists."
     ) {
       console.log(`⚠️ ${collegeName} - Lead already exists, do not proceed`);
       console.log(`   Existing lead ID: ${message.RelatedId || message.Id}`);

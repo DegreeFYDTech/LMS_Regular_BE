@@ -10,6 +10,8 @@ const StudentLeadActivity = sequelize.define(
     parents_number: { type: DataTypes.STRING, defaultValue: "" },
     whatsapp: { type: DataTypes.STRING, defaultValue: "" },
     cta_name: { type: DataTypes.STRING, defaultValue: "" },
+    lead_type: DataTypes.STRING,
+    preferred_college_cll: DataTypes.ARRAY(DataTypes.TEXT),
     form_name: { type: DataTypes.STRING, defaultValue: "" },
     source: { type: DataTypes.STRING, defaultValue: "" },
     source_url: { type: DataTypes.TEXT, defaultValue: "" },

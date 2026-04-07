@@ -30,6 +30,7 @@ export const normalizeLeadAnswers = (input) => {
 };
 
 export const createLeadActivity = async (leadData, studentId) => {
+  console.log("Creating lead activity for studentId:", leadData);
   try {
     const sourceurl =
       leadData.first_source_url ||

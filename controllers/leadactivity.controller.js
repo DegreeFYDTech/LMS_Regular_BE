@@ -74,7 +74,7 @@ export const createLeadActivity = async (leadData, studentId) => {
       highest_qualification: leadData.highestQualification || "",
       working_professional: leadData.workingProfessional ?? false,
       student_status: "new",
-      lead_type: leadData.leadType || "",
+      lead_type: leadData.lead_type || "",
       preferred_college_cll: leadData.preferred_college_cll || [],
       destination_number: leadData.DestinationNumber || "",
       dial_whom_number: leadData.DialWhomNumber || "",

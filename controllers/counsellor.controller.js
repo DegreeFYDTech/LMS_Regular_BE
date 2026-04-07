@@ -32,11 +32,11 @@ export const registerCounsellor = async (req, res) => {
       assigned_to: teamOwnerId || null
     });
 
-    const token = generateTokenAndSetCookie(res, {
-      id: newCounsellor.counsellor_id,
-      role: newCounsellor.counsellor_role,
-      name: newCounsellor.counsellor_name
-    }, 'token');
+    // const token = generateTokenAndSetCookie(res, {
+    //   id: newCounsellor.counsellor_id,
+    //   role: newCounsellor.counsellor_role,
+    //   name: newCounsellor.counsellor_name
+    // }, 'token');
 
     res.status(201).json({
       counsellor: newCounsellor

@@ -58,6 +58,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       lastCallDateL3_end,
       preferredCity,
       preferredState,
+      isReassignedYet,
       currentCity,
       currentState,
       preferredStream,
@@ -98,7 +99,10 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       leadStatus = leadStatus[0];
       console.log("Converted leadStatus from array to string:", leadStatus);
     } else if (Array.isArray(leadStatus) && leadStatus.length > 1) {
-      console.log("Keeping leadStatus as array with multiple values:", leadStatus);
+      console.log(
+        "Keeping leadStatus as array with multiple values:",
+        leadStatus,
+      );
       // Keep as array for multiple OR conditions
     }
 
@@ -143,7 +147,9 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         ? values
         : values.split(",").map((v) => v.trim());
       if (arr.length === 0) return "";
-      const conditions = arr.map(v => `${field} ILIKE ${escape(v)}`).join(" OR ");
+      const conditions = arr
+        .map((v) => `${field} ILIKE ${escape(v)}`)
+        .join(" OR ");
       return `(${conditions})`;
     };
 
@@ -419,7 +425,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
 
     const leadReactive = boolSQL("s.is_reactivity", lead_reactive);
     if (leadReactive) where.push(leadReactive);
-
+    const isRY = boolSQL("s.is_reassigned_yet", isReassignedYet);
+    if (isRY) where.push(isRY);
     if (hasUnreadMessages === "true")
       where.push("s.number_of_unread_messages > 0");
     else if (hasUnreadMessages === "false")

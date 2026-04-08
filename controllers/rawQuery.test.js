@@ -637,42 +637,44 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     if (utmCreativeId)
       utmWhere.push(`la.utm_creative_id = ${escape(utmCreativeId)}`);
 
-    const latestRemarkWhere =
-      data === "l3" && userRole === "l3"
-        ? `WHERE sr.counsellor_id = ${escape(userId)}`
-        : data === "l3" &&
-            userRole === "to_l3" &&
-            selectedagent &&
-            l3TeamIds.includes(selectedagent)
-          ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
-          : data === "l3" &&
-              userRole === "to_l3" &&
-              !selectedagent &&
-              l3TeamIds.length > 0
-            ? `WHERE sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})`
-            : data === "l3" &&
-                userRole === "to" &&
-                selectedagent &&
-                l3TeamIds.includes(selectedagent)
-              ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
-              : data === "l3" &&
-                  userRole === "to" &&
-                  !selectedagent &&
-                  l3TeamIds.length > 0
-                ? `WHERE sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})`
-                : data === "l3" && selectedagent
-                  ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
-                  : data === "l3" && !selectedagent
-                    ? `WHERE 1=1`
-                    : selectedagent &&
-                        isSupervisorView &&
-                        data &&
-                        data !== "to" &&
-                        data !== "l3"
-                      ? `WHERE sr.counsellor_id IN (${supervisorCounsellorIds.map(escape).join(",")})`
-                      : selectedagent && data && data !== "to" && data !== "l3"
-                        ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
-                        : "";
+    const latestRemarkWhere = (() => {
+  // For L2 - show ALL remarks regardless of counsellor
+  if (data === "l2") {
+    return `WHERE 1=1`;  // This will show all remarks, bypassing any RLS filter
+  }
+  
+  // For L3 and other roles, keep existing logic
+  if (data === "l3" && userRole === "l3") {
+    return `WHERE sr.counsellor_id = ${escape(userId)}`;
+  }
+  if (data === "l3" && userRole === "to_l3" && selectedagent && l3TeamIds.includes(selectedagent)) {
+    return `WHERE sr.counsellor_id = ${escape(selectedagent)}`;
+  }
+  if (data === "l3" && userRole === "to_l3" && !selectedagent && l3TeamIds.length > 0) {
+    return `WHERE sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})`;
+  }
+  if (data === "l3" && userRole === "to" && selectedagent && l3TeamIds.includes(selectedagent)) {
+    return `WHERE sr.counsellor_id = ${escape(selectedagent)}`;
+  }
+  if (data === "l3" && userRole === "to" && !selectedagent && l3TeamIds.length > 0) {
+    return `WHERE sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})`;
+  }
+  if (data === "l3" && selectedagent) {
+    return `WHERE sr.counsellor_id = ${escape(selectedagent)}`;
+  }
+  if (data === "l3" && !selectedagent) {
+    return `WHERE 1=1`;
+  }
+  if (selectedagent && isSupervisorView && data && data !== "to" && data !== "l3") {
+    return `WHERE sr.counsellor_id IN (${supervisorCounsellorIds.map(escape).join(",")})`;
+  }
+  if (selectedagent && data && data !== "to" && data !== "l3") {
+    return `WHERE sr.counsellor_id = ${escape(selectedagent)}`;
+  }
+  
+  // Default: empty string (but for L2 we already returned above)
+  return "";
+})();
 
     let l3CounsellorFilter = "";
     if (data === "l3") {

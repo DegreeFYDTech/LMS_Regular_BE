@@ -1,13 +1,15 @@
-
-import { Sequelize, Op, literal, fn, col } from 'sequelize';
-import Student from '../models/Student.js';
-import Counsellor from '../models/Counsellor.js';
-import StudentRemark from '../models/StudentRemark.js';
-import StudentLeadActivity from '../models/StudentLeadActivity.js';
-import { getOptimizedOverallStatsFromHelper as getOverallStats } from './Student_Stats.js';
-import { getWhishListStudentHelper } from './whishlist-table.js';
-import { getStudentsRawSQL as getStudentsRawQuery, getStudentsRawSQL } from './rawQuery.test.js'
-import Analyser from '../models/Analyser.js';
+import { Sequelize, Op, literal, fn, col } from "sequelize";
+import Student from "../models/Student.js";
+import Counsellor from "../models/Counsellor.js";
+import StudentRemark from "../models/StudentRemark.js";
+import StudentLeadActivity from "../models/StudentLeadActivity.js";
+import { getOptimizedOverallStatsFromHelper as getOverallStats } from "./Student_Stats.js";
+import { getWhishListStudentHelper } from "./whishlist-table.js";
+import {
+  getStudentsRawSQL as getStudentsRawQuery,
+  getStudentsRawSQL,
+} from "./rawQuery.test.js";
+import Analyser from "../models/Analyser.js";
 
 export const getStudentshelper = async (filters) => {
   try {
@@ -60,15 +62,14 @@ export const getStudentshelper = async (filters) => {
       callbackDate_start,
       callbackDate_end,
       csv_exports = false,
-      sortBy = 'created_at',
-      sortOrder = 'desc',
+      sortBy = "created_at",
+      sortOrder = "desc",
       isreactivity,
       callback,
       remarkssort,
       createdAtsort,
       lastCallsort,
       nextCallbacksort,
-
     } = filters;
 
     // Pagination params
@@ -79,9 +80,13 @@ export const getStudentshelper = async (filters) => {
     // Helper to parse multi-select filters
     const handleMultiSelectFilter = (value) => {
       if (!value) return null;
-      if (Array.isArray(value)) return value.filter(v => v && v.toString().trim());
-      if (typeof value === 'string') {
-        return value.split(',').map(v => v.trim()).filter(v => v);
+      if (Array.isArray(value))
+        return value.filter((v) => v && v.toString().trim());
+      if (typeof value === "string") {
+        return value
+          .split(",")
+          .map((v) => v.trim())
+          .filter((v) => v);
       }
       return [value.toString()];
     };
@@ -94,9 +99,9 @@ export const getStudentshelper = async (filters) => {
 
     // Helper for boolean filters
     const handleBooleanFilter = (value) => {
-      if (value === undefined || value === null || value === '') return null;
-      if (typeof value === 'boolean') return value;
-      return value === 'true' || value === '1';
+      if (value === undefined || value === null || value === "") return null;
+      if (typeof value === "boolean") return value;
+      return value === "true" || value === "1";
     };
 
     // Helper for date range queries
@@ -122,10 +127,10 @@ export const getStudentshelper = async (filters) => {
     // Helper for numerical range query
     const handleNumberRange = (minValue, maxValue) => {
       const numberRange = {};
-      if (minValue !== undefined && minValue !== null && minValue !== '') {
+      if (minValue !== undefined && minValue !== null && minValue !== "") {
         numberRange[Op.gte] = parseInt(minValue, 10);
       }
-      if (maxValue !== undefined && maxValue !== null && maxValue !== '') {
+      if (maxValue !== undefined && maxValue !== null && maxValue !== "") {
         numberRange[Op.lte] = parseInt(maxValue, 10);
       }
       return Object.keys(numberRange).length > 0 ? numberRange : null;
@@ -143,21 +148,21 @@ export const getStudentshelper = async (filters) => {
     const whereConditions = {};
 
     // Assigned counsellor filters depending on data level
-    if (data === 'l2') {
+    if (data === "l2") {
       whereConditions.assigned_counsellor_id = { [Op.ne]: null };
-    } else if (data === 'l3') {
+    } else if (data === "l3") {
       whereConditions.assigned_counsellor_l3_id = { [Op.ne]: null };
     }
 
     if (selectedagent) {
-      if (data === 'l3') {
+      if (data === "l3") {
         whereConditions.assigned_counsellor_l3_id = selectedagent;
-      } else if (data === 'l2') {
+      } else if (data === "l2") {
         whereConditions.assigned_counsellor_id = selectedagent;
       } else {
         whereConditions[Op.or] = [
           { assigned_counsellor_id: selectedagent },
-          { assigned_counsellor_l3_id: selectedagent }
+          { assigned_counsellor_l3_id: selectedagent },
         ];
       }
     }
@@ -166,24 +171,29 @@ export const getStudentshelper = async (filters) => {
     if (mode) {
       const modeFilter = handleMultiSelectFilter(mode);
       if (modeFilter) {
-        const validModes = ['Regular', 'Online'];
-        const filteredModes = modeFilter.filter(m => validModes.includes(m));
+        const validModes = ["Regular", "Online"];
+        const filteredModes = modeFilter.filter((m) => validModes.includes(m));
         if (filteredModes.length) {
-          whereConditions.mode = filteredModes.length === 1 ? filteredModes[0] : { [Op.in]: filteredModes };
+          whereConditions.mode =
+            filteredModes.length === 1
+              ? filteredModes[0]
+              : { [Op.in]: filteredModes };
         }
       }
     }
 
     // Boolean filters
     const isConnectedYetFilter = handleBooleanFilter(isConnectedYet);
-    if (isConnectedYetFilter !== null) whereConditions.is_connected_yet = isConnectedYetFilter;
+    if (isConnectedYetFilter !== null)
+      whereConditions.is_connected_yet = isConnectedYetFilter;
     const isConnectedYetL3Filter = handleBooleanFilter(isConnectedYetL3);
-    if (isConnectedYetL3Filter !== null) whereConditions.is_connected_yet_l3 = isConnectedYetL3Filter;
+    if (isConnectedYetL3Filter !== null)
+      whereConditions.is_connected_yet_l3 = isConnectedYetL3Filter;
 
     // Number of unread messages filter strict
-    if (hasUnreadMessages === 'true') {
+    if (hasUnreadMessages === "true") {
       whereConditions.number_of_unread_messages = { [Op.gt]: 0 };
-    } else if (hasUnreadMessages === 'false') {
+    } else if (hasUnreadMessages === "false") {
       whereConditions.number_of_unread_messages = { [Op.eq]: 0 };
     }
 
@@ -195,11 +205,16 @@ export const getStudentshelper = async (filters) => {
           { student_email: { [Op.iLike]: `%${searchTerm}%` } },
           { student_phone: { [Op.iLike]: `%${searchTerm}%` } },
           { student_id: { [Op.iLike]: `%${searchTerm}%` } },
-          { student_secondary_email: { [Op.iLike]: `%${searchTerm}%` } }
-        ]
+          { student_secondary_email: { [Op.iLike]: `%${searchTerm}%` } },
+        ],
       };
       whereConditions[Op.and] = whereConditions[Op.and]
-        ? [...(Array.isArray(whereConditions[Op.and]) ? whereConditions[Op.and] : [whereConditions[Op.and]]), searchCondition]
+        ? [
+            ...(Array.isArray(whereConditions[Op.and])
+              ? whereConditions[Op.and]
+              : [whereConditions[Op.and]]),
+            searchCondition,
+          ]
         : [searchCondition];
     }
 
@@ -209,44 +224,65 @@ export const getStudentshelper = async (filters) => {
     const createdAtRange = handleDateRange(createdAt_start, createdAt_end);
     if (createdAtRange) whereConditions.created_at = createdAtRange;
 
-    const nextCallDateL3Range = handleDateRange(nextCallDateL3_start, nextCallDateL3_end);
-    if (nextCallDateL3Range) whereConditions.next_call_date_l3 = nextCallDateL3Range;
+    const nextCallDateL3Range = handleDateRange(
+      nextCallDateL3_start,
+      nextCallDateL3_end,
+    );
+    if (nextCallDateL3Range)
+      whereConditions.next_call_date_l3 = nextCallDateL3Range;
 
-    const lastCallDateL3Range = handleDateRange(lastCallDateL3_start, lastCallDateL3_end);
-    if (lastCallDateL3Range) whereConditions.last_call_date_l3 = lastCallDateL3Range;
+    const lastCallDateL3Range = handleDateRange(
+      lastCallDateL3_start,
+      lastCallDateL3_end,
+    );
+    if (lastCallDateL3Range)
+      whereConditions.last_call_date_l3 = lastCallDateL3Range;
 
     // Location filters using array overlap or text filters
     const preferredCityFilter = handleArrayFilter(preferredCity);
-    if (preferredCityFilter) whereConditions.preferred_city = preferredCityFilter;
+    if (preferredCityFilter)
+      whereConditions.preferred_city = preferredCityFilter;
 
     const preferredStateFilter = handleArrayFilter(preferredState);
-    if (preferredStateFilter) whereConditions.preferred_state = preferredStateFilter;
+    if (preferredStateFilter)
+      whereConditions.preferred_state = preferredStateFilter;
 
     if (currentCity) {
       const currentCityFilter = handleTextFilter(currentCity);
-      if (currentCityFilter) whereConditions.student_current_city = currentCityFilter;
+      if (currentCityFilter)
+        whereConditions.student_current_city = currentCityFilter;
     }
     if (currentState) {
       const currentStateFilter = handleTextFilter(currentState);
-      if (currentStateFilter) whereConditions.student_current_state = currentStateFilter;
+      if (currentStateFilter)
+        whereConditions.student_current_state = currentStateFilter;
     }
 
     // Stream/Degree/Level/Specialization filters
     const preferredStreamFilter = handleArrayFilter(preferredStream);
-    if (preferredStreamFilter) whereConditions.preferred_stream = preferredStreamFilter;
+    if (preferredStreamFilter)
+      whereConditions.preferred_stream = preferredStreamFilter;
 
     const preferredDegreeFilter = handleArrayFilter(preferredDegree);
-    if (preferredDegreeFilter) whereConditions.preferred_degree = preferredDegreeFilter;
+    if (preferredDegreeFilter)
+      whereConditions.preferred_degree = preferredDegreeFilter;
 
     const preferredLevelFilter = handleArrayFilter(preferredLevel);
-    if (preferredLevelFilter) whereConditions.preferred_level = preferredLevelFilter;
+    if (preferredLevelFilter)
+      whereConditions.preferred_level = preferredLevelFilter;
 
-    const preferredSpecializationFilter = handleArrayFilter(preferredSpecialization);
-    if (preferredSpecializationFilter) whereConditions.preferred_specialization = preferredSpecializationFilter;
+    const preferredSpecializationFilter = handleArrayFilter(
+      preferredSpecialization,
+    );
+    if (preferredSpecializationFilter)
+      whereConditions.preferred_specialization = preferredSpecializationFilter;
 
     // Budget range
     if (preferredBudget_min || preferredBudget_max) {
-      const budgetRange = handleNumberRange(preferredBudget_min, preferredBudget_max);
+      const budgetRange = handleNumberRange(
+        preferredBudget_min,
+        preferredBudget_max,
+      );
       if (budgetRange) whereConditions.preferred_budget = budgetRange;
     }
 
@@ -254,39 +290,55 @@ export const getStudentshelper = async (filters) => {
     if (callingStatusL3) {
       const callingStatusL3Filter = handleMultiSelectFilter(callingStatusL3);
       if (callingStatusL3Filter) {
-        whereConditions.calling_status_l3 = callingStatusL3Filter.length === 1
-          ? callingStatusL3Filter[0]
-          : { [Op.in]: callingStatusL3Filter };
+        whereConditions.calling_status_l3 =
+          callingStatusL3Filter.length === 1
+            ? callingStatusL3Filter[0]
+            : { [Op.in]: callingStatusL3Filter };
       }
     }
 
     if (subCallingStatusL3) {
-      const subCallingStatusL3Filter = handleMultiSelectFilter(subCallingStatusL3);
+      const subCallingStatusL3Filter =
+        handleMultiSelectFilter(subCallingStatusL3);
       if (subCallingStatusL3Filter) {
-        whereConditions.sub_calling_status_l3 = subCallingStatusL3Filter.length === 1
-          ? subCallingStatusL3Filter[0]
-          : { [Op.in]: subCallingStatusL3Filter };
+        whereConditions.sub_calling_status_l3 =
+          subCallingStatusL3Filter.length === 1
+            ? subCallingStatusL3Filter[0]
+            : { [Op.in]: subCallingStatusL3Filter };
       }
     }
 
     // Build WHERE for StudentRemark includes
     const remarkIncludeWhere = {};
     if (leadStatus) {
-      remarkIncludeWhere.lead_status = Array.isArray(leadStatus) ? { [Op.in]: leadStatus } : leadStatus;
+      remarkIncludeWhere.lead_status = Array.isArray(leadStatus)
+        ? { [Op.in]: leadStatus }
+        : leadStatus;
     }
     if (leadSubStatus) {
-      remarkIncludeWhere.lead_sub_status = Array.isArray(leadSubStatus) ? { [Op.in]: leadSubStatus } : leadSubStatus;
+      remarkIncludeWhere.lead_sub_status = Array.isArray(leadSubStatus)
+        ? { [Op.in]: leadSubStatus }
+        : leadSubStatus;
     }
     if (callingStatus) {
-      remarkIncludeWhere.calling_status = Array.isArray(callingStatus) ? { [Op.in]: callingStatus } : callingStatus;
+      remarkIncludeWhere.calling_status = Array.isArray(callingStatus)
+        ? { [Op.in]: callingStatus }
+        : callingStatus;
     }
     if (subCallingStatus) {
-      remarkIncludeWhere.sub_calling_status = Array.isArray(subCallingStatus) ? { [Op.in]: subCallingStatus } : subCallingStatus;
+      remarkIncludeWhere.sub_calling_status = Array.isArray(subCallingStatus)
+        ? { [Op.in]: subCallingStatus }
+        : subCallingStatus;
     }
     if (nextCallDate_start && nextCallDate_end) {
-      remarkIncludeWhere.callback_date = handleDateRange(nextCallDate_start, nextCallDate_end);
+      remarkIncludeWhere.callback_date = handleDateRange(
+        nextCallDate_start,
+        nextCallDate_end,
+      );
     } else if (nextCallDate_start) {
-      remarkIncludeWhere.callback_date = { [Op.gte]: new Date(nextCallDate_start) };
+      remarkIncludeWhere.callback_date = {
+        [Op.gte]: new Date(nextCallDate_start),
+      };
     }
     if (remarks) {
       remarkIncludeWhere.remarks = { [Op.iLike]: `%${remarks}%` };
@@ -296,7 +348,10 @@ export const getStudentshelper = async (filters) => {
     const hasCallbackDateRange = callbackDate_start || callbackDate_end;
     const hasCallbackFilter = !!callback;
 
-    const callbackDateRange = handleDateRange(callbackDate_start, callbackDate_end);
+    const callbackDateRange = handleDateRange(
+      callbackDate_start,
+      callbackDate_end,
+    );
     if (callbackDateRange) remarkIncludeWhere.callback_date = callbackDateRange;
 
     if (hasCallbackFilter) {
@@ -306,17 +361,26 @@ export const getStudentshelper = async (filters) => {
       todayEnd.setHours(23, 59, 59, 999);
 
       switch (callback.toLowerCase()) {
-        case 'today':
-          remarkIncludeWhere.callback_date = { [Op.gte]: todayStart, [Op.lte]: todayEnd };
+        case "today":
+          remarkIncludeWhere.callback_date = {
+            [Op.gte]: todayStart,
+            [Op.lte]: todayEnd,
+          };
           break;
-        case 'overdue':
-          remarkIncludeWhere.callback_date = { [Op.lt]: todayStart, [Op.not]: null };
+        case "overdue":
+          remarkIncludeWhere.callback_date = {
+            [Op.lt]: todayStart,
+            [Op.not]: null,
+          };
           break;
-        case 'all':
+        case "all":
           remarkIncludeWhere.callback_date = { [Op.not]: null };
           break;
-        case 'combined':
-          remarkIncludeWhere.callback_date = { [Op.lte]: todayEnd, [Op.not]: null };
+        case "combined":
+          remarkIncludeWhere.callback_date = {
+            [Op.lte]: todayEnd,
+            [Op.not]: null,
+          };
           break;
         default:
           break;
@@ -325,36 +389,50 @@ export const getStudentshelper = async (filters) => {
 
     // Lead status extension for callback filters
     if (hasCallbackDateRange || hasCallbackFilter) {
-      if (data === 'l2') {
+      if (data === "l2") {
         if (Array.isArray(leadStatus)) {
-          const extras = ['Pre Application', 'Pre_Application'];
-          remarkIncludeWhere.lead_status = { [Op.in]: [...leadStatus, ...extras] };
+          const extras = ["Pre Application", "Pre_Application"];
+          remarkIncludeWhere.lead_status = {
+            [Op.in]: [...leadStatus, ...extras],
+          };
         } else {
-          remarkIncludeWhere.lead_status = 'Pre Application';
+          remarkIncludeWhere.lead_status = "Pre Application";
         }
-      } else if (data === 'l3') {
+      } else if (data === "l3") {
         if (Array.isArray(leadStatus)) {
-          const extras = ['Pre Application', 'Pre_Application', 'Admission', 'Application'];
-          remarkIncludeWhere.lead_status = { [Op.in]: [...leadStatus, ...extras] };
+          const extras = [
+            "Pre Application",
+            "Pre_Application",
+            "Admission",
+            "Application",
+          ];
+          remarkIncludeWhere.lead_status = {
+            [Op.in]: [...leadStatus, ...extras],
+          };
         } else {
-          remarkIncludeWhere.lead_status = 'Pre Application';
+          remarkIncludeWhere.lead_status = "Pre Application";
         }
       }
     }
 
     // Build WHERE for StudentLeadActivity (utm filters)
     const utmIncludeWhere = {};
-    if (utmCampaign) utmIncludeWhere.utm_campaign = { [Op.iLike]: `%${utmCampaign}%` };
-    if (utmSource) utmIncludeWhere.utm_source = { [Op.iLike]: `%${utmSource}%` };
-    if (utmMedium) utmIncludeWhere.utm_medium = { [Op.iLike]: `%${utmMedium}%` };
-    if (utmKeyword) utmIncludeWhere.utm_keyword = { [Op.iLike]: `%${utmKeyword}%` };
+    if (utmCampaign)
+      utmIncludeWhere.utm_campaign = { [Op.iLike]: `%${utmCampaign}%` };
+    if (utmSource)
+      utmIncludeWhere.utm_source = { [Op.iLike]: `%${utmSource}%` };
+    if (utmMedium)
+      utmIncludeWhere.utm_medium = { [Op.iLike]: `%${utmMedium}%` };
+    if (utmKeyword)
+      utmIncludeWhere.utm_keyword = { [Op.iLike]: `%${utmKeyword}%` };
 
     if (source) {
       const sourceFilter = handleMultiSelectFilter(source);
       if (sourceFilter) {
-        utmIncludeWhere.source = sourceFilter.length === 1
-          ? handleTextFilter(sourceFilter[0])
-          : { [Op.or]: sourceFilter.map(s => ({ [Op.iLike]: `%${s}%` })) };
+        utmIncludeWhere.source =
+          sourceFilter.length === 1
+            ? handleTextFilter(sourceFilter[0])
+            : { [Op.or]: sourceFilter.map((s) => ({ [Op.iLike]: `%${s}%` })) };
       }
     }
 
@@ -366,14 +444,24 @@ export const getStudentshelper = async (filters) => {
     const includeArray = [
       {
         model: Counsellor,
-        as: 'assignedCounsellor',
-        attributes: ['counsellor_id', 'counsellor_name', 'counsellor_email', 'role'],
+        as: "assignedCounsellor",
+        attributes: [
+          "counsellor_id",
+          "counsellor_name",
+          "counsellor_email",
+          "role",
+        ],
         required: false,
       },
       {
         model: Counsellor,
-        as: 'assignedCounsellorL3',
-        attributes: ['counsellor_id', 'counsellor_name', 'counsellor_email', 'role'],
+        as: "assignedCounsellorL3",
+        attributes: [
+          "counsellor_id",
+          "counsellor_name",
+          "counsellor_email",
+          "role",
+        ],
         required: false,
       },
     ];
@@ -383,29 +471,36 @@ export const getStudentshelper = async (filters) => {
     if (freshLeads === undefined) {
       includeArray.push({
         model: StudentRemark,
-        as: 'student_remarks',
+        as: "student_remarks",
         attributes: [
-          'remark_id', 'lead_status', 'lead_sub_status', 'calling_status',
-          'sub_calling_status', 'remarks', 'callback_date', 'callback_time', 'created_at'
+          "remark_id",
+          "lead_status",
+          "lead_sub_status",
+          "calling_status",
+          "sub_calling_status",
+          "remarks",
+          "callback_date",
+          "callback_time",
+          "created_at",
         ],
         where: hasRemarkFilters ? remarkIncludeWhere : undefined,
         required: hasRemarkFilters,
         separate: true,
         limit: 1,
-        order: [['created_at', 'DESC']],
+        order: [["created_at", "DESC"]],
       });
-    } if (freshLeads === 'Fresh') {
+    }
+    if (freshLeads === "Fresh") {
       includeArray.push({
         model: StudentRemark,
-        as: 'student_remarks',
+        as: "student_remarks",
         required: false,
         attributes: [],
-
       });
 
       whereConditions[Op.and] = [
         ...(whereConditions[Op.and] || []),
-        Sequelize.literal(`"student_remarks"."student_id" IS NULL`)
+        Sequelize.literal(`"student_remarks"."student_id" IS NULL`),
       ];
     }
 
@@ -413,31 +508,46 @@ export const getStudentshelper = async (filters) => {
     if (Object.keys(utmIncludeWhere).length > 0) {
       includeArray.push({
         model: StudentLeadActivity,
-        as: 'lead_activities',
+        as: "lead_activities",
         attributes: [
-          'utm_source', 'utm_medium', 'utm_campaign', 'utm_keyword',
-          'utm_campaign_id', 'utm_adgroup_id', 'utm_creative_id', 'created_at', 'source', 'source_url'
+          "utm_source",
+          "utm_medium",
+          "utm_campaign",
+          "utm_keyword",
+          "utm_campaign_id",
+          "utm_adgroup_id",
+          "utm_creative_id",
+          "created_at",
+          "source",
+          "source_url",
         ],
         where: utmIncludeWhere,
         required: true,
         separate: false,
-        order: [['created_at', 'ASC']],
+        order: [["created_at", "ASC"]],
       });
     } else {
       includeArray.push({
         model: StudentLeadActivity,
-        as: 'lead_activities',
+        as: "lead_activities",
         attributes: [
-          'utm_source', 'utm_medium', 'utm_campaign', 'utm_keyword',
-          'utm_campaign_id', 'utm_adgroup_id', 'utm_creative_id', 'created_at', 'source', 'source_url'
+          "utm_source",
+          "utm_medium",
+          "utm_campaign",
+          "utm_keyword",
+          "utm_campaign_id",
+          "utm_adgroup_id",
+          "utm_creative_id",
+          "created_at",
+          "source",
+          "source_url",
         ],
         required: false,
         separate: false,
         limit: 1,
-        order: [['created_at', 'ASC']],
+        order: [["created_at", "ASC"]],
       });
     }
-
 
     const orderClause = [];
     if (remarkssort) {
@@ -445,16 +555,30 @@ export const getStudentshelper = async (filters) => {
         Sequelize.literal(`(
           SELECT COUNT(*) FROM student_remarks AS sr WHERE sr.student_id = students.student_id
         )`),
-        remarkssort.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
+        remarkssort.toUpperCase() === "ASC" ? "ASC" : "DESC",
       ]);
     } else if (lastCallsort) {
-      orderClause.push([{ model: StudentRemark, as: 'student_remarks' }, 'created_at', lastCallsort.toUpperCase() === 'ASC' ? 'ASC' : 'DESC']);
+      orderClause.push([
+        { model: StudentRemark, as: "student_remarks" },
+        "created_at",
+        lastCallsort.toUpperCase() === "ASC" ? "ASC" : "DESC",
+      ]);
     } else if (nextCallbacksort) {
-      orderClause.push([{ model: StudentRemark, as: 'student_remarks' }, 'callback_date', nextCallbacksort.toUpperCase() === 'ASC' ? 'ASC' : 'DESC']);
+      orderClause.push([
+        { model: StudentRemark, as: "student_remarks" },
+        "callback_date",
+        nextCallbacksort.toUpperCase() === "ASC" ? "ASC" : "DESC",
+      ]);
     } else if (createdAtsort) {
-      orderClause.push(['created_at', createdAtsort.toUpperCase() === 'ASC' ? 'ASC' : 'DESC']);
+      orderClause.push([
+        "created_at",
+        createdAtsort.toUpperCase() === "ASC" ? "ASC" : "DESC",
+      ]);
     } else {
-      orderClause.push(['created_at', sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC']);
+      orderClause.push([
+        "created_at",
+        sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC",
+      ]);
     }
 
     const [queryResult, overallStats = {}] = await Promise.all([
@@ -462,29 +586,34 @@ export const getStudentshelper = async (filters) => {
         where: whereConditions,
         include: includeArray,
         attributes: [
-          'student_id',
-          'student_name',
-          'student_email',
-          'student_phone',
-          'total_remarks_l3',
-          'created_at',
-          'assigned_l3_date',
-          'last_call_date_l3', 'next_call_time_l3', 'last_call_date_l3', 'is_reactivity',
-          [Sequelize.literal(`(
+          "student_id",
+          "student_name",
+          "student_email",
+          "student_phone",
+          "total_remarks_l3",
+          "created_at",
+          "assigned_l3_date",
+          "last_call_date_l3",
+          "next_call_time_l3",
+          "last_call_date_l3",
+          "is_reactivity",
+          [
+            Sequelize.literal(`(
             SELECT COUNT(*) FROM student_remarks AS sr WHERE sr.student_id = students.student_id
-          )`), 'remark_count']
+          )`),
+            "remark_count",
+          ],
         ],
         limit: limitNum,
         offset: offset,
         order: orderClause,
         distinct: true,
-        subQuery: freshLeads === 'Fresh' ? false : undefined,
+        subQuery: freshLeads === "Fresh" ? false : undefined,
         logging: console.log,
-        benchmark: true
+        benchmark: true,
       }),
 
-      freshLeads ? Promise.resolve({}) : getOverallStats(filters)
-
+      freshLeads ? Promise.resolve({}) : getOverallStats(filters),
     ]);
     const totalCount = queryResult?.count;
     const students = queryResult.rows;
@@ -508,46 +637,53 @@ export const getStudentshelper = async (filters) => {
         student: whereConditions,
         remarks: remarkIncludeWhere,
         utm: utmIncludeWhere,
-      }
+      },
     };
     return response;
-
   } catch (error) {
-    console.error('Error in getStudentshelper:', error.message);
+    console.error("Error in getStudentshelper:", error.message);
     throw error;
   }
 };
 
-
 export const getStudents = async (req, res) => {
   try {
     const { role, id } = req.user;
-    
+
     let analyserData = {};
-    if (role === 'Analyser') {
+    if (role === "Analyser") {
       try {
         const analyser = await Analyser.findByPk(id, {
-          attributes: ['sources', 'campaigns', 'student_creation_date', 'source_urls']
+          attributes: [
+            "sources",
+            "campaigns",
+            "student_creation_date",
+            "source_urls",
+          ],
         });
         if (analyser) {
           analyserData = {
             analyserSources: analyser.sources || [],
             analyserCampaigns: analyser.campaigns || [],
-            analyserDateFilter: analyser.student_creation_date || '',
-            analyserSourceUrls: analyser.source_urls || []
+            analyserDateFilter: analyser.student_creation_date || "",
+            analyserSourceUrls: analyser.source_urls || [],
           };
         }
       } catch (error) {
-        console.error('Error fetching analyser data:', error);
+        console.error("Error fetching analyser data:", error);
       }
     }
-    
+
     // Pass analyser data to filter helper
-    const filters = mapFiltersForGetStudentsHelper(req.query, role, analyserData);
-    
+    const filters = mapFiltersForGetStudentsHelper(
+      req.query,
+      role,
+      analyserData,
+    );
+
     // IMPORTANT: Add the user role to filters explicitly
     filters.userrole = role;
-    
+
     let data;
     if (filters.wishlist) {
       data = await getWhishListStudentHelper(filters);
@@ -557,53 +693,58 @@ export const getStudents = async (req, res) => {
     }
 
     // Add analyser filter info to response
-    if (role === 'Analyser') {
+    if (role === "Analyser") {
       data.analyser_filters_applied = analyserData;
     }
 
     res.status(200).json(data);
-
   } catch (error) {
-    console.error('Error in getStudents:', error.message);
+    console.error("Error in getStudents:", error.message);
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error.message
+      message: "Internal server error",
+      error: error.message,
     });
   }
-}
-export const mapFiltersForGetStudentsHelper = (params, insertrole, analyserData = {}) => {
+};
+export const mapFiltersForGetStudentsHelper = (
+  params,
+  insertrole,
+  analyserData = {},
+) => {
   const leadStatusArray =
-    typeof params.lead_status === 'string'
-      ? params.lead_status.split(',').map(s => s.trim())
+    typeof params.lead_status === "string"
+      ? params.lead_status.split(",").map((s) => s.trim())
       : null;
-  const limitNum = params.export ? 50000 : (params?.limit || 10);
-  
-  console.log('mapFiltersForGetStudentsHelper called with:');
-  console.log('insertrole:', insertrole);
-  console.log('typeof insertrole:', typeof insertrole);
-  console.log('insertrole === "Analyser":', insertrole === 'Analyser');
-  console.log('insertrole === "analyser":', insertrole === 'analyser');
-  console.log('params.userrole (if exists):', params.userrole);
-  
-  const isAnalyser = insertrole === 'Analyser';
-  console.log('isAnalyser:', isAnalyser);
-  
+  const limitNum = params.export ? 50000 : params?.limit || 10;
+
+  console.log("mapFiltersForGetStudentsHelper called with:");
+  console.log("insertrole:", insertrole);
+  console.log("typeof insertrole:", typeof insertrole);
+  console.log('insertrole === "Analyser":', insertrole === "Analyser");
+  console.log('insertrole === "analyser":', insertrole === "analyser");
+  console.log("params.userrole (if exists):", params.userrole);
+
+  const isAnalyser = insertrole === "Analyser";
+  console.log("isAnalyser:", isAnalyser);
+
   // Get analyser-specific filters (passed from getStudents function)
   const {
     analyserSources = [],
     analyserCampaigns = [],
-    analyserDateFilter = '',
-    analyserSourceUrls = []
+    analyserDateFilter = "",
+    analyserSourceUrls = [],
   } = analyserData;
 
   // Parse analyser date filter into start/end dates
-  let analyserCreatedAtStart = '';
-  let analyserCreatedAtEnd = '';
-  
+  let analyserCreatedAtStart = "";
+  let analyserCreatedAtEnd = "";
+
   if (isAnalyser && analyserDateFilter) {
     // Extract dates from SQL like: created_at >= '2024-01-01' AND created_at <= '2024-12-31'
-    const dateMatch = analyserDateFilter.match(/created_at\s*>=\s*'(\d{4}-\d{2}-\d{2})'.*?created_at\s*<=\s*'(\d{4}-\d{2}-\d{2})'/i);
+    const dateMatch = analyserDateFilter.match(
+      /created_at\s*>=\s*'(\d{4}-\d{2}-\d{2})'.*?created_at\s*<=\s*'(\d{4}-\d{2}-\d{2})'/i,
+    );
     if (dateMatch) {
       analyserCreatedAtStart = dateMatch[1];
       analyserCreatedAtEnd = dateMatch[2];
@@ -614,43 +755,58 @@ export const mapFiltersForGetStudentsHelper = (params, insertrole, analyserData 
   let finalSource = params.source;
   if (isAnalyser && analyserSources.length > 0) {
     // Filter out 'Any' from analyser sources
-    const validAnalyserSources = analyserSources.filter(s => s !== 'Any' && s !== '');
-    
+    const validAnalyserSources = analyserSources.filter(
+      (s) => s !== "Any" && s !== "",
+    );
+
     if (params.source) {
       // Combine query source with analyser sources (intersection)
-      const querySources = typeof params.source === 'string' 
-        ? params.source.split(',').map(s => s.trim())
-        : Array.isArray(params.source) ? params.source : [];
-      
+      const querySources =
+        typeof params.source === "string"
+          ? params.source.split(",").map((s) => s.trim())
+          : Array.isArray(params.source)
+            ? params.source
+            : [];
+
       // Find common sources between query and analyser sources
-      const commonSources = querySources.filter(source => 
-        validAnalyserSources.includes(source)
+      const commonSources = querySources.filter((source) =>
+        validAnalyserSources.includes(source),
       );
-      
-      finalSource = commonSources.length > 0 ? commonSources.join(',') : null;
+
+      finalSource = commonSources.length > 0 ? commonSources.join(",") : null;
     } else {
       // Use only analyser sources
-      finalSource = validAnalyserSources.length > 0 ? validAnalyserSources.join(',') : null;
+      finalSource =
+        validAnalyserSources.length > 0 ? validAnalyserSources.join(",") : null;
     }
   }
 
   // For analysers, combine query campaign with analyser campaigns
   let finalUtmCampaign = params.campaign_name || params.utmCampaign;
   if (isAnalyser && analyserCampaigns.length > 0) {
-    const validAnalyserCampaigns = analyserCampaigns.filter(c => c !== 'Any' && c !== '');
-    
+    const validAnalyserCampaigns = analyserCampaigns.filter(
+      (c) => c !== "Any" && c !== "",
+    );
+
     if (finalUtmCampaign) {
-      const queryCampaigns = typeof finalUtmCampaign === 'string'
-        ? finalUtmCampaign.split(',').map(c => c.trim())
-        : Array.isArray(finalUtmCampaign) ? finalUtmCampaign : [];
-      
-      const commonCampaigns = queryCampaigns.filter(campaign =>
-        validAnalyserCampaigns.includes(campaign)
+      const queryCampaigns =
+        typeof finalUtmCampaign === "string"
+          ? finalUtmCampaign.split(",").map((c) => c.trim())
+          : Array.isArray(finalUtmCampaign)
+            ? finalUtmCampaign
+            : [];
+
+      const commonCampaigns = queryCampaigns.filter((campaign) =>
+        validAnalyserCampaigns.includes(campaign),
       );
-      
-      finalUtmCampaign = commonCampaigns.length > 0 ? commonCampaigns.join(',') : null;
+
+      finalUtmCampaign =
+        commonCampaigns.length > 0 ? commonCampaigns.join(",") : null;
     } else {
-      finalUtmCampaign = validAnalyserCampaigns.length > 0 ? validAnalyserCampaigns.join(',') : null;
+      finalUtmCampaign =
+        validAnalyserCampaigns.length > 0
+          ? validAnalyserCampaigns.join(",")
+          : null;
     }
   }
 
@@ -658,32 +814,36 @@ export const mapFiltersForGetStudentsHelper = (params, insertrole, analyserData 
   let finalUtmSource = params.utmSource;
   if (isAnalyser && analyserSourceUrls.length > 0) {
     // Extract domains from analyser source URLs
-    const analyserDomains = analyserSourceUrls.map(url => {
-      try {
-        const urlObj = new URL(url);
-        return urlObj.hostname.replace('www.', '');
-      } catch {
-        return url;
-      }
-    }).filter(domain => domain && domain !== '');
-    
+    const analyserDomains = analyserSourceUrls
+      .map((url) => {
+        try {
+          const urlObj = new URL(url);
+          return urlObj.hostname.replace("www.", "");
+        } catch {
+          return url;
+        }
+      })
+      .filter((domain) => domain && domain !== "");
+
     if (params.utmSource && analyserDomains.length > 0) {
       // For analysers, UTM source should match analyser domains
-      finalUtmSource = analyserDomains.join(',');
+      finalUtmSource = analyserDomains.join(",");
     } else if (analyserDomains.length > 0) {
       // Use analyser domains as UTM source filter
-      finalUtmSource = analyserDomains.join(',');
+      finalUtmSource = analyserDomains.join(",");
     }
   }
 
   // For analysers, use analyser date filter or query date filter
-  const finalCreatedAtStart = isAnalyser && analyserCreatedAtStart 
-    ? analyserCreatedAtStart 
-    : params.createdAt_start || params?.startDate;
-    
-  const finalCreatedAtEnd = isAnalyser && analyserCreatedAtEnd
-    ? analyserCreatedAtEnd
-    : params.createdAt_end || params?.endDate;
+  const finalCreatedAtStart =
+    isAnalyser && analyserCreatedAtStart
+      ? analyserCreatedAtStart
+      : params.createdAt_start || params?.startDate;
+
+  const finalCreatedAtEnd =
+    isAnalyser && analyserCreatedAtEnd
+      ? analyserCreatedAtEnd
+      : params.createdAt_end || params?.endDate;
 
   const filters = {
     page: params.page ?? 1,
@@ -693,8 +853,12 @@ export const mapFiltersForGetStudentsHelper = (params, insertrole, analyserData 
     mode: params.mode,
     source: finalSource,
     freshLeads: params?.freshLeads,
-    leadStatus: params.lead_status && transformArray(params.lead_status) || params.leadStatus && transformArray(params.leadStatus),
-    leadSubStatus: params.sub_lead_status && transformArray(params.sub_lead_status) || params.leadSubStatus && transformArray(params.leadSubStatus),
+    leadStatus:
+      (params.lead_status && transformArray(params.lead_status)) ||
+      (params.leadStatus && transformArray(params.leadStatus)),
+    leadSubStatus:
+      (params.sub_lead_status && transformArray(params.sub_lead_status)) ||
+      (params.leadSubStatus && transformArray(params.leadSubStatus)),
     utmCampaign: finalUtmCampaign,
     utmSource: finalUtmSource,
     utmMedium: params.utmMedium,
@@ -702,13 +866,22 @@ export const mapFiltersForGetStudentsHelper = (params, insertrole, analyserData 
     utmCampaignId: params.utmCampaignId,
     utmAdgroupId: params.utmAdgroupId,
     utmCreativeId: params.utmCreativeId,
-    callingStatus: (params.calling_status && transformArray(params?.calling_status)) || (params.callingStatus && transformArray(params.callingStatus)),
-    subCallingStatus: (params.subCallingStatus && transformArray(params.subCallingStatus)) || (params?.calling_sub_status && transformArray(params.calling_sub_status)),
+    callingStatus:
+      (params.calling_status && transformArray(params?.calling_status)) ||
+      (params.callingStatus && transformArray(params.callingStatus)),
+    subCallingStatus:
+      (params.subCallingStatus && transformArray(params.subCallingStatus)) ||
+      (params?.calling_sub_status && transformArray(params.calling_sub_status)),
     callingStatusL3: params.callingStatusL3,
     subCallingStatusL3: params.subCallingStatusL3,
-    isConnectedYet: params.isconnectedyet && (params.isconnectedyet == 'Connected' ? true : false),
-    isConnectedYetL3: params.isConnectedYetL3 || (params?.isconnectedyetl3 && (params?.isconnectedyetl3 == 'Connected' ? true : false)),
-    searchTerm: params.searchTerm ?? '',
+    isConnectedYet:
+      params.isconnectedyet &&
+      (params.isconnectedyet == "Connected" ? true : false),
+    isConnectedYetL3:
+      params.isConnectedYetL3 ||
+      (params?.isconnectedyetl3 &&
+        (params?.isconnectedyetl3 == "Connected" ? true : false)),
+    searchTerm: params.searchTerm ?? "",
     numberOfUnreadMessages: params.number_of_unread_messages,
     createdAt_start: finalCreatedAtStart,
     createdAt_end: finalCreatedAtEnd,
@@ -737,10 +910,15 @@ export const mapFiltersForGetStudentsHelper = (params, insertrole, analyserData 
     remarks: params.remarks,
     callbackDate_start: params.callbackDate_start,
     callbackDate_end: params.callbackDate_end,
-    sortBy: params.sortBy ?? 'created_at',
+    sortBy: params.sortBy ?? "created_at",
     csv_exports: params?.export ? params?.export : false,
-    sortOrder: params.sortOrder ?? 'desc',
-    isreactivity: params?.isreactivity || params.isReactivity || params.IsReactivity || params?.ISREACTIVITY || params?.is_reactivity,
+    sortOrder: params.sortOrder ?? "desc",
+    isreactivity:
+      params?.isreactivity ||
+      params.isReactivity ||
+      params.IsReactivity ||
+      params?.ISREACTIVITY ||
+      params?.is_reactivity,
     callback: params?.callback || params?.callBack,
     wishlist: params?.wishlist || params?.wishList,
     remarkssort: params?.remarkssort,
@@ -749,18 +927,20 @@ export const mapFiltersForGetStudentsHelper = (params, insertrole, analyserData 
     nextCallbacksort: params?.nextCallbacksort,
     dashboard: params?.dashboard,
     userrole: insertrole,
-    lead_reactive: params?.lead_reactive && (params?.lead_reactive == 'true' ? true : false),
+    lead_reactive:
+      params?.lead_reactive && (params?.lead_reactive == "true" ? true : false),
+    isReassignedYet: params?.isReassignedYet || params?.is_reassigned_yet,
     // Add analyser-specific filters for SQL function
     ...(isAnalyser && {
       analyserSources,
       analyserCampaigns,
       analyserDateFilter,
-      analyserSourceUrls
-    })
+      analyserSourceUrls,
+    }),
   };
 
   // Remove undefined values
-  Object.keys(filters).forEach(key => {
+  Object.keys(filters).forEach((key) => {
     if (filters[key] === undefined || filters[key] === null) {
       delete filters[key];
     }
@@ -769,10 +949,7 @@ export const mapFiltersForGetStudentsHelper = (params, insertrole, analyserData 
   return filters;
 };
 function transformArray(column) {
-  return typeof column === 'string'
-    ? column.split(',').map(s => s.trim())
+  return typeof column === "string"
+    ? column.split(",").map((s) => s.trim())
     : null;
 }
-
-
-

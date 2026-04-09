@@ -122,8 +122,8 @@ async function fetchLeadDataWithCampaign(id) {
       where: { page_id:'718284908040065' },
     });
 
-    if (!tokenData) throw new Error('No page token found in DB');
-    const accessToken = tokenData.page_access_token;
+    // if (!tokenData) throw new Error('No page token found in DB');
+    const accessToken = 'EAAH2cyxBNIMBO7MZAK9LYlRZA66Xzxy0rvwVtGntAXAhhMoUFES6sfELaRdOGCzuPeYxDraEmUZAxvXuXVuZCXZAOLXaSaIZCtrtIGXZCs8yKOVAPtAhpuMQUypRebWjvZA9E1elWHqeUFFtqoEJs1Od0X2GLAPBP6qhzA8eWNRFvUEmgdrO0pUafMGYlwSbzNxFFOL1';
 
     const leadUrl = getMetaUrl(`${id}?fields=ad_id,ad_name,field_data,created_time&access_token=${accessToken}`);
     const leadResponse = await axios.get(leadUrl);
@@ -287,27 +287,7 @@ export const PostWebhookManual = async (lead_id) => {
               const leadDetails = data.lead;
               const campaignDetails = data.campaign;
 
-              const existing = await MetaAdsLead.findOne({
-                where: { form_id: leadDetails.id },
-              });
-
-              if (existing) {
-                await axios.post('http://localhost:3031/v1/student/create', {
-                name: existing.full_name,
-                phone_number: existing.phone_number?.length === 13
-                  ? existing.phone_number?.slice(3)
-                  : existing.phone_number,
-                email: existing.email,
-                preferred_city: existing.city,
-                source: 'FaceBook_University_Admit',
-                form_name: leadDetails.id,
-                mode: 'Online',
-                sourceUrl: campaignDetails?.name || '',
-                utm_campaign: leadDetails?.ad_name || '',
-                utm_campaign_id: leadDetails?.ad_id || '',
-                student_comment: formatToQuestionAnswerArray(existing.additional_fields),
-              });
-              }
+          
 
               const formattedLead = {
                 created_time: new Date(leadDetails.created_time),
@@ -323,45 +303,65 @@ export const PostWebhookManual = async (lead_id) => {
                 additional_fields: extractAdditionalFields(leadDetails.field_data),
               };
 
-              await MetaAdsLead.create(formattedLead);
 
-               await axios.post('http://localhost:3031/v1/student/create', {
+              const dataToSend = {
                 name: formattedLead.full_name,
                 phone_number: formattedLead.phone_number?.length === 13
                   ? formattedLead.phone_number?.slice(3)
                   : formattedLead.phone_number,
                 email: formattedLead.email,
                 preferred_city: formattedLead.city,
-                source: 'FaceBook_University_Admit',
+                source: 'FaceBook',
                 form_name: leadDetails.id,
                 mode: 'Online',
                 sourceUrl: campaignDetails?.name || '',
                 utm_campaign: leadDetails?.ad_name || '',
                 utm_campaign_id: leadDetails?.ad_id || '',
                 student_comment: formatToQuestionAnswerArray(formattedLead.additional_fields),
-              });
-
-              
-
-              console.log('Lead saved and forwarded successfully');
+              };
+           return dataToSend;
+            
             } catch (err) {
               console.error('Error processing lead:', err.message);
             }
 };
 
-const ua_array  = [
-  { lead_id: '1324239735769027' },
- 
-
+const ua_array = [
+ 1670162857742976
 ];
 
+
 async function processLeads() {
-  for (const lead of ua_array) {
-    try{
-    await PostWebhookManual(lead.lead_id);
-    }catch(err){
-      console.error('Error processing lead:', err.message);
+  const final_data = [];
+  for (const lead_id of ua_array) {
+    try {
+      const leadData = await PostWebhookManual(lead_id);
+      if (leadData) {
+        final_data.push({ lead_id, ...leadData });
+        console.log(`✅ Fetched: ${lead_id}`);
+      } else {
+        console.warn(`⚠️  No data returned for: ${lead_id}`);
+      }
+    } catch (err) {
+      console.error(`❌ Error processing lead ${lead_id}:`, err.message);
     }
   }
+
+  // Write results to missing_leads.json
+  const { writeFile } = await import('fs/promises');
+  const { fileURLToPath: ftu } = await import('url');
+  const { dirname, join } = await import('path');
+  const __dir = dirname(ftu(import.meta.url));
+  const outPath = join(__dir, 'missing_leads.json');
+
+  const output = {
+    generated_at: new Date().toISOString(),
+    description: 'Meta leads fetched from Graph API — not found in Regular, Online, or Enterprise LMS',
+    total: final_data.length,
+    leads: final_data,
+  };
+
+  await writeFile(outPath, JSON.stringify(output, null, 2), 'utf-8');
+  console.log(`\n📁 Saved ${final_data.length} leads → ${outPath}`);
 }
-  // processLeads();
+processLeads();

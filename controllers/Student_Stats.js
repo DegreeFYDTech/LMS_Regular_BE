@@ -33,7 +33,9 @@ export const getOptimizedOverallStatsFromHelper = async ({
                s.total_remarks_l3,
                s.source,
                s.is_reactivity,
-               s.current_student_status
+               s.current_student_status,
+                              s.is_reassigned_yet
+
         FROM students s
         ${
           utmWhere !== "1=1"
@@ -102,7 +104,8 @@ export const getOptimizedOverallStatsFromHelper = async ({
             WHEN :role = 'l2' AND bs.is_connected_yet = false THEN 1
             WHEN :role = 'l3' AND bs.is_connected_yet_l3 = false THEN 1
             ELSE NULL
-          END) as not_connected
+          END) as not_connected,
+          COUNT(CASE WHEN bs.is_reassigned_yet = true THEN 1 END) as reassigned_yet
         FROM base_students bs
       ),
       unread_messages AS (

@@ -29,7 +29,9 @@ api.post("/config/coupon/validate", validateCoupon);
 
 api.get("/student/:student_id", getPaymentsByStudent);
 api.get("/student-details/:student_id", getPaymentsByStudentWithDetails);
-api.get("/reports", getPaymentReports);
-api.get("/all", getAllPayments);
+api.get("/reports", getPaymentReports); 
+api.get("/amity-reports", getPaymentReports);
+api.get("/cgc-reports", getPaymentReports);
+api.get("/cu/lpu-reports", getPaymentReports);
 
 export default api;

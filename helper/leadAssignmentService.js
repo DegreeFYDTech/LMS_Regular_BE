@@ -565,7 +565,7 @@ export const createChatAndMessagesFromLead = async (studentPhone, leadData) => {
     };
   }
 };
-export const ProceessLeads = async (leads) => { };
+export const ProceessLeads = async (leads) => {};
 export const processStudentLead = async (leadData) => {
   if (
     !leadData.email ||
@@ -761,7 +761,7 @@ export const processStudentLead = async (leadData) => {
       "",
 
     mode: leadData.mode || leadData.Mode || leadData.MODE || "",
-
+    primary_db_id: leadData.primary_db_id,
     prefCity:
       leadData.city ||
       leadData.City ||
@@ -799,7 +799,8 @@ export const processStudentLead = async (leadData) => {
       "",
 
     preferred_university: leadData.preferred_university,
-
+    lead_type: leadData.lead_type || "",
+    preferred_college_cll: leadData.preferred_college_cll || [],
     degree:
       leadData.preferredDegree ||
       leadData.PreferredDegree ||
@@ -888,6 +889,7 @@ export const processStudentLead = async (leadData) => {
     const newStudentData = {
       student_name: mappedLeadData.name,
       student_email: mappedLeadData.email,
+      primary_db_id: mappedLeadData.primary_db_id,
       student_phone: mappedLeadData.phoneNumber,
       parents_number:
         leadData.parentsNumber ||

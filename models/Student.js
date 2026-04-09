@@ -55,6 +55,7 @@ const Student = sequelize.define(
     first_callback_l2: DataTypes.DATE,
     first_callback_l3: DataTypes.DATE,
     first_form_filled_date: DataTypes.DATE,
+    is_reassigned_yet: { type: DataTypes.BOOLEAN, defaultValue: false },
     online_ffh: { type: DataTypes.INTEGER, defaultValue: 0 },
     first_icc_date: { type: DataTypes.DATE, defaultValue: null },
     is_edited: { type: DataTypes.BOOLEAN, defaultValue: false },
@@ -91,11 +92,11 @@ const Student = sequelize.define(
       allowNull: true,
       defaultValue: null,
     },
-    primary_db_id:{
-      type:DataTypes.STRING,
-       allowNull: true,
+    primary_db_id: {
+      type: DataTypes.STRING,
+      allowNull: true,
       defaultValue: null,
-    }
+    },
   },
   {
     timestamps: true,

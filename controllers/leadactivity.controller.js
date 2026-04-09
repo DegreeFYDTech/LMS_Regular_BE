@@ -30,6 +30,7 @@ export const normalizeLeadAnswers = (input) => {
 };
 
 export const createLeadActivity = async (leadData, studentId) => {
+  console.log("Creating lead activity for studentId:", leadData);
   try {
     const sourceurl =
       leadData.first_source_url ||
@@ -73,7 +74,8 @@ export const createLeadActivity = async (leadData, studentId) => {
       highest_qualification: leadData.highestQualification || "",
       working_professional: leadData.workingProfessional ?? false,
       student_status: "new",
-
+      lead_type: leadData.lead_type || "",
+      preferred_college_cll: leadData.preferred_college_cll || [],
       destination_number: leadData.DestinationNumber || "",
       dial_whom_number: leadData.DialWhomNumber || "",
       call_duration: leadData.CallDuration || "",

@@ -1,4 +1,3 @@
-import axios from "axios";
 import {
   sequelize,
   Student,
@@ -15,6 +14,7 @@ import { Op } from "sequelize";
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import GenerateEmailFunction from "../utils/email/TriggerEmail.js";
+import axios from "axios";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || "rzp_test_placeholder",
@@ -521,7 +521,6 @@ export const handleWebhook = async (req, res) => {
             );
 
             let targetStudentId = Model === Student ? lead.student_id : null;
-
             if (!targetStudentId) {
               const phoneToSearch = lead.mobile || lead.student_phone;
               if (phoneToSearch) {
@@ -532,7 +531,27 @@ export const handleWebhook = async (req, res) => {
                 if (linkedStudent) targetStudentId = linkedStudent.student_id;
               }
             }
-            console.log(targetStudentId);
+            console.log(snapshot.collegeName, "snapshot.collegeName",snapshot, "snapshot",targetStudentId, "targetStudentId",lead, "lead");
+            if (snapshot.collegeName.includes("Amity")) {
+              await axios.post(
+                `https://regular-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
+                {
+                  phoneToSearch: lead?.dataValues?.mobile,
+                  snapshot,
+                  paymentId: paymentEntity.id,
+                },
+              );
+            }
+            if (snapshot.collegeName.includes("CGC")) {
+              await axios.post(
+                `https://cgc-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
+                {
+                  phoneToSearch: lead?.dataValues?.mobile,
+                  snapshot,
+                  paymentId: paymentEntity.id,
+                },
+              );
+            }
             if (targetStudentId) {
               await StudentRemark.create(
                 {
@@ -561,7 +580,6 @@ export const handleWebhook = async (req, res) => {
               );
             }
           }
-
           if (snapshot.appliedCouponCode) {
             await Coupon.increment("usedCount", {
               by: 1,
@@ -813,9 +831,25 @@ export const getPaymentsByStudentWithDetails = async (req, res) => {
 
 export const getPaymentReports = async (req, res) => {
   try {
-    const { status, startDate, endDate, onModel } = req.query;
+    const { status, startDate, endDate, onModel, college } = req.query;
+    let collegeFilters = [];
 
+    if (req.originalUrl.includes("amity")) {
+      collegeFilters = ["amity"];
+    } else if (req.originalUrl.includes("cgc")) {
+      collegeFilters = ["CGC Landran"];
+    } else if (req.originalUrl.includes("cu/lpu")) {
+      collegeFilters = [
+        "chandigarh University",
+        "lovely professional university",
+      ];
+    }
+
+    if (college) {
+      collegeFilters = college.split(",").map((c) => c.trim().toLowerCase());
+    }
     const orderWhere = {};
+
     if (status) {
       if (
         status.toLowerCase() === "success" ||
@@ -827,16 +861,32 @@ export const getPaymentReports = async (req, res) => {
       }
     }
 
-    const snapshotWhere = {};
-    if (onModel) snapshotWhere.onModel = onModel;
-
-    // Add date filtering if provided
     if (startDate && endDate) {
       orderWhere.created_at = {
         [Op.between]: [new Date(startDate), new Date(endDate)],
       };
     }
 
+    // =====================================================
+    // 🔥 STEP 3: SNAPSHOT FILTER
+    // =====================================================
+    const snapshotWhere = {};
+
+    if (onModel) {
+      snapshotWhere.onModel = onModel;
+    }
+
+    if (collegeFilters.length > 0) {
+      snapshotWhere[Op.or] = collegeFilters.map((name) => ({
+        collegeName: {
+          [Op.iLike]: `%${name}%`,
+        },
+      }));
+    }
+
+    // =====================================================
+    // 🔥 STEP 4: FETCH ORDERS
+    // =====================================================
     const orders = await PaymentOrder.findAll({
       where: orderWhere,
       include: [
@@ -844,12 +894,15 @@ export const getPaymentReports = async (req, res) => {
           model: PricingSnapshot,
           as: "snapshot",
           where: snapshotWhere,
+          required: true,
         },
       ],
       order: [["created_at", "DESC"]],
     });
 
-    // Group admissionIds by model for efficient fetching
+    // =====================================================
+    // 🔥 STEP 5: GROUP IDS
+    // =====================================================
     const modelMap = {
       students: new Set(),
       admissions: new Set(),
@@ -863,49 +916,62 @@ export const getPaymentReports = async (req, res) => {
       }
     });
 
-    // Fetch leads for each model
+    // =====================================================
+    // 🔥 STEP 6: BULK FETCH LEADS
+    // =====================================================
     const leadsData = {
       students: {},
       admissions: {},
       registrations: {},
     };
 
-    if (modelMap.students.size > 0) {
+    // Students
+    if (modelMap.students.size) {
       const students = await Student.findAll({
         where: { student_id: Array.from(modelMap.students) },
       });
-      students.forEach((s) => (leadsData.students[s.student_id] = s));
+      students.forEach((s) => {
+        leadsData.students[s.student_id] = s;
+      });
     }
-    if (modelMap.admissions.size > 0) {
-      // Postgres: Cast admissionIds to INTEGER if needed, but since they are stored as strings in modelMap, we just use them.
-      // If admissionIds are numbers like "144", findAll with where: { id: [...] } usually handles it if Postgres allows string-to-int conversion in IN clause.
-      // To be safe, we cast to Numbers.
-      const ids = Array.from(modelMap.admissions)
-        .map((id) => parseInt(id))
-        .filter((id) => !isNaN(id));
-      if (ids.length > 0) {
-        const admissions = await Admission.findAll({ where: { id: ids } });
-        admissions.forEach((a) => (leadsData.admissions[a.id] = a));
-      }
-    }
-    if (modelMap.registrations.size > 0) {
-      const ids = Array.from(modelMap.registrations)
-        .map((id) => parseInt(id))
-        .filter((id) => !isNaN(id));
-      if (ids.length > 0) {
-        const registrations = await Registration.findAll({
+
+    // Admissions
+    if (modelMap.admissions.size) {
+      const ids = Array.from(modelMap.admissions).map(Number).filter(Boolean);
+
+      if (ids.length) {
+        const admissions = await Admission.findAll({
           where: { id: ids },
         });
-        registrations.forEach((r) => (leadsData.registrations[r.id] = r));
+        admissions.forEach((a) => {
+          leadsData.admissions[a.id] = a;
+        });
       }
     }
 
-    // Map data to match exact frontend expected format
+    // Registrations
+    if (modelMap.registrations.size) {
+      const ids = Array.from(modelMap.registrations)
+        .map(Number)
+        .filter(Boolean);
+
+      if (ids.length) {
+        const registrations = await Registration.findAll({
+          where: { id: ids },
+        });
+        registrations.forEach((r) => {
+          leadsData.registrations[r.id] = r;
+        });
+      }
+    }
+
+    // =====================================================
+    // 🔥 STEP 7: FORMAT RESPONSE
+    // =====================================================
     const formattedData = orders.map((order) => {
       const snap = order.snapshot || {};
-      const lead = leadsData[snap.onModel]
-        ? leadsData[snap.onModel][snap.admissionId]
-        : null;
+
+      const lead = leadsData[snap.onModel]?.[snap.admissionId] || null;
 
       return {
         id: order.id,
@@ -922,6 +988,7 @@ export const getPaymentReports = async (req, res) => {
         razorpay_order_id: order.razorpayOrderId,
         created_at: order.createdAt,
         updated_at: order.updatedAt,
+
         student: lead
           ? {
               student_id: snap.admissionId,
@@ -935,25 +1002,34 @@ export const getPaymentReports = async (req, res) => {
       };
     });
 
-    // Calculate Summary Stats in expected format
+    // =====================================================
+    // 🔥 STEP 8: ANALYTICS
+    // =====================================================
     const analytics = {
       total_records: orders.length,
       success: orders.filter((o) => o.status === "PAID").length,
       failed: orders.filter((o) => o.status === "FAILED").length,
-      pending: orders.filter(
-        (o) => o.status === "PENDING" || o.status === "CREATED",
-      ).length,
+      pending: orders.filter((o) => ["PENDING", "CREATED"].includes(o.status))
+        .length,
+
       total_revenue: orders
         .filter((o) => o.status === "PAID")
         .reduce((sum, o) => sum + parseFloat(o.amount || 0), 0),
     };
 
-    res.status(200).json({
+    // =====================================================
+    // ✅ FINAL RESPONSE
+    // =====================================================
+    return res.status(200).json({
+      success: true,
       analytics,
       data: formattedData,
     });
   } catch (error) {
     console.error("Report Error:", error);
-    res.status(500).json({ success: false, message: "Internal server error" });
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
   }
 };

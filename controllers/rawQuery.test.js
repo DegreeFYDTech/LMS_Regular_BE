@@ -58,6 +58,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       lastCallDateL3_end,
       preferredCity,
       preferredState,
+      isReassignedYet,
       currentCity,
       currentState,
       preferredStream,
@@ -92,11 +93,17 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       isPreNi,
     } = filters;
 
-    // Convert leadStatus from array to string if needed
+    // Convert leadStatus from array to string if needed - BUT keep as array for multiple values
     let leadStatus = rawLeadStatus;
-    if (Array.isArray(leadStatus)) {
+    if (Array.isArray(leadStatus) && leadStatus.length === 1) {
       leadStatus = leadStatus[0];
       console.log("Converted leadStatus from array to string:", leadStatus);
+    } else if (Array.isArray(leadStatus) && leadStatus.length > 1) {
+      console.log(
+        "Keeping leadStatus as array with multiple values:",
+        leadStatus,
+      );
+      // Keep as array for multiple OR conditions
     }
 
     const isAnalyser = userrole === "Analyser";
@@ -131,6 +138,19 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         : values.split(",").map((v) => v.trim());
       if (arr.length === 0) return "";
       return `${field} IN (${arr.map(escape).join(",")})`;
+    };
+
+    // NEW: Case-insensitive IN clause for lead_status
+    const inSQLCaseInsensitive = (field, values) => {
+      if (!values) return "";
+      const arr = Array.isArray(values)
+        ? values
+        : values.split(",").map((v) => v.trim());
+      if (arr.length === 0) return "";
+      const conditions = arr
+        .map((v) => `${field} ILIKE ${escape(v)}`)
+        .join(" OR ");
+      return `(${conditions})`;
     };
 
     const textSQL = (field, val, exact = false) =>
@@ -405,7 +425,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
 
     const leadReactive = boolSQL("s.is_reactivity", lead_reactive);
     if (leadReactive) where.push(leadReactive);
-
+    const isRY = boolSQL("s.is_reassigned_yet", isReassignedYet);
+    if (isRY) where.push(isRY);
     if (hasUnreadMessages === "true")
       where.push("s.number_of_unread_messages > 0");
     else if (hasUnreadMessages === "false")
@@ -472,10 +493,10 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     if (subCallingStatusL3)
       where.push(inSQL("s.sub_calling_status_l3", subCallingStatusL3));
 
-    // Handle lead_status filter - For L3, filter based on journey status
-    // For non-L3, filter based on students table current_student_status
+    // Handle lead_status filter - FIXED: Use case-insensitive OR condition for non-L3
     if (leadStatus && data !== "l3") {
-      where.push(inSQL("s.current_student_status", leadStatus));
+      // Use case-insensitive OR condition for multiple statuses
+      where.push(inSQLCaseInsensitive("s.current_student_status", leadStatus));
     }
 
     if (leadSubStatus && data !== "l3") {
@@ -616,42 +637,44 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     if (utmCreativeId)
       utmWhere.push(`la.utm_creative_id = ${escape(utmCreativeId)}`);
 
-    const latestRemarkWhere =
-      data === "l3" && userRole === "l3"
-        ? `WHERE sr.counsellor_id = ${escape(userId)}`
-        : data === "l3" &&
-            userRole === "to_l3" &&
-            selectedagent &&
-            l3TeamIds.includes(selectedagent)
-          ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
-          : data === "l3" &&
-              userRole === "to_l3" &&
-              !selectedagent &&
-              l3TeamIds.length > 0
-            ? `WHERE sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})`
-            : data === "l3" &&
-                userRole === "to" &&
-                selectedagent &&
-                l3TeamIds.includes(selectedagent)
-              ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
-              : data === "l3" &&
-                  userRole === "to" &&
-                  !selectedagent &&
-                  l3TeamIds.length > 0
-                ? `WHERE sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})`
-                : data === "l3" && selectedagent
-                  ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
-                  : data === "l3" && !selectedagent
-                    ? `WHERE 1=1`
-                    : selectedagent &&
-                        isSupervisorView &&
-                        data &&
-                        data !== "to" &&
-                        data !== "l3"
-                      ? `WHERE sr.counsellor_id IN (${supervisorCounsellorIds.map(escape).join(",")})`
-                      : selectedagent && data && data !== "to" && data !== "l3"
-                        ? `WHERE sr.counsellor_id = ${escape(selectedagent)}`
-                        : "";
+    const latestRemarkWhere = (() => {
+  // For L2 - show ALL remarks regardless of counsellor
+  if (data === "l2") {
+    return `WHERE 1=1`;  // This will show all remarks, bypassing any RLS filter
+  }
+  
+  // For L3 and other roles, keep existing logic
+  if (data === "l3" && userRole === "l3") {
+    return `WHERE sr.counsellor_id = ${escape(userId)}`;
+  }
+  if (data === "l3" && userRole === "to_l3" && selectedagent && l3TeamIds.includes(selectedagent)) {
+    return `WHERE sr.counsellor_id = ${escape(selectedagent)}`;
+  }
+  if (data === "l3" && userRole === "to_l3" && !selectedagent && l3TeamIds.length > 0) {
+    return `WHERE sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})`;
+  }
+  if (data === "l3" && userRole === "to" && selectedagent && l3TeamIds.includes(selectedagent)) {
+    return `WHERE sr.counsellor_id = ${escape(selectedagent)}`;
+  }
+  if (data === "l3" && userRole === "to" && !selectedagent && l3TeamIds.length > 0) {
+    return `WHERE sr.counsellor_id IN (${l3TeamIds.map(escape).join(",")})`;
+  }
+  if (data === "l3" && selectedagent) {
+    return `WHERE sr.counsellor_id = ${escape(selectedagent)}`;
+  }
+  if (data === "l3" && !selectedagent) {
+    return `WHERE 1=1`;
+  }
+  if (selectedagent && isSupervisorView && data && data !== "to" && data !== "l3") {
+    return `WHERE sr.counsellor_id IN (${supervisorCounsellorIds.map(escape).join(",")})`;
+  }
+  if (selectedagent && data && data !== "to" && data !== "l3") {
+    return `WHERE sr.counsellor_id = ${escape(selectedagent)}`;
+  }
+  
+  // Default: empty string (but for L2 we already returned above)
+  return "";
+})();
 
     let l3CounsellorFilter = "";
     if (data === "l3") {
@@ -954,7 +977,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     }
 
     // Handle freshLeads flag for L3
-    // Handle freshLeads flag for L3
     if (freshLeads === "Fresh" && data === "l3") {
       if (selectedagent) {
         if (userRole === "to_l3" && l3TeamIds.includes(selectedagent)) {
@@ -1007,7 +1029,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       }
     }
     // Handle freshLeads flag for L2
-    else if (freshLeads === "Fresh" && data === "l2") {
+    else if (freshLeads === "Fresh" && (data === "l2" || data === "to")) {
       // Fresh leads for L2: Students with current_student_status = 'Fresh'
       whereClauses.push(`s.current_student_status = 'Fresh'`);
     } else if (freshLeads !== "Fresh" && data !== "l3") {
@@ -1708,7 +1730,7 @@ async function getL3OverallStatsFromJourney({
   l3TeamIds = [],
   leadStatus = null,
   studentWhere = "1=1",
-  freshLeads = null
+  freshLeads = null,
 }) {
   try {
     const formatDateForPostgres = (date) => {

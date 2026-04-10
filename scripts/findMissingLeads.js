@@ -264,7 +264,7 @@ async function findMissingLeads() {
   process.exit(0);
 }
 
-findMissingLeads().catch(err => {
-  console.error('💥 Unexpected error:', err);
-  process.exit(1);
-});
+// findMissingLeads().catch(err => {
+//   console.error('💥 Unexpected error:', err);
+//   process.exit(1);
+// });

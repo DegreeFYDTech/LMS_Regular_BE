@@ -91,6 +91,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       totalConnectedCalls_min,
       totalConnectedCalls_max,
       isPreNi,
+      advancedFilters,
     } = filters;
 
     // Convert leadStatus from array to string if needed - BUT keep as array for multiple values
@@ -521,6 +522,64 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
 
     if (remarks) {
       where.push(`lr.remarks ILIKE '%' || ${escape(remarks)} || '%'`);
+    }
+
+    // Handle Advanced Filters
+    if (advancedFilters) {
+      try {
+        const filtersArray = Array.isArray(advancedFilters)
+          ? advancedFilters
+          : typeof advancedFilters === "string"
+            ? JSON.parse(advancedFilters)
+            : [];
+
+        if (Array.isArray(filtersArray)) {
+          filtersArray.forEach((filter) => {
+            const { field, operator, value } = filter;
+            if (!field) return;
+
+            const escapedField = escape(field);
+            const escapedValue = Array.isArray(value)
+              ? `('${value.map((v) => v.toString().replace(/'/g, "''")).join("','")}')`
+              : escape(value);
+
+            let condition = "";
+            switch (operator) {
+              case "Equals":
+                if (value !== undefined && value !== null) {
+                  if (Array.isArray(value)) {
+                    if (value.length > 0) {
+                      condition = `EXISTS (SELECT 1 FROM student_question_responses sqr WHERE sqr.student_id = s.student_id AND sqr.question = ${escapedField} AND sqr.answer #>> '{}' IN ${escapedValue})`;
+                    }
+                  } else {
+                    condition = `EXISTS (SELECT 1 FROM student_question_responses sqr WHERE sqr.student_id = s.student_id AND sqr.question = ${escapedField} AND sqr.answer #>> '{}' = ${escapedValue})`;
+                  }
+                }
+                break;
+              case "Contains":
+                if (value) {
+                  if (Array.isArray(value)) {
+                    if (value.length > 0) {
+                      const matchArray = `ARRAY['%${value.map((v) => v.toString().replace(/'/g, "''")).join("%','%")}%']`;
+                      condition = `EXISTS (SELECT 1 FROM student_question_responses sqr WHERE sqr.student_id = s.student_id AND sqr.question = ${escapedField} AND sqr.answer #>> '{}' ILIKE ANY (${matchArray}))`;
+                    }
+                  } else {
+                    condition = `EXISTS (SELECT 1 FROM student_question_responses sqr WHERE sqr.student_id = s.student_id AND sqr.question = ${escapedField} AND sqr.answer #>> '{}' ILIKE '%' || ${escapedValue} || '%')`;
+                  }
+                }
+                break;
+              case "Is Empty":
+                condition = `NOT EXISTS (SELECT 1 FROM student_question_responses sqr WHERE sqr.student_id = s.student_id AND sqr.question = ${escapedField} AND sqr.answer IS NOT NULL AND sqr.answer #>> '{}' != '')`;
+                break;
+              default:
+                break;
+            }
+            if (condition) where.push(condition);
+          });
+        }
+      } catch (e) {
+        console.error("Error parsing advancedFilters:", e);
+      }
     }
 
     if (callback) {

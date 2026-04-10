@@ -1,0 +1,34 @@
+{
+  "generated_at": "2026-04-10T06:13:45.059Z",
+  "description": "Meta leads fetched from Graph API — not found in Regular, Online, or Enterprise LMS",
+  "total": 1,
+  "leads": [
+    {
+      "lead_id": 1670162857742976,
+      "name": "Aayush Kumar",
+      "phone_number": "7550169278",
+      "email": "akkeshri137@gmail.com",
+      "preferred_city": "Gurugram",
+      "source": "FaceBook",
+      "form_name": "1670162857742976",
+      "mode": "Online",
+      "sourceUrl": "F_UA1_FEB_MBA_Aryan v1.5",
+      "utm_campaign": "F_UA1_FEB_MBA_Aryan v1.5 C1.3",
+      "utm_campaign_id": "120241579139270690",
+      "student_comment": [
+        {
+          "question": "what_is_your_current_status?",
+          "answer": "working_professional"
+        },
+        {
+          "question": "how_much_work_experience_do_you_have?",
+          "answer": "mba_in_data_science_&_analytics"
+        },
+        {
+          "question": "why_do_you_want_to_pursue_an_mba?",
+          "answer": "nmims,_mumbai"
+        }
+      ]
+    }
+  ]
+}

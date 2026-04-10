@@ -14,6 +14,7 @@ import {
   bulkCreateStudents,
   markWalkin,
 } from "../controllers/student.controller.js";
+import { getAdvancedFilterSchema } from "../controllers/advancedFilter.controller.js";
 import { exportStudentsCSV } from "../controllers/exports/leads_csv_export.js";
 import { getStudents } from "../controllers/students.table.js";
 import { bearerAuth } from "../middlewares/bearerAuthMiddleware.js";
@@ -27,6 +28,11 @@ router.get(
   "/studentWindowOpenByCounsellor",
   authorize(["l2", "l3"]),
   studentWindowOpenByCounsellor,
+);
+router.get(
+  "/advanced-filter/schema",
+  authorize(["l2", "l3", "supervisor", "Supervisor", "to", "analyser", "to_l3"]),
+  getAdvancedFilterSchema,
 );
 
 router.post("/create", createStudent);

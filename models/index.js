@@ -41,6 +41,7 @@ import PaymentOrder from './PaymentOrder.js';
 import WebhookEvent from './WebhookEvent.js';
 import Admission from './Admission.js';
 import Registration from './Registration.js';
+import StudentQuestionResponse from './StudentQuestionResponse.js';
 
 Student.belongsTo(Counsellor, { foreignKey: 'assigned_counsellor_id', as: 'assignedCounsellor' });
 Student.belongsTo(Counsellor, { foreignKey: 'assigned_counsellor_l3_id', as: 'assignedCounsellorL3' });
@@ -99,6 +100,9 @@ Supervisor.hasMany(StudentRemark, {
 });
 Student.hasMany(StudentLeadActivity, { foreignKey: 'student_id', as: 'lead_activities', onDelete: 'CASCADE' });
 StudentLeadActivity.belongsTo(Student, { foreignKey: 'student_id', },);
+
+Student.hasMany(StudentQuestionResponse, { foreignKey: 'student_id', as: 'student_question_responses', onDelete: 'CASCADE' });
+StudentQuestionResponse.belongsTo(Student, { foreignKey: 'student_id', as: 'student' });
 
 Student.hasMany(CourseStatus, { foreignKey: 'student_id', onDelete: 'CASCADE' });
 CourseStatus.belongsTo(Student, { foreignKey: 'student_id' });
@@ -219,5 +223,6 @@ export {
   Admission,
   Registration,
   StudentCollegeApiClickLog,
-  UserActionLog
+  UserActionLog,
+  StudentQuestionResponse
 };

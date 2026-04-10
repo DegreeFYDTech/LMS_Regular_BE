@@ -40,12 +40,13 @@ export const createStudent = async (req, res) => {
     const processedLeads = [];
     const errors = [];
     for (const leadData of leads) {
+      console.log("Received lead data:", leadData);
       const result = await processStudentLead(leadData);
-
+      console.log("Lead processed with result:", result);
       const studentWithUTM = {
-        ...result.student.dataValues,
+        ...result?.student?.dataValues,
         utmCampaign:
-          result.leadActivity.dataValues.utm_campaign ||
+          result.leadActivity?.dataValues.utm_campaign ||
           result.student?.utmCampaign, // Make sure this is included
         first_source_url:
           result.student?.first_source_url || leadData.SourceUrl,

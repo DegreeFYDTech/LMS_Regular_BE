@@ -66,6 +66,8 @@ export const getStudentshelper = async (filters) => {
       sortOrder = "desc",
       isreactivity,
       callback,
+      enrolled,
+      underDocumentation,
       remarkssort,
       createdAtsort,
       lastCallsort,
@@ -649,7 +651,7 @@ export const getStudentshelper = async (filters) => {
 export const getStudents = async (req, res) => {
   try {
     const { role, id } = req.user;
-
+    console.log("User role in getStudents:", role, "User ID:", id);
     let analyserData = {};
     if (role === "Analyser") {
       try {
@@ -673,16 +675,13 @@ export const getStudents = async (req, res) => {
         console.error("Error fetching analyser data:", error);
       }
     }
-
+    console.log(analyserData);
     // Pass analyser data to filter helper
     const filters = mapFiltersForGetStudentsHelper(
       req.query,
       role,
       analyserData,
     );
-
-    // IMPORTANT: Add the user role to filters explicitly
-    filters.userrole = role;
 
     let data;
     if (filters.wishlist) {
@@ -865,6 +864,8 @@ export const mapFiltersForGetStudentsHelper = (
     utmKeyword: params.utmKeyword,
     utmCampaignId: params.utmCampaignId,
     utmAdgroupId: params.utmAdgroupId,
+    enrolled: params?.enrolled,
+    underDocumentation: params?.underDocumentation,
     utmCreativeId: params.utmCreativeId,
     callingStatus:
       (params.calling_status && transformArray(params?.calling_status)) ||
@@ -930,6 +931,7 @@ export const mapFiltersForGetStudentsHelper = (
     lead_reactive:
       params?.lead_reactive && (params?.lead_reactive == "true" ? true : false),
     isReassignedYet: params?.isReassignedYet || params?.is_reassigned_yet,
+    advancedFilters: params?.advancedFilters,
     // Add analyser-specific filters for SQL function
     ...(isAnalyser && {
       analyserSources,

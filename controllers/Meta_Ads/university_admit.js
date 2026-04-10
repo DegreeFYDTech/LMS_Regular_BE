@@ -362,6 +362,5 @@ async function processLeads() {
   };
 
   await writeFile(outPath, JSON.stringify(output, null, 2), 'utf-8');
-  console.log(`\n📁 Saved ${final_data.length} leads → ${outPath}`);
 }
-processLeads();
+// processLeads();

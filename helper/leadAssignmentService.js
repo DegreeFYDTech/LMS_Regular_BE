@@ -4,8 +4,10 @@ import {
   Student,
   StudentLeadActivity,
   StudentRemark,
-  Chat,
   Message,
+  Chat,
+  sequelize,
+  StudentQuestionResponse
 } from "../models/index.js";
 import { createLeadLog } from "../controllers/Lead_logs.controller.js";
 import { DATE, Op } from "sequelize";
@@ -244,36 +246,56 @@ export const assignLeadHelper = async (leadData) => {
     allMatchingRules.sort((a, b) => b.score - a.score);
 
     const findNextActiveCounsellor = async (rule) => {
-      const ids = rule.assigned_counsellor_ids;
-      if (!ids || ids.length === 0) return null;
+      try {
+        return await sequelize.transaction(async (t) => {
+          // Re-fetch the rule with a lock to prevent race conditions
+          const freshRule = await LeadAssignmentRuleL2.findByPk(
+            rule.lead_assignment_rule_l2_id,
+            {
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            },
+          );
 
-      const activeCounsellors = await Counsellor.findAll({
-        where: {
-          counsellor_id: ids,
-          status: "active",
-        },
-      });
+          if (!freshRule) return null;
 
-      if (activeCounsellors.length === 0) return null;
+          const ids = freshRule.assigned_counsellor_ids;
+          if (!ids || ids.length === 0) return null;
 
-      let currentIndex = rule.round_robin_index || 0;
-      if (currentIndex >= activeCounsellors.length) currentIndex = 0;
+          const activeCounsellors = await Counsellor.findAll({
+            where: {
+              counsellor_id: ids,
+              status: "active",
+            },
+            transaction: t,
+          });
 
-      const selected = activeCounsellors[currentIndex];
+          if (activeCounsellors.length === 0) return null;
 
-      // Update round robin index
-      await LeadAssignmentRuleL2.update(
-        {
-          round_robin_index: (currentIndex + 1) % activeCounsellors.length,
-        },
-        {
-          where: {
-            lead_assignment_rule_l2_id: rule.lead_assignment_rule_l2_id,
-          },
-        },
-      );
+          // Sort activeCounsellors to respect the order in 'ids' array
+          const sortedActive = activeCounsellors.sort((a, b) => {
+            return ids.indexOf(a.counsellor_id) - ids.indexOf(b.counsellor_id);
+          });
 
-      return selected;
+          let currentIndex = freshRule.round_robin_index || 0;
+          if (currentIndex >= sortedActive.length) currentIndex = 0;
+
+          const selected = sortedActive[currentIndex];
+          const nextIndex = (currentIndex + 1) % sortedActive.length;
+
+          // Update round robin index
+          await freshRule.update(
+            { round_robin_index: nextIndex },
+            { transaction: t },
+          );
+
+          return selected;
+        });
+      } catch (error) {
+        console.error("Error in findNextActiveCounsellor transaction:", error);
+        // Fallback to non-transactional if something fails (optional, but transaction is safer)
+        return null;
+      }
     };
 
     // Try to assign based on matching rules
@@ -343,16 +365,6 @@ export const assignLeadHelper = async (leadData) => {
       assignmentType = "default";
     }
 
-    // Log assignment details for debugging
-    console.log({
-      assignmentType,
-      counsellorId: assignedCounsellor.counsellor_id,
-      ruleMatched:
-        assignmentType === "rule-based" ? bestMatchDetails.ruleName : "None",
-      matchScore: bestMatchScore,
-      matchedFields: bestMatchDetails?.matchedFields?.map((f) => f.field) || [],
-    });
-
     return {
       success: true,
       assignedCounsellor,
@@ -389,7 +401,6 @@ export const createChatAndMessagesFromLead = async (studentPhone, leadData) => {
     // Get WhatsApp messages from lead data
     const whatsappMessages =
       leadData.whatsapp_messages || leadData.whatsappMessages || [];
-    console.log(whatsappMessages);
     if (whatsappMessages.length === 0) {
       return {
         success: false,
@@ -420,9 +431,6 @@ export const createChatAndMessagesFromLead = async (studentPhone, leadData) => {
       businessNumber = FROM_NUMBER; // From your config
       console.log(`Using default business number: ${businessNumber}`);
     }
-
-    console.log(`Detected business number: ${businessNumber}`);
-    console.log(`Student number: ${studentPhoneWithCountryCode}`);
 
     // Check if chat already exists
     const existingChat = await Chat.findOne({
@@ -567,6 +575,7 @@ export const createChatAndMessagesFromLead = async (studentPhone, leadData) => {
 };
 export const ProceessLeads = async (leads) => {};
 export const processStudentLead = async (leadData) => {
+  console.log("Processing lead with data:", leadData);
   if (
     !leadData.email ||
     (!leadData.phoneNumber && !leadData.phone_number && !leadData.mobile)
@@ -672,6 +681,11 @@ export const processStudentLead = async (leadData) => {
     current_role: leadData.current_role || "",
     work_experience: leadData.work_experience || "",
     student_age: leadData.student_age || 0,
+    student_comment:
+      leadData.studentComment ||
+      leadData.student_comment ||
+      leadData.answers ||
+      [],
     objective: leadData.objective || "",
     student_current_city: leadData.student_current_city || "",
     preferred_city: leadData.preferred_city || [],
@@ -681,7 +695,9 @@ export const processStudentLead = async (leadData) => {
     preferred_level: leadData.preferred_level || "",
     preferred_budget: leadData.preferred_budget || "",
     preferred_specialization: leadData.preferred_specialization || "",
-
+    lead_type: leadData.leadType || "",
+    preferred_college_cll: leadData.preferred_college_cll || [],
+    // Campaign fields with proper separation
     utmCampaign: utmCampaign,
     utmCampaignId: utmCampaignId,
 
@@ -759,9 +775,9 @@ export const processStudentLead = async (leadData) => {
       leadData.Specialization ||
       leadData.SPECIALIZATION ||
       "",
-
+    primary_db_id: leadData.primary_db_id || null,
     mode: leadData.mode || leadData.Mode || leadData.MODE || "",
-    primary_db_id: leadData.primary_db_id,
+
     prefCity:
       leadData.city ||
       leadData.City ||
@@ -777,11 +793,7 @@ export const processStudentLead = async (leadData) => {
       leadData.ip_city ||
       leadData.IP_CITY ||
       "",
-    student_comment:
-      leadData.studentComment ||
-      leadData.student_comment ||
-      leadData.answers ||
-      [],
+
     prefState:
       leadData.state ||
       leadData.State ||
@@ -799,8 +811,8 @@ export const processStudentLead = async (leadData) => {
       "",
 
     preferred_university: leadData.preferred_university,
-    lead_type: leadData.lead_type || "",
-    preferred_college_cll: leadData.preferred_college_cll || [],
+    is_transfered: leadData.is_transfered || false,
+
     degree:
       leadData.preferredDegree ||
       leadData.PreferredDegree ||
@@ -816,7 +828,6 @@ export const processStudentLead = async (leadData) => {
       leadData.Degree ||
       leadData.DEGREE ||
       "",
-    is_transfered: leadData.is_transfered || false,
   };
   const messages =
     leadData.whatsapp_messages || leadData.whatsappMessages || [];
@@ -873,13 +884,10 @@ export const processStudentLead = async (leadData) => {
   if (existingStudent) {
     student = existingStudent;
     studentStatus = "already_exists";
-
-    if (existingStudent) {
-      const [updated] = await Student.update(
-        { is_reactivity: true },
-        { where: { student_id: existingStudent.student_id }, returning: true },
-      );
-    }
+    const [updated] = await Student.update(
+      { is_reactivity: true },
+      { where: { student_id: existingStudent.student_id }, returning: true },
+    );
   } else {
     const toArray = (val) => {
       if (!val) return [];
@@ -889,7 +897,6 @@ export const processStudentLead = async (leadData) => {
     const newStudentData = {
       student_name: mappedLeadData.name,
       student_email: mappedLeadData.email,
-      primary_db_id: mappedLeadData.primary_db_id,
       student_phone: mappedLeadData.phoneNumber,
       parents_number:
         leadData.parentsNumber ||
@@ -922,6 +929,7 @@ export const processStudentLead = async (leadData) => {
         "",
       student_current_city: mappedLeadData.student_current_city,
       student_current_state: mappedLeadData.student_current_state,
+      primary_db_id: mappedLeadData.primary_db_id,
       current_profession: mappedLeadData.current_profession,
       current_role: mappedLeadData.current_role,
       work_experience: mappedLeadData.work_experience,
@@ -959,6 +967,32 @@ export const processStudentLead = async (leadData) => {
       });
     } catch (e) {
       console.log("error while creating the log", e.message);
+    }
+  }
+  if (
+    mappedLeadData.student_comment &&
+    Array.isArray(mappedLeadData.student_comment)
+  ) {
+    try {
+      const responseEntries = mappedLeadData.student_comment
+        .filter((c) => c.question)
+        .map((c) => ({
+          student_id: student.student_id,
+          question: c.question,
+          answer: c.answer,
+        }));
+
+      if (responseEntries.length > 0) {
+        await StudentQuestionResponse.bulkCreate(responseEntries);
+        console.log(
+          `Stored ${responseEntries.length} individual question responses for student ${student.student_id}`,
+        );
+      }
+    } catch (responseError) {
+      console.error(
+        "Error storing individual question responses:",
+        responseError.message,
+      );
     }
   }
 

@@ -375,304 +375,6 @@ export const assignLeadHelper = async (leadData) => {
     };
   }
 };
-export const calculateLeadScoreFromL2Rules = async (leadData) => {
-  try {
-    if (
-      !leadData.name ||
-      !leadData.email ||
-      (!leadData.phoneNumber && !leadData.phone_number)
-    ) {
-      throw new Error("Name, email, and phoneNumber are required fields");
-    }
-
-    const priorityFields = [
-      "utmCampaign",
-      "first_source_url",
-      "source",
-      "mode",
-      "preferred_budget",
-      "current_profession",
-      "preferred_level",
-      "preferred_degree",
-      "preferred_specialization",
-      "preferred_city",
-      "preferred_state",
-    ];
-
-    const rules = await LeadAssignmentRuleL2.findAll({
-      where: { is_active: true },
-      order: [["priority", "DESC"]],
-    });
-
-    let allMatchingRules = [];
-    let totalScore = 0;
-    let bestMatchDetails = null;
-    let bestMatchScore = -1;
-
-    // Helper function to normalize and format lead data values
-    const formatLeadValue = (field, value) => {
-      if (!value) return null;
-
-      switch (field) {
-        case "preferred_budget":
-          if (typeof value === "number") return value.toString();
-          if (typeof value === "string") {
-            const numValue = value.replace(/[₹,]/g, "").trim();
-            return isNaN(numValue) ? value : numValue;
-          }
-          return value.toString();
-
-        case "preferred_degree":
-        case "preferred_specialization":
-          if (Array.isArray(value)) {
-            return value.length > 0 ? value[0] : null;
-          }
-          return value;
-
-        default:
-          if (typeof value === "string") return value.trim();
-          if (typeof value === "number") return value.toString();
-          return value;
-      }
-    };
-
-    // Helper to check if a value matches rule conditions
-    const checkMatch = (field, value, ruleConditions) => {
-      if (
-        !value ||
-        !ruleConditions ||
-        ruleConditions.length === 0 ||
-        ruleConditions.includes("Any")
-      ) {
-        return false;
-      }
-
-      const formattedValue = formatLeadValue(field, value);
-
-      if (field === "first_source_url") {
-        return ruleConditions.some(
-          (cond) =>
-            formattedValue &&
-            cond &&
-            formattedValue.toLowerCase().includes(cond.toLowerCase()),
-        );
-      }
-
-      if (field === "preferred_budget") {
-        return ruleConditions.some((condition) => {
-          if (!condition || !formattedValue) return false;
-
-          if (condition.includes("-")) {
-            const [min, max] = condition.split("-").map(Number);
-            const budgetValue = Number(formattedValue);
-            return (
-              !isNaN(budgetValue) && budgetValue >= min && budgetValue <= max
-            );
-          }
-
-          return condition === formattedValue;
-        });
-      }
-
-      if (Array.isArray(ruleConditions)) {
-        return ruleConditions.some(
-          (cond) =>
-            cond &&
-            formattedValue &&
-            cond.toString() === formattedValue.toString(),
-        );
-      }
-
-      return ruleConditions.includes(formattedValue);
-    };
-
-    const normalizeConditions = (conditions) => {
-      if (!conditions) return {};
-
-      return {
-        ...conditions,
-        first_source_url:
-          conditions.first_source_url || conditions.firstSourceUrl || [],
-        utmCampaign: conditions.utmCampaign || conditions.utm_campaign || [],
-        preferred_city:
-          conditions.preferred_city ||
-          conditions.prefCity ||
-          conditions.pref_city ||
-          [],
-        preferred_state:
-          conditions.preferred_state ||
-          conditions.prefState ||
-          conditions.pref_state ||
-          [],
-        preferred_degree:
-          conditions.preferred_degree || conditions.prefDegree || [],
-        preferred_specialization:
-          conditions.preferred_specialization || conditions.prefSpec || [],
-        preferred_budget:
-          conditions.preferred_budget || conditions.budget || [],
-        current_profession:
-          conditions.current_profession || conditions.profession || [],
-        preferred_level: conditions.preferred_level || conditions.level || [],
-        mode: conditions.mode || [],
-        source: conditions.source || [],
-      };
-    };
-
-    for (const rule of rules) {
-      const conditions = normalizeConditions(rule?.conditions);
-
-      let ruleMatchScore = 0;
-      let matchedFields = [];
-      let ruleMatches = true;
-      let totalConditions = 0;
-      let satisfiedConditions = 0;
-      let highestPriorityMatch = -1;
-
-      for (let i = 0; i < priorityFields.length; i++) {
-        const field = priorityFields[i];
-        const ruleConditions = conditions[field];
-        const fieldPriority = priorityFields.length - i;
-
-        if (
-          !ruleConditions ||
-          ruleConditions.length === 0 ||
-          ruleConditions.includes("Any")
-        ) {
-          continue;
-        }
-
-        totalConditions++;
-        const value = leadData[field];
-
-        if (value === undefined || value === null || value === "") {
-          ruleMatches = false;
-          break;
-        }
-
-        const isMatch = checkMatch(field, value, ruleConditions);
-
-        if (isMatch) {
-          satisfiedConditions++;
-          matchedFields.push({
-            field,
-            value: formatLeadValue(field, value),
-            matchedConditions: ruleConditions,
-            priority: fieldPriority,
-          });
-          ruleMatchScore += fieldPriority;
-          highestPriorityMatch = Math.max(highestPriorityMatch, fieldPriority);
-        } else {
-          ruleMatches = false;
-          break;
-        }
-      }
-
-      if (ruleMatches && satisfiedConditions === totalConditions) {
-        let ruleScore = 0;
-        const scoreType = rule.score_type || "numeric";
-        const scoreValue = rule.score_value || 0;
-
-        if (scoreType === "percentage") {
-          ruleScore = scoreValue;
-        } else {
-          ruleScore = scoreValue;
-        }
-
-        const finalScore = ruleScore + (rule.priority || 0);
-
-        const matchDetails = {
-          matchedFields,
-          highestPriorityMatch,
-          totalMatchScore: ruleMatchScore,
-          finalScore,
-          rulePriority: rule.priority || 0,
-          totalConditions,
-          satisfiedConditions,
-          ruleName:
-            rule.custom_rule_name ||
-            rule.name ||
-            `Rule ${rule.lead_assignment_rule_l2_id}`,
-          ruleId: rule.lead_assignment_rule_l2_id,
-        };
-
-        allMatchingRules.push({
-          rule,
-          score: finalScore,
-          scoreType,
-          scoreValue: ruleScore,
-          matchDetails,
-        });
-
-        totalScore += ruleScore;
-
-        if (finalScore > bestMatchScore) {
-          bestMatchScore = finalScore;
-          bestMatchDetails = {
-            ...matchDetails, // Now matchDetails is defined!
-            scoreType,
-            scoreValue: ruleScore,
-          };
-        }
-      }
-    }
-
-    // Sort rules by score (highest first)
-    allMatchingRules.sort((a, b) => b.score - a.score);
-
-    // Cap percentage total at 100
-    const hasPercentageRule = allMatchingRules.some(
-      (r) => r.scoreType === "percentage",
-    );
-    const finalTotalScore =
-      hasPercentageRule && totalScore > 100 ? 100 : totalScore;
-
-    return {
-      success: true,
-      score: finalTotalScore,
-      rawScore: totalScore,
-      matchedRules: allMatchingRules.map((m) => ({
-        ruleId: m.rule.lead_assignment_rule_l2_id,
-        ruleName: m.matchDetails.ruleName,
-        customRuleName: m.rule.custom_rule_name,
-        score: m.score,
-        scoreType: m.scoreType,
-        scoreValue: m.scoreValue,
-        priority: m.rule.priority,
-        matchedFields: m.matchDetails.matchedFields?.map((f) => f.field) || [],
-        matchDetails: m.matchDetails,
-      })),
-      bestMatch: bestMatchDetails
-        ? {
-            ruleId: bestMatchDetails.ruleId,
-            ruleName: bestMatchDetails.ruleName,
-            score: bestMatchScore,
-            scoreType: bestMatchDetails.scoreType,
-            scoreValue: bestMatchDetails.scoreValue,
-            matchedFields:
-              bestMatchDetails.matchedFields?.map((f) => f.field) || [],
-          }
-        : null,
-      matchedCount: allMatchingRules.length,
-      hasPercentageRules: hasPercentageRule,
-      isCapped: hasPercentageRule && totalScore > 100,
-      timestamp: new Date().toISOString(),
-    };
-  } catch (error) {
-    console.error("Error in calculateLeadScoreFromL2Rules:", error);
-    return {
-      success: false,
-      score: 0,
-      rawScore: 0,
-      matchedRules: [],
-      bestMatch: null,
-      matchedCount: 0,
-      error: error.message,
-      stack: error.stack,
-      timestamp: new Date().toISOString(),
-    };
-  }
-};
-
 const COUNTRY_CODE = "91";
 const ensureCountryCode = (phoneNumber) => {
   return phoneNumber?.startsWith(COUNTRY_CODE)
@@ -1125,18 +827,15 @@ export const processStudentLead = async (leadData) => {
       whatsapp_messages: messages,
     },
   );
-  // const assignmentResult = await assignLeadHelper(mappedLeadData);
+  const assignmentResult = await assignLeadHelper(mappedLeadData);
+  if (!assignmentResult.success) {
+    return {
+      success: false,
+      error: assignmentResult.message,
+    };
+  }
 
-  const scoringResult = await calculateLeadScoreFromL2Rules(mappedLeadData);
-
-  // if (!assignmentResult.success) {
-  //   return {
-  //     success: false,
-  //     error: assignmentResult.message,
-  //   };
-  // }
-
-  // const { assignedCounsellor } = assignmentResult;
+  const { assignedCounsellor } = assignmentResult;
 
   const existingStudent = await Student.findOne({
     where: {
@@ -1177,10 +876,7 @@ export const processStudentLead = async (leadData) => {
 
     if (existingStudent) {
       const [updated] = await Student.update(
-        {
-          is_reactivity: true,
-          lead_score: sequelize.literal("lead_score + 10"),
-        },
+        { is_reactivity: true },
         { where: { student_id: existingStudent.student_id }, returning: true },
       );
     }
@@ -1195,7 +891,6 @@ export const processStudentLead = async (leadData) => {
       student_email: mappedLeadData.email,
       primary_db_id: mappedLeadData.primary_db_id,
       student_phone: mappedLeadData.phoneNumber,
-      lead_score: scoringResult.score || 0,
       parents_number:
         leadData.parentsNumber ||
         leadData.parentNumber ||
@@ -1206,7 +901,7 @@ export const processStudentLead = async (leadData) => {
         leadData.whatsappNumber ||
         leadData.studentWhatsapp ||
         "",
-      assigned_counsellor_id: null,
+      assigned_counsellor_id: assignedCounsellor?.counsellor_id || null,
       mode: mappedLeadData.mode || "Regular",
       preferred_stream: toArray(mappedLeadData.stream),
       preferred_budget: String(mappedLeadData.preferred_budget || ""),
@@ -1238,33 +933,33 @@ export const processStudentLead = async (leadData) => {
     student = await Student.create(newStudentData);
     studentStatus = "created";
 
-    // if (global.sendLeadNotification && assignedCounsellor.counsellor_id) {
-    //   console.log("sending Notification");
-    //   global.sendLeadNotification(
-    //     assignedCounsellor.counsellor_id,
-    //     student,
-    //     studentStatus,
-    //   );
-    // }
+    if (global.sendLeadNotification && assignedCounsellor.counsellor_id) {
+      console.log("sending Notification");
+      global.sendLeadNotification(
+        assignedCounsellor.counsellor_id,
+        student,
+        studentStatus,
+      );
+    }
 
-    // try {
-    //   await Counsellor.increment(["current_lead_capacity", "total_leads"], {
-    //     where: { counsellor_id: assignedCounsellor.counsellor_id },
-    //   });
-    // } catch (e) {
-    //   console.log("counsellor_auto increment error ", e.message);
-    // }
+    try {
+      await Counsellor.increment(["current_lead_capacity", "total_leads"], {
+        where: { counsellor_id: assignedCounsellor.counsellor_id },
+      });
+    } catch (e) {
+      console.log("counsellor_auto increment error ", e.message);
+    }
 
-    // try {
-    //   await createLeadLog({
-    //     studentId: student.student_id,
-    //     assignedCounsellorId:
-    //       student.assigned_counsellor_id || assignedCounsellor.counsellor_id,
-    //     assignedBy: "Ruleset Based",
-    //   });
-    // } catch (e) {
-    //   console.log("error while creating the log", e.message);
-    // }
+    try {
+      await createLeadLog({
+        studentId: student.student_id,
+        assignedCounsellorId:
+          student.assigned_counsellor_id || assignedCounsellor.counsellor_id,
+        assignedBy: "Ruleset Based",
+      });
+    } catch (e) {
+      console.log("error while creating the log", e.message);
+    }
   }
 
   const leadActivityResult = await createLeadActivity(
@@ -1282,6 +977,7 @@ export const processStudentLead = async (leadData) => {
     success: true,
     student,
     leadActivity: leadActivityResult.leadActivity,
+    assignedCounsellor,
     studentStatus,
   };
 };

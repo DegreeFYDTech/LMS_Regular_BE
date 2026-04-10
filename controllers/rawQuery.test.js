@@ -1,7 +1,6 @@
 import { QueryTypes } from "sequelize";
 import sequelize from "../config/database-config.js";
 import { getOptimizedOverallStatsFromHelper } from "./Student_Stats.js";
-import { assignNextLeadFromDialer } from "../service/DialerAssignmentService.js";
 
 // Application statuses constant at the top
 const APPLICATION_STATUSES = [
@@ -100,6 +99,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       console.log("Converted leadStatus from array to string:", leadStatus);
     } else if (Array.isArray(leadStatus) && leadStatus.length > 1) {
       console.log("Keeping leadStatus as array with multiple values:", leadStatus);
+      // Keep as array for multiple OR conditions
     }
 
     const isAnalyser = userrole === "Analyser";
@@ -136,6 +136,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       return `${field} IN (${arr.map(escape).join(",")})`;
     };
 
+    // NEW: Case-insensitive IN clause for lead_status
     const inSQLCaseInsensitive = (field, values) => {
       if (!values) return "";
       const arr = Array.isArray(values)
@@ -298,11 +299,11 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         }
       }
     } else if (userRole === "l2") {
-      // Modified: Allow leads with temp_assigned_counsellor_id OR assigned_counsellor_id
+      where.push("s.assigned_counsellor_id IS NOT NULL");
       if (selectedagent) {
-        where.push(`(s.assigned_counsellor_id = ${escape(selectedagent)} OR s.temp_assigned_counsellor_id = ${escape(selectedagent)})`);
+        where.push(`s.assigned_counsellor_id = ${escape(selectedagent)}`);
       } else {
-        where.push(`(s.assigned_counsellor_id = ${escape(userId)} OR s.temp_assigned_counsellor_id = ${escape(userId)})`);
+        where.push(`s.assigned_counsellor_id = ${escape(userId)}`);
       }
     } else if (userRole === "l3") {
       if (data === "l3") {
@@ -485,7 +486,9 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     if (subCallingStatusL3)
       where.push(inSQL("s.sub_calling_status_l3", subCallingStatusL3));
 
+    // Handle lead_status filter - FIXED: Use case-insensitive OR condition for non-L3
     if (leadStatus && data !== "l3") {
+      // Use case-insensitive OR condition for multiple statuses
       where.push(inSQLCaseInsensitive("s.current_student_status", leadStatus));
     }
 
@@ -895,6 +898,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     // Handle lead_status filter for L3 - based on journey status
     if (leadStatus && data === "l3") {
       if (leadStatus === "Fresh") {
+        // Fresh leads: No journey entry OR no remarks from this counsellor
         if (selectedagent) {
           if (userRole === "to_l3" && l3TeamIds.includes(selectedagent)) {
             whereClauses.push(
@@ -943,6 +947,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           );
         }
       } else if (leadStatus === "Application") {
+        // Application leads: Filter by specific journey statuses
         const applicationStatuses = APPLICATION_STATUSES.map((status) =>
           escape(status),
         ).join(",");
@@ -950,6 +955,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           `lje.journey_course_status IN (${applicationStatuses})`,
         );
       } else {
+        // For other statuses, filter by journey course_status
         const statuses = Array.isArray(leadStatus)
           ? leadStatus
           : leadStatus.split(",").map((v) => v.trim());
@@ -1013,15 +1019,15 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         );
       }
     }
-    // Handle freshLeads flag for L2 - MODIFIED: Show leads with temp_assigned_counsellor_id
+    // Handle freshLeads flag for L2
     else if (freshLeads === "Fresh" && (data === "l2" || data === "to")) {
-      const counsellorId = selectedagent || userId;
-      whereClauses.push(`s.temp_assigned_counsellor_id = ${escape(counsellorId)}`);
+      // Fresh leads for L2: Students with current_student_status = 'Fresh'
+      whereClauses.push(`s.current_student_status = 'Fresh'`);
     } else if (freshLeads !== "Fresh" && data !== "l3") {
       const hasRemarkFilters =
         leadStatus ||
         leadSubStatus ||
-        callingStatus ||  
+        callingStatus ||
         subCallingStatus ||
         callbackDate_start ||
         callbackDate_end ||
@@ -1058,7 +1064,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       s.mode,
       s.source,
       s.assigned_team_owner_date,
-      s.temp_assigned_counsellor_id,
       CASE 
         WHEN s.student_email IS NOT NULL AND s.student_email != '' AND POSITION('@' IN s.student_email) > 0
         THEN SUBSTRING(s.student_email, 1, LEAST(POSITION('@' IN s.student_email) - 1, 3)) || '***@xxxxxx.com'
@@ -1123,6 +1128,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         fje.first_journey_timestamp as created_at_l3,
         fje.first_journey_timestamp as assigned_l3_date_from_journey,
         
+        -- Use journey course_status as lead_status for L3, but map application statuses to 'Application'
         CASE 
           WHEN lje.journey_course_status IS NOT NULL AND lje.journey_course_status IN (${APPLICATION_STATUSES.map((status) => escape(status)).join(",")}) THEN 'Application'
           WHEN lje.journey_course_status IS NOT NULL THEN lje.journey_course_status
@@ -1375,6 +1381,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
 
     if (!isDownload && freshLeads !== "Fresh" && leadStatus !== "Fresh") {
       if (data === "l3") {
+        // For L3 view, use the stats function that calculates fresh from student.current_student_status
         overallStats = await getL3OverallStatsFromJourney({
           journeyWhere,
           remarkWhere: remarkWhereStr,
@@ -1405,79 +1412,10 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       }
     }
 
-    let [students, countResult] = await Promise.all([
+    const [students, countResult] = await Promise.all([
       sequelize.query(mainQuery, { type: QueryTypes.SELECT }),
       sequelize.query(countQuery, { type: QueryTypes.SELECT }),
     ]);
-    
-    let totalCount = parseInt(countResult[0]?.total || 0);
-
-    // ============================================
-    // AUTO-ASSIGNMENT FOR L2 FRESH LEADS
-    // If no leads found with temp_assigned_counsellor_id, assign a new lead from dialer
-    // ============================================
-    if (!isDownload && freshLeads === "Fresh" && (data === "l2" || data === "to") && students.length === 0) {
-      const counsellorId = selectedagent || userId;
-      
-      if (counsellorId && (userRole === "l2" || (selectedagent && data === "l2"))) {
-        console.log(`No fresh leads found for counsellor ${counsellorId}, attempting auto-assignment...`);
-        
-        const assignedLead = await assignNextLeadFromDialer(counsellorId);
-        console.log(`Auto-assignment result for counsellor ${counsellorId}:`, assignedLead);
-        if (assignedLead && assignedLead.student_id) {
-          console.log(`Auto-assigned lead ${assignedLead.student_id} to counsellor ${counsellorId}`);
-          
-          // Re-fetch the assigned lead
-          const recheckQuery = `
-            SELECT 
-              s.student_id,
-              s.student_name,
-              s.student_email,
-              s.student_phone,
-              s.number_of_unread_messages,
-              s.created_at,
-              s.assigned_l3_date,
-              s.last_call_date_l3,
-              s.next_call_time_l3,
-              s.is_reactivity,
-              s.next_call_date_l3,
-              s.remarks_count,
-              s.mode,
-              s.source,
-              s.assigned_team_owner_date,
-              s.current_student_status,
-              s.temp_assigned_counsellor_id,
-              s.total_remarks_l3,
-              c1.counsellor_id as counsellor_id,
-              c1.counsellor_name as counsellor_name,
-              c1.counsellor_email as counsellor_email,
-              c1.role as counsellor_role,
-              CASE 
-                WHEN s.student_email IS NOT NULL AND s.student_email != '' AND POSITION('@' IN s.student_email) > 0
-                THEN SUBSTRING(s.student_email, 1, LEAST(POSITION('@' IN s.student_email) - 1, 3)) || '***@xxxxxx.com'
-                ELSE 'xxxxxx@xxxxxx.com'
-              END as student_email_masked,
-              CASE 
-                WHEN s.student_phone IS NOT NULL AND s.student_phone != '' AND LENGTH(s.student_phone) > 4
-                THEN SUBSTRING(s.student_phone, 1, 4) || 'XXXXXX'
-                ELSE 'XXXXXX'
-              END as student_phone_masked
-            FROM students s
-            LEFT JOIN counsellors c1 ON s.assigned_counsellor_id = c1.counsellor_id
-            WHERE s.student_id = ${escape(assignedLead.student_id)}
-          `;
-          
-          const newLeadResult = await sequelize.query(recheckQuery, {
-            type: QueryTypes.SELECT,
-          });
-          
-          if (newLeadResult.length > 0) {
-            students = newLeadResult;
-            totalCount = 1;
-          }
-        }
-      }
-    }
 
     function convertFlatArrayToNested(arr) {
       if (data === "l3") {
@@ -1486,8 +1424,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
             student_id: item.student_id,
             student_name: item.student_name,
             number_of_unread_messages: item.number_of_unread_messages,
-            student_email: item.student_email_masked || item.student_email,
-            student_phone: item.student_phone_masked || item.student_phone,
+            student_email: item.student_email,
+            student_phone: item.student_phone,
             total_remarks_l3: item.total_remarks_l3,
             next_call_date_l3: item?.next_call_date_l3,
             last_call_date_l3: item?.last_call_date_l3,
@@ -1501,7 +1439,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
             assigned_team_owner_date: item?.assigned_team_owner_date,
             mode: item.mode,
             source: item.source,
-            temp_assigned_counsellor_id: item.temp_assigned_counsellor_id,
             data_masked: true,
             mask_note: "Phone and email information is masked for privacy",
             lead_status: item.lead_status,
@@ -1596,8 +1533,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
             student_id: item.student_id,
             student_name: item.student_name,
             number_of_unread_messages: item.number_of_unread_messages,
-            student_email: item.student_email_masked || item.student_email,
-            student_phone: item.student_phone_masked || item.student_phone,
+            student_email: item.student_email,
+            student_phone: item.student_phone,
             total_remarks_l3: item.total_remarks_l3,
             next_call_date_l3: item?.next_call_date_l3,
             last_call_date_l3: item?.last_call_date_l3,
@@ -1610,7 +1547,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
             assigned_team_owner_date: item?.assigned_team_owner_date,
             mode: item.mode,
             source: item.source,
-            temp_assigned_counsellor_id: item.temp_assigned_counsellor_id,
             data_masked: true,
             mask_note: "Phone and email information is masked for privacy",
             lead_status: item.lead_status,
@@ -1704,6 +1640,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       }
     }
 
+    const totalCount = parseInt(countResult[0]?.total || 0);
+
     if (isDownload) {
       return {
         success: true,
@@ -1751,9 +1689,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         }),
         ...(userRole === "to" && {
           note: "Team Owner view - showing leads based on role and filters",
-        }),
-        ...((data === "l2" || userRole === "l2") && {
-          note: "L2 view - Fresh leads with temp_assigned_counsellor_id. Auto-assigns new lead if none found.",
         }),
       },
       mask_note:
@@ -1808,6 +1743,7 @@ async function getL3OverallStatsFromJourney({
     let remarkCounsellorFilter = "";
     let journeyCounsellorFilter = "";
 
+    // Build filters for counsellor access
     if (role === "l3") {
       if (selectedagent) {
         if ((isToL3View || isToView) && l3TeamIds.includes(selectedagent)) {
@@ -1836,6 +1772,7 @@ async function getL3OverallStatsFromJourney({
       }
     }
 
+    // Add lead status filter for base_students_with_journey (bj)
     let leadStatusFilter = "";
     if (leadStatus && leadStatus !== "Fresh") {
       if (leadStatus === "Application") {
@@ -1853,6 +1790,7 @@ async function getL3OverallStatsFromJourney({
       }
     }
 
+    // Prepare the filter string for base_students (bs) CTEs with actual statuses
     let baseStudentFilter = "";
     if (leadStatus && leadStatus !== "Fresh") {
       if (leadStatus === "Application") {
@@ -1870,11 +1808,13 @@ async function getL3OverallStatsFromJourney({
       }
     }
 
+    // Add student where clause for fresh leads calculation
     let studentWhereClause = "";
     if (studentWhere && studentWhere !== "1=1") {
       studentWhereClause = `AND (${studentWhere})`;
     }
 
+    // Add callback filter for stats
     let callbackFilter = "";
     const today = new Date();
     const todayStr = today.toISOString().split("T")[0];
@@ -1898,11 +1838,13 @@ async function getL3OverallStatsFromJourney({
       }
     }
 
+    // Clean remarkWhere to remove references to sr and lr tables for base_students
     let cleanRemarkWhere = "1=1";
     if (remarkWhere && remarkWhere !== "1=1") {
       cleanRemarkWhere = remarkWhere.replace(/sr\./g, "").replace(/lr\./g, "");
     }
 
+    // Build the counsellor filter string for fresh leads logic
     let counsellorIdForFresh = "";
     if (selectedagent) {
       counsellorIdForFresh = `= ${escape(selectedagent)}`;
@@ -1911,7 +1853,7 @@ async function getL3OverallStatsFromJourney({
     } else if ((isToL3View || isToView) && l3TeamIds.length > 0) {
       counsellorIdForFresh = `IN (${l3TeamIds.map(escape).join(",")})`;
     } else {
-      counsellorIdForFresh = `= ''`;
+      counsellorIdForFresh = `= ''`; // No valid counsellor
     }
 
     const query = `
@@ -1961,6 +1903,7 @@ async function getL3OverallStatsFromJourney({
         ${studentWhereClause}
         ${leadStatusFilter}
       ),
+      -- Fresh leads for L3: No journey entry OR no remarks from this counsellor
       fresh_leads AS (
         SELECT bs.student_id
         FROM base_students bs
@@ -1997,6 +1940,7 @@ async function getL3OverallStatsFromJourney({
         WHERE lr.student_id IS NOT NULL
           AND lr.callback_date >= current_date 
           AND lr.callback_date < current_date + 1
+          -- Exclude students whose latest journey status is 'Not Interested'
           AND bs.latest_course_status NOT IN ('Not Interested', 'NotInterested')
           ${baseStudentFilter}
           ${callbackFilter}

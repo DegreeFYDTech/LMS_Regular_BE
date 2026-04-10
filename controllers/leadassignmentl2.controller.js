@@ -1,14 +1,11 @@
 import { LeadAssignmentRuleL2, Counsellor } from '../models/index.js';
 import { Op } from 'sequelize';
 
-// Helper function to clean conditions
 const cleanConditions = (conditions) => {
   try {
     if (!conditions || typeof conditions !== 'object') return {};
 
     const cleaned = {};
-
-    // Only process the 11 allowed priority fields
     const priorityFields = [
       'utmCampaign',
       'first_source_url', 
@@ -24,10 +21,7 @@ const cleanConditions = (conditions) => {
     ];
 
     for (const [key, value] of Object.entries(conditions)) {
-      // Only process if it's in our priority fields
-      if (!priorityFields.includes(key)) {
-        continue;
-      }
+      if (!priorityFields.includes(key)) continue;
 
       if (Array.isArray(value)) {
         const cleanedArray = value
@@ -62,7 +56,6 @@ const cleanConditions = (conditions) => {
   }
 };
 
-// Only validate the 11 priority fields
 const validateConditionKeys = (conditions) => {
   const priorityFields = [
     'utmCampaign',
@@ -88,15 +81,39 @@ const validateConditionKeys = (conditions) => {
 
 export const createLeadAssignmentforL2 = async (req, res) => {
   try {
-    const { conditions, assigned_counsellor_ids, is_active = true, priority = 0, custom_rule_name } = req.body;
+    const { 
+      conditions, 
+      score_type = 'numeric',
+      score_value = 0,
+      assigned_counsellor_ids, 
+      is_active = true, 
+      priority = 0, 
+      custom_rule_name 
+    } = req.body;
     
+    // Validate score
+    if (score_type === 'percentage') {
+      if (score_value < 0 || score_value > 100) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Percentage score must be between 0 and 100' 
+        });
+      }
+    } else {
+      if (score_value < -100 || score_value > 500) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Numeric score must be between -100 and 500' 
+        });
+      }
+    }
+
     if (!assigned_counsellor_ids || !Array.isArray(assigned_counsellor_ids) || assigned_counsellor_ids.length === 0) {
       return res.status(400).json({ success: false, message: 'At least one counsellor must be assigned' });
     }
 
     const cleanedConditions = cleanConditions(conditions);
     
-    // Check if at least one condition is provided (not required, but good practice)
     if (Object.keys(cleanedConditions).length === 0) {
       return res.status(400).json({ 
         success: false, 
@@ -108,20 +125,20 @@ export const createLeadAssignmentforL2 = async (req, res) => {
     
     const counsellors = await Counsellor.findAll({
       where: {
-        [Op.or]: [
-          { counsellor_id: { [Op.in]: assigned_counsellor_ids } },
-        ]
+        counsellor_id: { [Op.in]: assigned_counsellor_ids }
       }
     });
 
     if (counsellors.length === 0) {
-      return res.status(400).json({ success: false, message: 'No valid counsellors found with the provided identifiers' });
+      return res.status(400).json({ success: false, message: 'No valid counsellors found' });
     }
 
     const name = await LeadAssignmentRuleL2.generateRuleName();
     const newRule = await LeadAssignmentRuleL2.create({
       name,
       conditions: cleanedConditions,
+      score_type,
+      score_value,
       assigned_counsellor_ids: counsellors.map(c => c.counsellor_id),
       is_active,
       priority,
@@ -150,16 +167,51 @@ export const createLeadAssignmentforL2 = async (req, res) => {
 export const updateLeadAssignmentforL2 = async (req, res) => {
   try {
     const { id } = req.params;
-    const { conditions, round_robin_index, assigned_counsellor_ids, is_active, priority, custom_rule_name } = req.body;
+    const { 
+      conditions, 
+      score_type, 
+      score_value, 
+      assigned_counsellor_ids, 
+      is_active, 
+      priority, 
+      custom_rule_name 
+    } = req.body;
     
     const updateData = {};
+
+    if (score_type !== undefined) {
+      updateData.score_type = score_type;
+    }
+
+    if (score_value !== undefined) {
+      // Get current rule to check score_type
+      const currentRule = await LeadAssignmentRuleL2.findByPk(id);
+      const finalScoreType = score_type || currentRule?.score_type || 'numeric';
+      
+      if (finalScoreType === 'percentage') {
+        if (score_value < 0 || score_value > 100) {
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Percentage score must be between 0 and 100' 
+          });
+        }
+      } else {
+        if (score_value < -100 || score_value > 500) {
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Numeric score must be between -100 and 500' 
+          });
+        }
+      }
+      updateData.score_value = score_value;
+    }
 
     if (conditions !== undefined) {
       const cleanedConditions = cleanConditions(conditions);
       if (Object.keys(cleanedConditions).length === 0) {
         return res.status(400).json({ 
           success: false, 
-          message: 'At least one valid condition must be provided from the allowed fields' 
+          message: 'At least one valid condition must be provided' 
         });
       }
       validateConditionKeys(cleanedConditions);
@@ -168,8 +220,12 @@ export const updateLeadAssignmentforL2 = async (req, res) => {
     
     if (is_active !== undefined) updateData.is_active = is_active;
     if (priority !== undefined) updateData.priority = priority;
-    if (assigned_counsellor_ids !== undefined) updateData.assigned_counsellor_ids = assigned_counsellor_ids;
-    if (round_robin_index !== undefined) updateData.round_robin_index = round_robin_index;
+    if (assigned_counsellor_ids !== undefined) {
+      const counsellors = await Counsellor.findAll({
+        where: { counsellor_id: { [Op.in]: assigned_counsellor_ids } }
+      });
+      updateData.assigned_counsellor_ids = counsellors.map(c => c.counsellor_id);
+    }
     if (custom_rule_name !== undefined) updateData.custom_rule_name = custom_rule_name;
 
     const [updatedRowsCount] = await LeadAssignmentRuleL2.update(updateData, {
@@ -200,18 +256,29 @@ export const updateLeadAssignmentforL2 = async (req, res) => {
 
 export const getAllLeadAssignmentforL2 = async (req, res) => {
   try {
-    const { page = 1, is_active, limit = 10, priority } = req.query;
+    const { page = 1, is_active, limit = 10, priority, score_type, min_score, max_score } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     
-    const filter = {};
-    if (is_active !== undefined) filter.is_active = is_active === 'true';
-    if (priority !== undefined) filter.priority = parseInt(priority);
+    const whereClause = {};
+    if (is_active !== undefined) whereClause.is_active = is_active === 'true';
+    if (priority !== undefined) whereClause.priority = parseInt(priority);
+    if (score_type !== undefined) whereClause.score_type = score_type;
+    
+    // Score range filtering
+    if (min_score !== undefined || max_score !== undefined) {
+      whereClause.score_value = {};
+      if (min_score !== undefined) whereClause.score_value[Op.gte] = parseInt(min_score);
+      if (max_score !== undefined) whereClause.score_value[Op.lte] = parseInt(max_score);
+    }
 
     const { count, rows } = await LeadAssignmentRuleL2.findAndCountAll({
-      where: filter,
-      order: [['priority', 'DESC'], ['created_at', 'DESC']]
+      where: whereClause,
+      order: [['priority', 'DESC'], ['created_at', 'DESC']],
+      offset,
+      limit: parseInt(limit)
     });
 
+    // Fetch counsellors for each rule
     for (let rule of rows) {
       const counsellors = await Counsellor.findAll({
         where: { counsellor_id: { [Op.in]: rule.assigned_counsellor_ids } },
@@ -303,7 +370,9 @@ export const toggleLeadAssignmentforL2Status = async (req, res) => {
       data: { 
         is_active: rule.is_active, 
         ruleName: rule.name,
-        custom_rule_name: rule.custom_rule_name
+        custom_rule_name: rule.custom_rule_name,
+        score_type: rule.score_type,
+        score_value: rule.score_value
       }
     });
 
@@ -312,28 +381,74 @@ export const toggleLeadAssignmentforL2Status = async (req, res) => {
   }
 };
 
-// Helper function to be used in assignLeadHelper
-export const incrementRuleMatchCount = async (ruleId) => {
+// Helper function to calculate score from L2 rules
+export const calculateScoreFromL2Rules = async (leadData) => {
   try {
-    const rule = await LeadAssignmentRuleL2.findByPk(ruleId);
-    
-    if (!rule) {
-      return { success: false, message: 'Rule not found' };
+    const activeRules = await LeadAssignmentRuleL2.findAll({
+      where: { is_active: true },
+      order: [['priority', 'DESC']]
+    });
+
+    let totalScore = 0;
+    const matchedRules = [];
+
+    for (const rule of activeRules) {
+      let isMatch = true;
+      
+      // Check all conditions
+      for (const [key, expectedValue] of Object.entries(rule.conditions)) {
+        const actualValue = leadData[key];
+        
+        if (Array.isArray(expectedValue)) {
+          if (!Array.isArray(actualValue)) {
+            if (!expectedValue.includes(actualValue)) {
+              isMatch = false;
+              break;
+            }
+          } else {
+            if (!actualValue.some(val => expectedValue.includes(val))) {
+              isMatch = false;
+              break;
+            }
+          }
+        } else {
+          if (actualValue !== expectedValue) {
+            isMatch = false;
+            break;
+          }
+        }
+      }
+      
+      if (isMatch) {
+        matchedRules.push({
+          rule_id: rule.lead_assignment_rule_l2_id,
+          name: rule.name,
+          score_type: rule.score_type,
+          score_value: rule.score_value
+        });
+        
+        totalScore += rule.score_value;
+        
+        // Update last_matched_at
+        await rule.update({ last_matched_at: new Date() });
+      }
     }
 
-    // Increment match count and update timestamp
-    rule.total_matched_leads = (rule.total_matched_leads || 0) + 1;
-    rule.last_matched_at = new Date();
-    await rule.save();
-
     return {
-      success: true,
-      total_matched_leads: rule.total_matched_leads,
-      last_matched_at: rule.last_matched_at
+      totalScore,
+      matchedRules,
+      matchedCount: matchedRules.length,
+      // Cap percentage at 100
+      finalScore: totalScore > 100 && matchedRules.some(r => r.score_type === 'percentage') ? 100 : totalScore
     };
-
   } catch (error) {
-    console.error('Error incrementing rule match count:', error);
-    return { success: false, message: error.message };
+    console.error('Error calculating score from L2 rules:', error);
+    return {
+      totalScore: 0,
+      matchedRules: [],
+      matchedCount: 0,
+      finalScore: 0,
+      error: error.message
+    };
   }
 };

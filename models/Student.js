@@ -17,11 +17,26 @@ const Student = sequelize.define(
     parents_number: DataTypes.STRING,
     whatsapp: DataTypes.STRING,
     assigned_counsellor_id: DataTypes.STRING,
+    temp_assigned_counsellor_id: DataTypes.STRING,
+    dialer_today_count: DataTypes.INTEGER,
+    dialer_overall_count: DataTypes.INTEGER,
     assigned_counsellor_l3_id: DataTypes.STRING,
     highest_degree: DataTypes.STRING,
     completion_year: DataTypes.STRING,
     current_profession: DataTypes.STRING,
     current_role: DataTypes.STRING,
+    dialer_status: {
+      type: DataTypes.ENUM(
+        "pending",
+        "in_progress",
+        "retry",
+        "converted",
+        "paused",
+      ),
+      defaultValue: "pending",
+      allowNull: true,
+    },
+
     work_experience: DataTypes.STRING,
     student_age: { type: DataTypes.INTEGER, defaultValue: 0 },
     objective: DataTypes.STRING,
@@ -76,6 +91,10 @@ const Student = sequelize.define(
       type: DataTypes.STRING,
       defaultValue: null,
     },
+    lead_score: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+    },
     reassigneddate: {
       type: DataTypes.DATE,
       allowNull: true,
@@ -91,11 +110,11 @@ const Student = sequelize.define(
       allowNull: true,
       defaultValue: null,
     },
-    primary_db_id:{
-      type:DataTypes.STRING,
-       allowNull: true,
+    primary_db_id: {
+      type: DataTypes.STRING,
+      allowNull: true,
       defaultValue: null,
-    }
+    },
   },
   {
     timestamps: true,

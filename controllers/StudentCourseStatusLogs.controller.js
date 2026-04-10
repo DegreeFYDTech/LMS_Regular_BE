@@ -652,7 +652,8 @@ export const getFormToAdmissionsReport = async (req, res) => {
           'Walkin Completed',
           'Exam Interview Pending',
           'Offer Letter/Results Pending',
-          'Offer Letter/Results Released'
+          'Offer Letter/Results Released',
+          'Ready For Admission'
         ]) AS status
       ),
       admission_statuses AS (

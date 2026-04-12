@@ -731,7 +731,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     return `WHERE sr.counsellor_id = ${escape(selectedagent)}`;
   }
   
-  // Default: empty string (but for L2 we already returned above)
   return "";
 })();
 

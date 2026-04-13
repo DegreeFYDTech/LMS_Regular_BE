@@ -18,6 +18,15 @@ const StudentQuestionResponse = sequelize.define(
       },
       onDelete: 'CASCADE',
     },
+    lead_activity_id: {
+      type: DataTypes.BIGINT,
+      allowNull: true,
+      references: {
+        model: 'student_lead_activities',
+        key: 'id',
+      },
+      onDelete: 'SET NULL',
+    },
     question: {
       type: DataTypes.TEXT,
       allowNull: false,

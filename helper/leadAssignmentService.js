@@ -969,6 +969,11 @@ export const processStudentLead = async (leadData) => {
       console.log("error while creating the log", e.message);
     }
   }
+  const leadActivityResult = await createLeadActivity(
+    mappedLeadData,
+    student.student_id,
+  );
+
   if (
     mappedLeadData.student_comment &&
     Array.isArray(mappedLeadData.student_comment)
@@ -978,6 +983,9 @@ export const processStudentLead = async (leadData) => {
         .filter((c) => c.question)
         .map((c) => ({
           student_id: student.student_id,
+          lead_activity_id: leadActivityResult.leadActivity
+            ? leadActivityResult.leadActivity.id
+            : null,
           question: c.question,
           answer: c.answer,
         }));
@@ -996,10 +1004,6 @@ export const processStudentLead = async (leadData) => {
     }
   }
 
-  const leadActivityResult = await createLeadActivity(
-    mappedLeadData,
-    student.student_id,
-  );
   if (!leadActivityResult.success) {
     return {
       success: false,

@@ -104,6 +104,9 @@ StudentLeadActivity.belongsTo(Student, { foreignKey: 'student_id', },);
 Student.hasMany(StudentQuestionResponse, { foreignKey: 'student_id', as: 'student_question_responses', onDelete: 'CASCADE' });
 StudentQuestionResponse.belongsTo(Student, { foreignKey: 'student_id', as: 'student' });
 
+StudentLeadActivity.hasMany(StudentQuestionResponse, { foreignKey: 'lead_activity_id', as: 'question_responses', onDelete: 'SET NULL' });
+StudentQuestionResponse.belongsTo(StudentLeadActivity, { foreignKey: 'lead_activity_id', as: 'lead_activity' });
+
 Student.hasMany(CourseStatus, { foreignKey: 'student_id', onDelete: 'CASCADE' });
 CourseStatus.belongsTo(Student, { foreignKey: 'student_id' });
 CourseStatus.belongsTo(UniversityCourse, { foreignKey: 'course_id', as: 'courses_details' });

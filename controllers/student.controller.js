@@ -512,7 +512,7 @@ export const updateStudentStatus = async (req, res) => {
             updateData.event_time = event_time;
           }
 
-          await latestJourney.create(updateData);
+          await CourseStatusJourney.create(updateData);
           console.log("Updated existing journey entry with:", updateData);
 
           // Also update event_time in CourseStatus

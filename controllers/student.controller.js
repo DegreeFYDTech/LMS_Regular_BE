@@ -433,7 +433,7 @@ export const updateStudentStatus = async (req, res) => {
               where: { course_id: selectedCourse },
             });
             const l3data = await axios.post(
-              "http://localhost:3007/v1/leadassignmentl3/assign",
+              "http://localhost:3031/v1/leadassignmentl3/assign",
               {
                 studentId,
                 collegeName: courseDetails.university_name,

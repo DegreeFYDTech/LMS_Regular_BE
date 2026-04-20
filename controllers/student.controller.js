@@ -396,12 +396,16 @@ export const updateStudentStatus = async (req, res) => {
       (leadStatus === "NotInterested" || leadStatus === "Not Interested"
         ? "NotInterested"
         : leadStatus);
-
-    if (effectiveCourseStatus && selectedCourse) {
-      console.log("effectiveCourseStatus", effectiveCourseStatus);
-      console.log("selectedCourse", selectedCourse);
-
-      // Get the LATEST journey entry for this course
+    const blockedStatuses = [
+      "Pre Application",
+      "Initial Counselling Completed",
+    ];
+    if (
+      effectiveCourseStatus &&
+      selectedCourse &&
+      !blockedStatuses.includes(leadStatus)
+    ) {
+      console.log("kakk");
       const latestJourney = await CourseStatusJourney.findOne({
         where: {
           student_id: studentId,
@@ -411,9 +415,6 @@ export const updateStudentStatus = async (req, res) => {
       });
 
       const latestStatus = latestJourney?.course_status;
-      console.log("Latest status in journey:", latestStatus);
-      console.log("New status:", effectiveCourseStatus);
-
       let assigned_l3_counsellor_id = null;
 
       if (latestStatus !== effectiveCourseStatus) {
@@ -432,7 +433,7 @@ export const updateStudentStatus = async (req, res) => {
               where: { course_id: selectedCourse },
             });
             const l3data = await axios.post(
-              "http://localhost:3031/v1/leadassignmentl3/assign",
+              "http://localhost:3007/v1/leadassignmentl3/assign",
               {
                 studentId,
                 collegeName: courseDetails.university_name,
@@ -457,7 +458,6 @@ export const updateStudentStatus = async (req, res) => {
           order: [["created_at", "DESC"]],
         });
 
-        // Create journey entry with event_time if provided
         const journeyData = {
           student_id: studentId,
           course_id: selectedCourse,
@@ -498,20 +498,23 @@ export const updateStudentStatus = async (req, res) => {
         );
       } else {
         console.log("Status unchanged - updating existing journey entry");
-        // Update the latest entry with new notes/amount while preserving assigned_l3_counsellor_id
         if (latestJourney) {
           const updateData = {};
-
+          if (remark) updateData.notes = remark;
+          if (effectiveCourseStatus)
+            updateData.course_status = effectiveCourseStatus;
+          if (counsellorId) updateData.counsellor_id = counsellorId;
+          if (selectedCourse) updateData.course_id = selectedCourse;
+          if (studentId) updateData.student_id = studentId;
           if (remark) updateData.notes = remark;
           if (feesAmount) updateData.deposit_amount = feesAmount;
           if (leadStatus === "Admission" && leadSubStatus)
             updateData.fee_type = leadSubStatus;
 
-          // Add event_time if provided (for Exam/Interview Scheduled)
           if (event_time) {
             updateData.event_time = event_time;
           }
-
+          console.log("Updating journey entry with data:", updateData);
           await CourseStatusJourney.create(updateData);
           console.log("Updated existing journey entry with:", updateData);
 
@@ -555,11 +558,17 @@ export const updateStudentStatus = async (req, res) => {
     const newRemark = await createRemark(remarkData);
     try {
       if (leadStatus === "NotInterested" || leadStatus === "Not Interested") {
-        const niRuleResponse = await axios.post(`${process.env.PRIMARY_STORAGE_URL}/ni/transferlead`, { student_id: student?.primary_db_id, source_lms_id: process.env.LMS_ID, student_details: student })
+        const niRuleResponse = await axios.post(
+          `${process.env.PRIMARY_STORAGE_URL}/ni/transferlead`,
+          {
+            student_id: student?.primary_db_id,
+            source_lms_id: process.env.LMS_ID,
+            student_details: student,
+          },
+        );
       }
-    }
-    catch (e) {
-      console.log("erro", e)
+    } catch (e) {
+      console.log("erro", e);
     }
     // console.log("New remark created:", leadStatus, leadSubStatus, remarkData);
 
@@ -791,7 +800,6 @@ export const updateStudentStatus = async (req, res) => {
       ...updatedstudents.get({ plain: true }),
       student_remarks: [newRemark],
     };
-
 
     res.status(200).json({
       success: true,

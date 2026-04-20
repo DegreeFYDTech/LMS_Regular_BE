@@ -184,51 +184,57 @@ export const getAllCounsellors = async (req, res) => {
 
     if (role) {
       if (role === "to") {
-        whereClause.role = { [Op.in]: ['to', 'to_l3'] };
+        whereClause.role = { [Op.in]: ["to", "to_l3"] };
       } else {
         whereClause.role = role;
       }
     } else {
-      whereClause.role = { [Op.ne]: 'to' };
+      whereClause.role = { [Op.ne]: "to" };
     }
 
-    if (user?.role === 'to' && user?.id) {
+    if (user?.role === "to" && user?.id) {
       whereClause.assigned_to = user.id;
     }
-    if (user?.role === 'to_l3' && user?.id) {
+    if (user?.role === "to_l3" && user?.id) {
       whereClause.assigned_to = user.id;
     }
-
+    console.log("Fetching counsellors with where clause:", whereClause);
     const counsellors = await Counsellor.findAll({
       where: whereClause,
-      attributes: { exclude: ['counsellor_password', 'counsellor_real_password'] }
+      attributes: {
+        exclude: ["counsellor_password", "counsellor_real_password"],
+      },
     });
 
     const supervisors = await Counsellor.findAll({
-      where: { role: 'to' },
-      attributes: ['counsellor_id', 'counsellor_name']
+      where: {
+        role: {
+          [Op.in]: ["to","to_l3"],
+        },
+      },
+      attributes: ["counsellor_id", "counsellor_name"],
     });
 
     const supervisorMap = {};
-    supervisors.forEach(sup => {
+    supervisors.forEach((sup) => {
       supervisorMap[sup.counsellor_id] = sup.counsellor_name;
     });
 
-    const formattedCounsellors = counsellors.map(c => {
+    const formattedCounsellors = counsellors.map((c) => {
       const data = c.toJSON();
       return {
         ...data,
         supervisor_name: data.assigned_to
           ? supervisorMap[data.assigned_to] || null
-          : null
+          : null,
       };
     });
 
     res.status(200).json(formattedCounsellors);
   } catch (error) {
     res.status(500).json({
-      message: 'Error fetching counsellors',
-      error: error.message
+      message: "Error fetching counsellors",
+      error: error.message,
     });
   }
 };

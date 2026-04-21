@@ -16,9 +16,7 @@ import {
   Admission,
   Registration,
 } from "../models/index.js";
-import {
-  processStudentLead,
-} from "../helper/leadAssignmentService.js";
+import { processStudentLead } from "../helper/leadAssignmentService.js";
 import { createRemark } from "./remark.controller.js";
 import { Op, QueryTypes } from "sequelize";
 import pMap from "p-map";
@@ -28,7 +26,6 @@ import MetaAdsLead from "../models/ads/meta.js";
 import { helperForMeta } from "./meta_remarketing/metaEvents.js";
 import { formatDate } from "./studentcoursestatus.controller.js";
 import { uploadToCloudinary } from "../config/cloudinary.js";
-
 
 export const createStudent = async (req, res) => {
   try {
@@ -76,7 +73,6 @@ export const createStudent = async (req, res) => {
     });
   }
 };
-
 
 export const markWalkin = async (req, res) => {
   const { student_id, course_id, event_time } = req.body;
@@ -133,14 +129,72 @@ export const updateStudentStatus = async (req, res) => {
       feesAmount,
       selectedCourse,
       collegeCourseStatus,
-      event_time, // Add event_time to destructured variables
+      event_time,
     } = req.body;
-    console.log(event_time, "event_time received in controller");
+
     const student = await Student.findOne({
       where: { student_id: studentId },
     });
     if (!student) {
       return res.status(404).json({ message: "Student not found" });
+    }
+
+    const courseDetails = await UniversityCourse.findOne({
+      where: { course_id: selectedCourse },
+    });
+    if (courseDetails.university_name.toLowerCase().includes("amity")) {
+      const studentDetails = await Student.findByPk(studentId);
+      const studentleadActivityDetails = await StudentLeadActivity.findOne({
+        where: { student_id: studentId },
+      });
+      const transferResponse = await axios.post(
+        "http://localhost:3007/v1/student/check-and-transfer",
+        {
+          studentDetails: studentDetails,
+          studentleadActivityDetails: studentleadActivityDetails,
+          courseId: selectedCourse,
+          leadStatus,
+          leadSubStatus,
+        },
+      );
+      return res.status(200).json({
+        success: true,
+        message: "Student status updated and transfer checked for Amity",
+        transferResponse: transferResponse.data,
+      });
+    }
+    if (
+      courseDetails.university_name
+        .toLowerCase()
+        .includes("chandigarh group of colleges")
+    ) {
+      console.log("CGC course update - checking transfer");
+      const studentDetails = await Student.findByPk(studentId);
+      const studentleadActivityDetails = await StudentLeadActivity.findOne({
+        where: { student_id: studentId },
+      });
+      console.log( {
+          studentDetails: studentDetails,
+          studentleadActivityDetails: studentleadActivityDetails,
+          course_id: selectedCourse,
+          leadStatus,
+          leadSubStatus,
+        })
+      const transferResponse = await axios.post(
+        "http://localhost:3006/v1/student/check-and-transfer",
+        {
+          studentDetails: studentDetails,
+          studentleadActivityDetails: studentleadActivityDetails,
+          courseId: selectedCourse,
+          leadStatus,
+          leadSubStatus,
+        },
+      );
+      return res.status(200).json({
+        success: true,
+        message: "Student status updated and transfer checked for CGC",
+        transferResponse: transferResponse.data,
+      });
     }
     if (
       leadStatus === "Initial Counselling Completed" &&
@@ -198,18 +252,8 @@ export const updateStudentStatus = async (req, res) => {
     const isSamePriority =
       leadStatus && currentStatus && newPriority === currentPriority;
 
-    console.log("Is Moving Backward:", isMovingBackward);
-    console.log("Current Status:", currentStatus, "Priority:", currentPriority);
-    console.log("New Status:", leadStatus, "Priority:", newPriority);
-
-    // Hybrid NotInterested logic (Priority check against other courses)
     let shouldUpdateGlobalStatus = true;
     if (leadStatus === "NotInterested" || leadStatus === "Not Interested") {
-      console.log("========== NI LOGIC START ==========");
-      console.log("Student ID:", studentId);
-      console.log("Selected Course:", selectedCourse);
-      console.log("Lead Status:", leadStatus);
-
       const distinctCourses = await CourseStatusJourney.findAll({
         where: {
           student_id: studentId,
@@ -310,7 +354,6 @@ export const updateStudentStatus = async (req, res) => {
 
     let updateFields = {};
 
-    // Role-based logic
     if (
       counsellorRole === "l2" ||
       counsellorRole === "to" ||
@@ -1224,14 +1267,14 @@ export const getStudentById = async (req, res) => {
     const counsellors =
       counsellorIds.length > 0
         ? await Counsellor.findAll({
-          where: { counsellor_id: counsellorIds },
-          attributes: [
-            "counsellor_id",
-            "counsellor_name",
-            "counsellor_email",
-            "role",
-          ],
-        })
+            where: { counsellor_id: counsellorIds },
+            attributes: [
+              "counsellor_id",
+              "counsellor_name",
+              "counsellor_email",
+              "role",
+            ],
+          })
         : [];
 
     const counsellorMap = {};
@@ -1246,16 +1289,16 @@ export const getStudentById = async (req, res) => {
     const courses =
       courseIds.length > 0
         ? await UniversityCourse.findAll({
-          where: { course_id: courseIds },
-          attributes: [
-            "course_id",
-            "course_name",
-            "university_name",
-            "degree_name",
-            "stream",
-            "level",
-          ],
-        })
+            where: { course_id: courseIds },
+            attributes: [
+              "course_id",
+              "course_name",
+              "university_name",
+              "degree_name",
+              "stream",
+              "level",
+            ],
+          })
         : [];
 
     const courseMap = {};
@@ -1283,7 +1326,7 @@ export const getStudentById = async (req, res) => {
         if (
           !journeysByCourse[journey.course_id] ||
           new Date(journey.created_at) >
-          new Date(journeysByCourse[journey.course_id].created_at)
+            new Date(journeysByCourse[journey.course_id].created_at)
         ) {
           journeysByCourse[journey.course_id] = journey;
         }
@@ -1315,12 +1358,12 @@ export const getStudentById = async (req, res) => {
             ...cred,
             l3_counsellor_details: l3Data
               ? {
-                assigned_l3_counsellor_id: l3Data.assigned_l3_counsellor_id,
-                counsellor_name: l3Data.l3_counsellor_name,
-                counsellor_email: l3Data.l3_counsellor_email,
-                journey_created_at: l3Data.journey_created_at,
-                journey_status: l3Data.journey_status,
-              }
+                  assigned_l3_counsellor_id: l3Data.assigned_l3_counsellor_id,
+                  counsellor_name: l3Data.l3_counsellor_name,
+                  counsellor_email: l3Data.l3_counsellor_email,
+                  journey_created_at: l3Data.journey_created_at,
+                  journey_status: l3Data.journey_status,
+                }
               : null,
           };
         },
@@ -1678,8 +1721,6 @@ export const updateStudentDetails = async (req, res) => {
       message = "Student email updated successfully (one-time edit used)";
     }
 
-
-
     return res.status(200).json({
       message: message,
       student: updatedStudents?.[0] || student,
@@ -1774,17 +1815,19 @@ export const bulkCreateLeads = async (req, res) => {
           student_email: leadData.email,
           student_phone: leadData.phoneNumber,
           assigned_counsellor_id: agent.counsellorId,
-        }
+        };
         try {
-          const apiResponse = await axios.post(`${process.env.PRIMARY_STORAGE_URL}/leads/batch`, { data: studentData })
-          const { data } = apiResponse
-          const { results } = data
+          const apiResponse = await axios.post(
+            `${process.env.PRIMARY_STORAGE_URL}/leads/batch`,
+            { data: studentData },
+          );
+          const { data } = apiResponse;
+          const { results } = data;
           if (results && results?.length > 0) {
-            studentData.primary_db_id = results[0].lead_id
+            studentData.primary_db_id = results[0].lead_id;
           }
-        }
-        catch (e) {
-          console.log("error", e)
+        } catch (e) {
+          console.log("error", e);
         }
         const savedStudent = await Student.create(studentData);
         try {
@@ -1917,7 +1960,7 @@ export const bulkReassignLeads = async (req, res) => {
         const [_, [updatedStudent]] = await Student.update(
           {
             [counsellorField]: newAgent.counsellor_id,
-            is_reassigned_yet: true
+            is_reassigned_yet: true,
           },
           {
             where: { student_id: reassignmentData.studentId },
@@ -2114,18 +2157,20 @@ export const addLeadDirect = async (req, res) => {
       assigned_counsellor_id: counsellorId,
       preferred_degree: preferred_degree,
       source,
-      ...inheritedData
-    }
+      ...inheritedData,
+    };
     try {
-      const apiResponse = await axios.post(`${process.env.PRIMARY_STORAGE_URL}/leads/batch`, { data: student_data })
-      const { data } = apiResponse
-      const { results } = data
+      const apiResponse = await axios.post(
+        `${process.env.PRIMARY_STORAGE_URL}/leads/batch`,
+        { data: student_data },
+      );
+      const { data } = apiResponse;
+      const { results } = data;
       if (results && results?.length > 0) {
-        student_data.primary_db_id = results[0].lead_id
+        student_data.primary_db_id = results[0].lead_id;
       }
-    }
-    catch (e) {
-      console.log("error", e)
+    } catch (e) {
+      console.log("error", e);
     }
     // Create lead
     const lead = await Student.create(student_data);
@@ -2158,10 +2203,10 @@ export const addLeadDirect = async (req, res) => {
         ...lead.toJSON(),
         referenceStudent: referenceStudent
           ? {
-            student_id: referenceStudent.student_id,
-            student_name: referenceStudent.student_name,
-            student_email: referenceStudent.student_email,
-          }
+              student_id: referenceStudent.student_id,
+              student_name: referenceStudent.student_name,
+              student_email: referenceStudent.student_email,
+            }
           : null,
       },
     });
@@ -2173,7 +2218,6 @@ export const addLeadDirect = async (req, res) => {
     });
   }
 };
-// export const getAllLeadsofData = async (req, res) => {
 
 //   try {
 //     const limit = parseInt(req.query.limit) || 5000;

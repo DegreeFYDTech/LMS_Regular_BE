@@ -10,7 +10,7 @@ import { normalizeIP, isIPAllowed, extractDeviceDetails, extractBrowser, extract
 
 export const registerCounsellor = async (req, res) => {
   try {
-    const { name, email, password, role, preferredMode, teamOwnerId } = req.body;
+    const { name, email, password, role, preferredMode, teamOwnerId, login_start_time, login_end_time, max_active_sessions } = req.body;
     if (!name || !email || !password || !role || !preferredMode || !teamOwnerId) {
       return res.status(400).json({ message: 'Please fill all required fields' });
     }
@@ -30,7 +30,10 @@ export const registerCounsellor = async (req, res) => {
       counsellor_role: role,
       role,
       counsellor_preferred_mode: preferredMode,
-      assigned_to: teamOwnerId || null
+      assigned_to: teamOwnerId || null,
+      ...(login_start_time && { login_start_time }),
+      ...(login_end_time && { login_end_time }),
+      ...(max_active_sessions && { max_active_sessions }),
     });
 
     // const token = generateTokenAndSetCookie(res, {
@@ -1016,5 +1019,61 @@ export const changeSupervisor = async (req, res) => {
   } catch (error) {
     console.error('Error changing supervisor:', error.message);
     res.status(500).json({ message: 'Error changing supervisor', error: error.message });
+  }
+};
+
+export const getCounsellorAccessSettings = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const counsellor = await Counsellor.findByPk(id, {
+      attributes: ['counsellor_id', 'login_start_time', 'login_end_time', 'allowed_ips', 'allowed_devices', 'max_active_sessions']
+    });
+    if (!counsellor) return res.status(404).json({ message: 'Counsellor not found' });
+    res.json({ accessSettings: counsellor });
+  } catch (err) {
+    console.error('getCounsellorAccessSettings error', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+export const updateCounsellorAccessSettings = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { login_start_time, login_end_time, allowed_ips, allowed_devices, max_active_sessions } = req.body;
+    const updates = {};
+    if (login_start_time !== undefined) updates.login_start_time = login_start_time;
+    if (login_end_time !== undefined) updates.login_end_time = login_end_time;
+    if (allowed_ips !== undefined) updates.allowed_ips = allowed_ips;
+    if (allowed_devices !== undefined) updates.allowed_devices = allowed_devices;
+    if (max_active_sessions !== undefined) updates.max_active_sessions = max_active_sessions;
+
+    const [updated] = await Counsellor.update(updates, { where: { counsellor_id: id } });
+    if (updated === 0) return res.status(404).json({ message: 'Counsellor not found or nothing changed' });
+    res.json({ message: 'Access settings updated' });
+  } catch (err) {
+    console.error('updateCounsellorAccessSettings error', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+export const bulkUpdateCounsellorAccessSettings = async (req, res) => {
+  try {
+    const { ids, login_start_time, login_end_time, allowed_ips, allowed_devices, max_active_sessions } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'Array of ids is required' });
+    }
+
+    const updates = {};
+    if (login_start_time !== undefined) updates.login_start_time = login_start_time;
+    if (login_end_time !== undefined) updates.login_end_time = login_end_time;
+    if (allowed_ips !== undefined) updates.allowed_ips = allowed_ips;
+    if (allowed_devices !== undefined) updates.allowed_devices = allowed_devices;
+    if (max_active_sessions !== undefined) updates.max_active_sessions = max_active_sessions;
+
+    await Counsellor.update(updates, { where: { counsellor_id: { [Op.in]: ids } } });
+    res.json({ message: 'Bulk access settings updated' });
+  } catch (err) {
+    console.error('bulkUpdateCounsellorAccessSettings error', err);
+    res.status(500).json({ message: 'Server error' });
   }
 };

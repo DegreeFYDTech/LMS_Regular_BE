@@ -102,6 +102,14 @@ export const loginCounsellor = async (req, res) => {
       return res.status(401).json({ message: 'Counsellor Not Found' });
     }
 
+    if (counsellor.is_blocked) {
+      await LoginAttempt.create({
+        user_type: 'counsellor', user_id: counsellor.counsellor_id, user_name: email, success: false,
+        ip_address: finalIp, meta: { reason: 'account_blocked', user_agent: uaStr }
+      }).catch(() => { });
+      return res.status(403).json({ message: 'Account is blocked. Please contact administrator.' });
+    }
+
     const isMatch = await bcrypt.compare(password, counsellor.counsellor_password);
     if (!isMatch) {
       await LoginAttempt.create({
@@ -1107,3 +1115,32 @@ export const bulkUpdateCounsellorAccessSettings = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+export const toggleBlockCounsellor = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const counsellor = await Counsellor.findByPk(id);
+    if (!counsellor) {
+      return res.status(404).json({ message: 'Counsellor not found' });
+    }
+    
+    const newBlockedStatus = !counsellor.is_blocked;
+    await counsellor.update({ is_blocked: newBlockedStatus });
+    
+    if (newBlockedStatus) {
+      // Logout logic if blocked
+      const activeTokens = counsellor.active_session_tokens || [];
+      if (activeTokens.length > 0) {
+        await counsellor.update({ is_logout: true, active_session_tokens: [] });
+      }
+    }
+    
+    res.status(200).json({ 
+      message: `Counsellor successfully ${newBlockedStatus ? 'blocked' : 'unblocked'}`,
+      is_blocked: newBlockedStatus 
+    });
+  } catch (error) {
+    console.error('Error toggling block status:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};

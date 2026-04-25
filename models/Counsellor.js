@@ -27,6 +27,7 @@ const Counsellor = sequelize.define('counsellors', {
   current_lead_capacity: { type: DataTypes.INTEGER, defaultValue: 0 },
   counsellor_last_login: DataTypes.DATE,
   is_logout: { type: DataTypes.BOOLEAN, defaultValue: false },
+  is_blocked: { type: DataTypes.BOOLEAN, defaultValue: false },
 
   created_at: {
     type: DataTypes.DATE,

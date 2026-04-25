@@ -27,6 +27,7 @@ import LastassignOnline from './last_assign_online.js'
 import LastAssignRegular from './last_assign_regular.js';
 import StudentCollegeApiClickLog from './StudentCollegeApiClickLog.js';
 import UserActionLog from './UserActionLog.js';
+import LoginAttempt from './LoginAttempt.js';
 
 //whish list schema
 import WhishList from './WhishList.js'
@@ -219,5 +220,6 @@ export {
   Admission,
   Registration,
   StudentCollegeApiClickLog,
-  UserActionLog
+  UserActionLog,
+  LoginAttempt
 };

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { UAParser } from 'ua-parser-js';
 
 // Location service functions
 export const getLocationFromIP = async (ip) => {
@@ -110,27 +111,69 @@ export const getLocationFromCoordinates = async (lat, lng) => {
 };
 
 // Device info extraction helpers
-const extractBrowser = (userAgent) => {
-  if (userAgent.includes('Chrome')) return 'Chrome';
-  if (userAgent.includes('Firefox')) return 'Firefox';
-  if (userAgent.includes('Safari')) return 'Safari';
-  if (userAgent.includes('Edge')) return 'Edge';
-  return 'Unknown';
+export const extractBrowser = (userAgent) => {
+  const parser = new UAParser(userAgent);
+  const browser = parser.getBrowser();
+  return browser.name || 'Unknown';
 };
 
-const extractOS = (userAgent) => {
-  if (userAgent.includes('Windows')) return 'Windows';
-  if (userAgent.includes('Mac')) return 'macOS';
-  if (userAgent.includes('Linux')) return 'Linux';
-  if (userAgent.includes('Android')) return 'Android';
-  if (userAgent.includes('iOS')) return 'iOS';
-  return 'Unknown';
+export const extractOS = (userAgent) => {
+  const parser = new UAParser(userAgent);
+  const os = parser.getOS();
+  return os.name || 'Unknown';
 };
 
-const extractDevice = (userAgent) => {
+export const extractDevice = (userAgent) => {
+  const parser = new UAParser(userAgent);
+  const device = parser.getDevice();
+
+  if (device.type) {
+    return device.type.charAt(0).toUpperCase() + device.type.slice(1);
+  }
+
   if (userAgent.includes('Mobile')) return 'Mobile';
-  if (userAgent.includes('Tablet')) return 'Tablet';
+  if (userAgent.includes('Android') || userAgent.includes('iPhone') || userAgent.includes('iPad')) return 'Mobile';
+
   return 'Desktop';
+};
+
+export const extractDeviceDetails = (userAgent) => {
+  const parser = new UAParser(userAgent);
+  const device = parser.getDevice();
+  return {
+    vendor: device.vendor || 'Unknown',
+    model: device.model || 'Unknown',
+    type: extractDevice(userAgent)
+  };
+};
+
+export const normalizeIP = (ip) => {
+  if (!ip) return '';
+  let normalized = String(ip).trim().toLowerCase();
+  if (normalized.startsWith('::ffff:')) {
+    normalized = normalized.slice(7);
+  }
+  return normalized;
+};
+
+export const isIPAllowed = (userIp, allowedList) => {
+  if (!userIp || !Array.isArray(allowedList) || allowedList.length === 0) return true;
+
+  const normalizedUserIp = normalizeIP(userIp);
+
+  return allowedList.some(allowed => {
+    const trimmedAllowed = normalizeIP(allowed);
+    if (!trimmedAllowed) return false;
+
+    if (normalizedUserIp === trimmedAllowed) return true;
+
+    if (normalizedUserIp.startsWith(trimmedAllowed)) {
+      const nextChar = normalizedUserIp.charAt(trimmedAllowed.length);
+      if (!nextChar || nextChar === ':' || nextChar === '.') return true;
+    }
+
+    return false;
+  });
 };
 
 const generateSessionId = () => 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);

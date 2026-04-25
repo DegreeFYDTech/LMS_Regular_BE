@@ -18,6 +18,10 @@ async function enforceCounsellorRestrictions(userId, userRole, req) {
       return null;
     }
 
+    if (counsellor.is_blocked) {
+      return 'Account is blocked. Please contact administrator.';
+    }
+
     const now = new Date();
     if (counsellor.login_start_time && counsellor.login_end_time) {
       const currentTimeStr = now.toLocaleTimeString('en-GB', {

@@ -14,6 +14,7 @@ import {
   makeCounsellorLogout, start_Counsellors_break, end_Counsellors_break, activeBreak, getCounsellor_break_stats,
   changeSupervisor,
   getCounsellorAccessSettings,
+  getLoginAttempts,
   updateCounsellorAccessSettings,
   bulkUpdateCounsellorAccessSettings,
 } from '../controllers/counsellor.controller.js';
@@ -42,5 +43,6 @@ router.put('/change-supervisor', authorize(["Supervisor", "to", 'to_l3']), chang
 router.put('/access-settings/bulk', authorize(["Supervisor", "to", 'to_l3']), bulkUpdateCounsellorAccessSettings);
 router.get('/access-settings/:id', authorize(["Supervisor", "to", 'to_l3']), getCounsellorAccessSettings);
 router.put('/access-settings/:id', authorize(["Supervisor", "to", 'to_l3']), updateCounsellorAccessSettings);
+router.get('/login-attempts', authorize(["Supervisor","to","l2","l3"]), getLoginAttempts);
 
 export default router;

@@ -50,7 +50,37 @@ export const registerCounsellor = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+export const getLoginAttempts = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const offset = (page - 1) * limit;
+    const { user_type, user_id, success, search, startDate, endDate } = req.query;
 
+    const where = {};
+    if (user_type) where.user_type = user_type;
+    if (user_id) where.user_id = user_id;
+    if (success !== undefined) where.success = success === 'true' || success === '1';
+    if (search) where.user_name = { [Op.iLike]: `%${search}%` };
+    if (startDate || endDate) {
+      where.created_at = {};
+      if (startDate) where.created_at[Op.gte] = new Date(startDate);
+      if (endDate) where.created_at[Op.lte] = new Date(endDate);
+    }
+
+    const { rows, count } = await LoginAttempt.findAndCountAll({
+      where,
+      order: [['created_at', 'DESC']],
+      offset,
+      limit,
+    });
+
+    res.json({ attempts: rows, total: count, page, limit });
+  } catch (err) {
+    console.error('getLoginAttempts error', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
 export const loginCounsellor = async (req, res) => {
   try {
     const { email, password, forceLogout, deviceId: bodyDeviceId } = req.body;

@@ -1,6 +1,7 @@
-import { Counsellor, Supervisor } from '../models/index.js';
+import { Counsellor, Supervisor, LoginAttempt } from '../models/index.js';
 import bcrypt from 'bcryptjs';
 import { generateTokenAndSetCookie } from '../helper/getTimeForCookieExpires.js';
+import { extractDevice, extractBrowser, extractOS, extractDeviceDetails } from '../helper/deviceLocationHelpers.js';
 
 export const registerSupervisor = async (req, res) => {
   try {
@@ -57,21 +58,81 @@ export const registerSupervisor = async (req, res) => {
 
 export const loginSupervisor = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, meta } = req.body;
+    const device = req.body.device || req.body.deviceId || req.headers['x-device-id'] || meta?.device || meta?.deviceId || meta?.id;
 
-    if (!email || !password)
-      return res.status(400).json({ message: 'Email and password are required' });
+    const serverIp = (req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.ip || '').split(',')[0].trim();
+
+    const frontendIp = meta?.ip || req.body.ip;
+    const isLoopback = (ip) => !ip || ip === '::1' || ip === '127.0.0.1' || ip.startsWith('192.168.') || ip.startsWith('10.') || ip === 'Unknown';
+    const finalIp = (!isLoopback(frontendIp)) ? frontendIp : serverIp;
+
+    console.log(`[Supervisor Login] User: ${email}, Frontend IP: ${frontendIp}, Server IP: ${serverIp}, Final IP: ${finalIp}`);
+
+    let geoData = meta?.geo || req.body.geo || null;
+
+    const uaStr = req.headers['user-agent'] || meta?.userAgent || '';
+    const deviceDetails = extractDeviceDetails(uaStr);
+
+    console.log(`[Supervisor Device] Detected: ${deviceDetails.type}, Vendor: ${deviceDetails.vendor}, Model: ${deviceDetails.model}, OS: ${extractOS(uaStr)}`);
+
+    const combinedMeta = {
+      ...meta,
+      device: device || 'Unknown',
+      device_type: deviceDetails.type,
+      device_vendor: deviceDetails.vendor,
+      device_model: deviceDetails.model,
+      browser: extractBrowser(uaStr),
+      os: extractOS(uaStr),
+      ip: finalIp,
+      user_agent: uaStr,
+      geo: geoData
+    };
+
+    // Clean up redundant keys to avoid duplication
+    delete combinedMeta.id;
+    delete combinedMeta.userAgent;
+    delete combinedMeta.deviceId;
 
     const supervisor = await Supervisor.findOne({ where: { supervisor_email: email } });
-    console.log(supervisor)
-    if (!supervisor)
+
+    if (!supervisor) {
+      await LoginAttempt.create({
+        user_type: 'supervisor',
+        user_id: null,
+        user_name: email,
+        success: false,
+        ip_address: finalIp,
+        meta: { ...combinedMeta, reason: 'user_not_found' }
+      }).catch(() => { });
       return res.status(401).json({ message: 'Supervisor not found' });
+    }
 
+    if (supervisor.status !== 'active') {
+      await LoginAttempt.create({
+        user_type: 'supervisor',
+        user_id: supervisor.supervisor_id,
+        user_name: supervisor.supervisor_name,
+        success: false,
+        ip_address: finalIp,
+        meta: { ...combinedMeta, reason: 'account_inactive', status: supervisor.status }
+      }).catch(() => { });
+      return res.status(403).json({ message: `Account is ${supervisor.status}. Please contact administrator.` });
+    }
+   console.log("supervisor",supervisor,password);
     const isMatch = await bcrypt.compare(password, supervisor.supervisor_password);
-    if (!isMatch)
+    if (!isMatch) {
+      await LoginAttempt.create({
+        user_type: 'supervisor',
+        user_id: supervisor.supervisor_id,
+        user_name: email,
+        success: false,
+        ip_address: finalIp,
+        meta: { ...combinedMeta, reason: 'invalid_credentials' }
+      }).catch(() => { });
       return res.status(401).json({ message: 'Invalid email or password' });
+    }
 
-    // Update last login time
     await Supervisor.update({
       supervisor_last_login: new Date(),
       is_logout: false
@@ -89,6 +150,15 @@ export const loginSupervisor = async (req, res) => {
       'token',
       { expiresAtMidnight: false }
     );
+
+    await LoginAttempt.create({
+      user_type: 'supervisor',
+      user_id: supervisor.supervisor_id,
+      user_name: supervisor.supervisor_name,
+      success: true,
+      ip_address: finalIp,
+      meta: combinedMeta
+    }).catch(() => { });
 
     res.status(200).json({
       message: 'Login successful',
@@ -137,7 +207,7 @@ export const changePassword = async (req, res) => {
 export const logoutSupervisor = async (req, res) => {
   try {
     const userId = req.user?.id;
-    
+
     if (userId) {
       await Supervisor.update({
         is_logout: true
@@ -163,7 +233,7 @@ export const getUserDetails = async (req, res) => {
   try {
     const userId = req.user.id;
     const user = await Supervisor.findByPk(userId, {
-      attributes: { exclude: ['supervisor_password', 'supervisor_real_password'] },
+      attributes: { exclude: ['supervisor_password'] },
     });
 
     if (!user) {
@@ -180,7 +250,7 @@ export const getUserDetails = async (req, res) => {
 export const logoutFromAllDevices = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     await Supervisor.update({
       is_logout: true
     }, {
@@ -198,7 +268,7 @@ export const makeSupervisorLogout = async (req, res) => {
   try {
     const { supervisor_id } = req.params;
     const [updated] = await Supervisor.update(
-      { 
+      {
         is_logout: true
       },
       { where: { supervisor_id: supervisor_id } }

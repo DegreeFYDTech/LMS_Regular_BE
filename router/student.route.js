@@ -5,6 +5,7 @@ import {
   updateStudentStatus,
   findByContact,
   getStudentById,
+  createAndTransferStudent,
   studentWindowOpenByCounsellor,
   updateStudentDetails,
   bulkReassignLeads,
@@ -46,6 +47,8 @@ router.get(
   authorize(["l2", "l3", "supervisor", "Supervisor", "to", "analyser", "to_l3"]),
   getStudentById,
 );
+router.post("/check-and-transfer", createAndTransferStudent);
+
 router.put(
   "/updateStudentStatus/:studentId",
   authorize(["l2", "l3", "to", "supervisor", "Supervisor", "to_l3"]),

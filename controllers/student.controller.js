@@ -30,6 +30,89 @@ import { formatDate } from "./studentcoursestatus.controller.js";
 import { uploadToCloudinary } from "../config/cloudinary.js";
 
 
+
+
+
+export const createAndTransferStudent = async (req, res) => {
+  try {
+    const {
+      studentDetails,
+      studentleadActivityDetails,
+      courseId,
+      leadStatus,
+      leadSubStatus,
+    } = req.body;
+    console.log("Received data for createAndTransferStudent:", {
+      studentDetails,
+      courseId,
+      leadStatus,
+    });
+    const payload = {
+      name: studentDetails.student_name,
+      email: studentDetails.student_email,
+      phoneNumber: studentDetails.student_phone,
+      source: studentDetails.source,
+      first_source_url: studentDetails.first_source_url,
+      is_transfered: true,
+      utm_campaign: studentleadActivityDetails.utm_campaign,
+      utm_campaign_id: studentleadActivityDetails.utm_campaign_id,
+      student_comment: studentleadActivityDetails.student_comment,
+    };
+    const result = await axios.post(
+      "http://localhost:3006/v1/student/create",
+      payload,
+    );
+    const courseDetails = await UniversityCourse.findOne({
+      where: { course_id: courseId },
+    });
+    console.log(
+      "Course details fetched for L3 assignment:",
+      result.data.leads[0].student,
+    );
+    const l3data = await axios.post(
+      "http://localhost:3006/v1/leadassignmentl3/assign",
+      {
+        studentId: result.data.leads[0].student.student_id,
+        collegeName: courseDetails.university_name,
+        Course: courseDetails.course_name,
+        Degree: courseDetails.degree_name,
+        Specialization: courseDetails.specialization,
+        level: courseDetails.level,
+        source: courseDetails.level,
+        stream: courseDetails.stream,
+      },
+    );
+    const courseJourneyResponse = await CourseStatusJourney.create({
+      student_id: result.data.leads[0].student.student_id,
+      course_id: courseId,
+      counsellor_id: "CNS-2DA7F385",
+      assigned_l3_counsellor_id:
+        l3data?.data?.assigned_l3_counsellor_id || null,
+      notes: "Lead transferred with initial status",
+      course_status: leadStatus === "Application" ? leadSubStatus : leadStatus,
+    });
+    const courseLatestStatusResponse = await CourseStatus.create({
+      student_id: result.student_id,
+      course_id: courseId,
+      latest_course_status:
+        leadStatus === "Application" ? leadSubStatus : leadStatus,
+      created_by: "CNS-2DA7F385",
+      is_shortlisted: leadStatus === "Application" ? true : false,
+    });
+    res.status(201).json({
+      message: "Student created and transferred successfully",
+    });
+  } catch (err) {
+    console.error("❌ createAndTransferStudent error:", err);
+    res.status(500).json({
+      message: "Internal server error",
+      error: err.message,
+    });
+  }
+};
+
+
+
 export const createStudent = async (req, res) => {
   try {
     const leads = Array.isArray(req.body) ? req.body : [req.body];

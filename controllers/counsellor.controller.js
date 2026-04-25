@@ -1,4 +1,4 @@
-import { Counsellor, Student, counsellorBreak, sequelize, UserActionLog } from '../models/index.js';
+import { Counsellor, Student, counsellorBreak, sequelize, UserActionLog, LoginAttempt } from '../models/index.js';
 import bcrypt from 'bcryptjs';
 import { generateTokenAndSetCookie } from '../helper/getTimeForCookieExpires.js';
 import { Op, fn, col, literal } from 'sequelize';
@@ -6,10 +6,11 @@ import { createLeadLog } from './Lead_logs.controller.js'
 import { SocketEmitter } from '../helper/leadAssignmentService.js';
 import GenerateEmailFunction from '../config/SendLmsEmail.js'
 import activityLogger from './supervisorController.js'
+import { normalizeIP, isIPAllowed, extractDeviceDetails, extractBrowser, extractOS } from '../helper/deviceLocationHelpers.js';
 
 export const registerCounsellor = async (req, res) => {
   try {
-    const { name, email, password, role, preferredMode, teamOwnerId } = req.body;
+    const { name, email, password, role, preferredMode, teamOwnerId, login_start_time, login_end_time, max_active_sessions } = req.body;
     if (!name || !email || !password || !role || !preferredMode || !teamOwnerId) {
       return res.status(400).json({ message: 'Please fill all required fields' });
     }
@@ -29,7 +30,10 @@ export const registerCounsellor = async (req, res) => {
       counsellor_role: role,
       role,
       counsellor_preferred_mode: preferredMode,
-      assigned_to: teamOwnerId || null
+      assigned_to: teamOwnerId || null,
+      ...(login_start_time && { login_start_time }),
+      ...(login_end_time && { login_end_time }),
+      ...(max_active_sessions && { max_active_sessions }),
     });
 
     // const token = generateTokenAndSetCookie(res, {
@@ -46,28 +50,141 @@ export const registerCounsellor = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+export const getLoginAttempts = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const offset = (page - 1) * limit;
+    const { user_type, user_id, success, search, startDate, endDate } = req.query;
 
+    const where = {};
+    if (user_type) where.user_type = user_type;
+    if (user_id) where.user_id = user_id;
+    if (success !== undefined) where.success = success === 'true' || success === '1';
+    if (search) where.user_name = { [Op.iLike]: `%${search}%` };
+    if (startDate || endDate) {
+      where.created_at = {};
+      if (startDate) where.created_at[Op.gte] = new Date(startDate);
+      if (endDate) where.created_at[Op.lte] = new Date(endDate);
+    }
+
+    const { rows, count } = await LoginAttempt.findAndCountAll({
+      where,
+      order: [['created_at', 'DESC']],
+      offset,
+      limit,
+    });
+
+    res.json({ attempts: rows, total: count, page, limit });
+  } catch (err) {
+    console.error('getLoginAttempts error', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
 export const loginCounsellor = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, forceLogout, deviceId: bodyDeviceId } = req.body;
     if (!email || !password)
       return res.status(400).json({ message: 'Email and password required' });
 
-    console.log('Login attempt:', email);
+    const finalIp = normalizeIP(
+      (req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.ip || '').split(',')[0].trim()
+    );
+    const uaStr = req.headers['user-agent'] || '';
+    const device = req.headers['x-device-id'] || req.headers['device-id'] || req.headers['x-device-identifier'] || bodyDeviceId;
 
     const counsellor = await Counsellor.findOne({ where: { counsellor_email: email } });
-    if (!counsellor) return res.status(401).json({ message: 'Counsellor Not Found' });
+    if (!counsellor) {
+      await LoginAttempt.create({
+        user_type: 'counsellor', user_id: null, user_name: email, success: false,
+        ip_address: finalIp, meta: { reason: 'user_not_found', user_agent: uaStr }
+      }).catch(() => { });
+      return res.status(401).json({ message: 'Counsellor Not Found' });
+    }
+
+    if (counsellor.is_blocked) {
+      await LoginAttempt.create({
+        user_type: 'counsellor', user_id: counsellor.counsellor_id, user_name: email, success: false,
+        ip_address: finalIp, meta: { reason: 'account_blocked', user_agent: uaStr }
+      }).catch(() => { });
+      return res.status(403).json({ message: 'Account is blocked. Please contact administrator.' });
+    }
 
     const isMatch = await bcrypt.compare(password, counsellor.counsellor_password);
-    if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!isMatch) {
+      await LoginAttempt.create({
+        user_type: 'counsellor', user_id: counsellor.counsellor_id, user_name: email, success: false,
+        ip_address: finalIp, meta: { reason: 'invalid_credentials', user_agent: uaStr }
+      }).catch(() => { });
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
 
-    // Update last login time
-    await Counsellor.update({
-      counsellor_last_login: new Date(),
-      is_logout: false
-    }, {
-      where: { counsellor_id: counsellor.counsellor_id }
-    });
+    // Max active sessions check (JioCinema style)
+    let currentTokens = counsellor.active_session_tokens;
+    if (typeof currentTokens === 'string') {
+      try { currentTokens = JSON.parse(currentTokens); } catch (e) { currentTokens = []; }
+    }
+    if (!Array.isArray(currentTokens)) currentTokens = [];
+
+    const maxActiveSessions = counsellor.max_active_sessions || 1;
+    const isForceLogout = forceLogout === true || forceLogout === 'true';
+
+    if (currentTokens.length >= maxActiveSessions && !isForceLogout) {
+      return res.status(409).json({
+        success: false,
+        message: `You are already logged in from ${currentTokens.length} device(s). Logging in here will forcefully log out your other sessions.`,
+        requires_force_logout: true
+      });
+    }
+
+    // Login time window check
+    const now = new Date();
+    if (counsellor.login_start_time && counsellor.login_end_time) {
+      const currentTimeStr = now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false });
+      if (currentTimeStr < counsellor.login_start_time || currentTimeStr > counsellor.login_end_time) {
+        await LoginAttempt.create({
+          user_type: 'counsellor', user_id: counsellor.counsellor_id, user_name: counsellor.counsellor_name, success: false,
+          ip_address: finalIp, meta: { reason: 'outside_window', currentTime: currentTimeStr, start: counsellor.login_start_time, end: counsellor.login_end_time }
+        }).catch(() => { });
+        return res.status(403).json({ message: 'Login only allowed between ' + counsellor.login_start_time + ' and ' + counsellor.login_end_time });
+      }
+    }
+
+    // IP whitelist check
+    let allowedIps = counsellor.allowed_ips;
+    if (allowedIps && !Array.isArray(allowedIps)) {
+      try { allowedIps = typeof allowedIps === 'string' ? JSON.parse(allowedIps) : [allowedIps]; } catch (e) { allowedIps = [allowedIps]; }
+    }
+    if (Array.isArray(allowedIps) && allowedIps.length > 0) {
+      if (!isIPAllowed(finalIp, allowedIps)) {
+        await LoginAttempt.create({
+          user_type: 'counsellor', user_id: counsellor.counsellor_id, user_name: counsellor.counsellor_name, success: false,
+          ip_address: finalIp, meta: { reason: 'ip_not_allowed', allowed: allowedIps, user_agent: uaStr }
+        }).catch(() => { });
+        return res.status(403).json({ message: 'Access denied from this IP address' });
+      }
+    }
+
+    // Device whitelist check
+    let devices = counsellor.allowed_devices;
+    if (devices && !Array.isArray(devices)) {
+      try { devices = typeof devices === 'string' ? JSON.parse(devices) : [devices]; } catch (e) { devices = [devices]; }
+    }
+    if (Array.isArray(devices) && devices.length > 0) {
+      const deviceDetails = extractDeviceDetails(uaStr);
+      const currentDeviceType = deviceDetails.type.toLowerCase();
+      const lowerWhitelist = devices.map(d => String(d).toLowerCase());
+      const isAllowed = lowerWhitelist.includes(currentDeviceType) || (device && lowerWhitelist.includes(String(device).toLowerCase()));
+
+      if (!isAllowed) {
+        await LoginAttempt.create({
+          user_type: 'counsellor', user_id: counsellor.counsellor_id, user_name: counsellor.counsellor_name, success: false,
+          ip_address: finalIp,
+          meta: { reason: 'device_not_allowed', detectedType: deviceDetails.type, vendor: deviceDetails.vendor, model: deviceDetails.model, browser: extractBrowser(uaStr), os: extractOS(uaStr), deviceId: device, allowed: devices }
+        }).catch(() => { });
+        return res.status(403).json({ message: 'Login not permitted from this device' });
+      }
+    }
 
     const token = generateTokenAndSetCookie(res, {
       id: counsellor.counsellor_id,
@@ -76,19 +193,30 @@ export const loginCounsellor = async (req, res) => {
       counsellorPreferredMode: counsellor.counsellor_preferred_mode
     }, 'token');
 
-    res.cookie(token);
+    const updatedTokens = isForceLogout ? [token] : [...currentTokens, token];
 
-    const newcouns = {
-      id: counsellor.counsellor_id,
-      name: counsellor.counsellor_name,
-      email: counsellor.counsellor_email,
-      phoneNumber: counsellor?.counsellor_phone_number,
-      role: counsellor?.role
-    }
+    await Counsellor.update({
+      counsellor_last_login: new Date(),
+      is_logout: false,
+      active_session_tokens: updatedTokens
+    }, {
+      where: { counsellor_id: counsellor.counsellor_id }
+    });
+
+    await LoginAttempt.create({
+      user_type: 'counsellor', user_id: counsellor.counsellor_id, user_name: counsellor.counsellor_name, success: true,
+      ip_address: finalIp, meta: { browser: extractBrowser(uaStr), os: extractOS(uaStr), user_agent: uaStr, device }
+    }).catch(() => { });
 
     res.status(200).json({
       message: 'Login successful',
-      counsellor: newcouns
+      counsellor: {
+        id: counsellor.counsellor_id,
+        name: counsellor.counsellor_name,
+        email: counsellor.counsellor_email,
+        phoneNumber: counsellor?.counsellor_phone_number,
+        role: counsellor?.role
+      }
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -99,10 +227,19 @@ export const loginCounsellor = async (req, res) => {
 export const logoutCounsellor = async (req, res) => {
   try {
     const userId = req.user?.id;
+    const token = req.cookies?.token;
 
     if (userId) {
+      const counsellor = await Counsellor.findByPk(userId, { attributes: ['active_session_tokens'] });
+      let activeTokens = counsellor?.active_session_tokens || [];
+      if (typeof activeTokens === 'string') {
+        try { activeTokens = JSON.parse(activeTokens); } catch (e) { activeTokens = []; }
+      }
+      const newTokens = Array.isArray(activeTokens) ? activeTokens.filter(t => t !== token) : [];
+
       await Counsellor.update({
-        is_logout: true
+        is_logout: true,
+        active_session_tokens: newTokens
       }, {
         where: { counsellor_id: userId }
       });
@@ -925,5 +1062,90 @@ export const changeSupervisor = async (req, res) => {
   } catch (error) {
     console.error('Error changing supervisor:', error.message);
     res.status(500).json({ message: 'Error changing supervisor', error: error.message });
+  }
+};
+
+export const getCounsellorAccessSettings = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const counsellor = await Counsellor.findByPk(id, {
+      attributes: ['counsellor_id', 'login_start_time', 'login_end_time', 'allowed_ips', 'allowed_devices', 'max_active_sessions']
+    });
+    if (!counsellor) return res.status(404).json({ message: 'Counsellor not found' });
+    res.json({ accessSettings: counsellor });
+  } catch (err) {
+    console.error('getCounsellorAccessSettings error', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+export const updateCounsellorAccessSettings = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { login_start_time, login_end_time, allowed_ips, allowed_devices, max_active_sessions } = req.body;
+    const updates = {};
+    if (login_start_time !== undefined) updates.login_start_time = login_start_time;
+    if (login_end_time !== undefined) updates.login_end_time = login_end_time;
+    if (allowed_ips !== undefined) updates.allowed_ips = allowed_ips;
+    if (allowed_devices !== undefined) updates.allowed_devices = allowed_devices;
+    if (max_active_sessions !== undefined) updates.max_active_sessions = max_active_sessions;
+
+    const [updated] = await Counsellor.update(updates, { where: { counsellor_id: id } });
+    if (updated === 0) return res.status(404).json({ message: 'Counsellor not found or nothing changed' });
+    res.json({ message: 'Access settings updated' });
+  } catch (err) {
+    console.error('updateCounsellorAccessSettings error', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+export const bulkUpdateCounsellorAccessSettings = async (req, res) => {
+  try {
+    const { ids, login_start_time, login_end_time, allowed_ips, allowed_devices, max_active_sessions } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'Array of ids is required' });
+    }
+
+    const updates = {};
+    if (login_start_time !== undefined) updates.login_start_time = login_start_time;
+    if (login_end_time !== undefined) updates.login_end_time = login_end_time;
+    if (allowed_ips !== undefined) updates.allowed_ips = allowed_ips;
+    if (allowed_devices !== undefined) updates.allowed_devices = allowed_devices;
+    if (max_active_sessions !== undefined) updates.max_active_sessions = max_active_sessions;
+
+    await Counsellor.update(updates, { where: { counsellor_id: { [Op.in]: ids } } });
+    res.json({ message: 'Bulk access settings updated' });
+  } catch (err) {
+    console.error('bulkUpdateCounsellorAccessSettings error', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+export const toggleBlockCounsellor = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const counsellor = await Counsellor.findByPk(id);
+    if (!counsellor) {
+      return res.status(404).json({ message: 'Counsellor not found' });
+    }
+    
+    const newBlockedStatus = !counsellor.is_blocked;
+    await counsellor.update({ is_blocked: newBlockedStatus });
+    
+    if (newBlockedStatus) {
+      // Logout logic if blocked
+      const activeTokens = counsellor.active_session_tokens || [];
+      if (activeTokens.length > 0) {
+        await counsellor.update({ is_logout: true, active_session_tokens: [] });
+      }
+    }
+    
+    res.status(200).json({ 
+      message: `Counsellor successfully ${newBlockedStatus ? 'blocked' : 'unblocked'}`,
+      is_blocked: newBlockedStatus 
+    });
+  } catch (error) {
+    console.error('Error toggling block status:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

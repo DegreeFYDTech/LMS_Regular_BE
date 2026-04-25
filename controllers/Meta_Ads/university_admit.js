@@ -287,7 +287,27 @@ export const PostWebhookManual = async (lead_id) => {
               const leadDetails = data.lead;
               const campaignDetails = data.campaign;
 
-          
+              const existing = await MetaAdsLead.findOne({
+                where: { form_id: leadDetails.id },
+              });
+
+              if (existing) {
+                await axios.post('http://localhost:3031/v1/student/create', {
+                name: existing.full_name,
+                phone_number: existing.phone_number?.length === 13
+                  ? existing.phone_number?.slice(3)
+                  : existing.phone_number,
+                email: existing.email,
+                preferred_city: existing.city,
+                source: 'FaceBook_University_Admit',
+                form_name: leadDetails.id,
+                mode: 'Online',
+                sourceUrl: campaignDetails?.name || '',
+                utm_campaign: leadDetails?.ad_name || '',
+                utm_campaign_id: leadDetails?.ad_id || '',
+                student_comment: formatToQuestionAnswerArray(existing.additional_fields),
+              });
+              }
 
               const formattedLead = {
                 created_time: new Date(leadDetails.created_time),
@@ -304,7 +324,7 @@ export const PostWebhookManual = async (lead_id) => {
               };
 
 
-              const dataToSend = {
+               await axios.post('http://localhost:3031/v1/student/create', {
                 name: formattedLead.full_name,
                 phone_number: formattedLead.phone_number?.length === 13
                   ? formattedLead.phone_number?.slice(3)
@@ -318,7 +338,7 @@ export const PostWebhookManual = async (lead_id) => {
                 utm_campaign: leadDetails?.ad_name || '',
                 utm_campaign_id: leadDetails?.ad_id || '',
                 student_comment: formatToQuestionAnswerArray(formattedLead.additional_fields),
-              };
+              });
            return dataToSend;
             
             } catch (err) {

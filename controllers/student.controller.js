@@ -173,15 +173,15 @@ export const updateStudentStatus = async (req, res) => {
       const studentleadActivityDetails = await StudentLeadActivity.findOne({
         where: { student_id: studentId },
       });
-      console.log( {
-          studentDetails: studentDetails,
-          studentleadActivityDetails: studentleadActivityDetails,
-          course_id: selectedCourse,
-          leadStatus,
-          leadSubStatus,
-        })
+      console.log({
+        studentDetails: studentDetails,
+        studentleadActivityDetails: studentleadActivityDetails,
+        course_id: selectedCourse,
+        leadStatus,
+        leadSubStatus,
+      });
       const transferResponse = await axios.post(
-        "http://localhost:3006/v1/student/check-and-transfer",
+        "https://regular-cgc-api.degreefyd.com/v1/student/check-and-transfer",
         {
           studentDetails: studentDetails,
           studentleadActivityDetails: studentleadActivityDetails,

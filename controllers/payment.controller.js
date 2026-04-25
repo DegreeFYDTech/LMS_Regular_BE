@@ -85,6 +85,7 @@ export const initiateLead = async (req, res) => {
       paymentStatus: "PENDING",
       lastQualificationPercentage:
         req.body.lastQualificationPercentage === "" ||
+        req.body.lastQualificationPercentage === undefined ||
         req.body.lastQualificationPercentage === undefined
           ? null
           : req.body.lastQualificationPercentage,
@@ -1002,9 +1003,6 @@ export const getPaymentReports = async (req, res) => {
       };
     });
 
-    // =====================================================
-    // 🔥 STEP 8: ANALYTICS
-    // =====================================================
     const analytics = {
       total_records: orders.length,
       success: orders.filter((o) => o.status === "PAID").length,
@@ -1017,9 +1015,6 @@ export const getPaymentReports = async (req, res) => {
         .reduce((sum, o) => sum + parseFloat(o.amount || 0), 0),
     };
 
-    // =====================================================
-    // ✅ FINAL RESPONSE
-    // =====================================================
     return res.status(200).json({
       success: true,
       analytics,
@@ -1033,3 +1028,71 @@ export const getPaymentReports = async (req, res) => {
     });
   }
 };
+
+export const updatePaymentRemarks = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { phoneToSearch, snapshot, paymentEntity } = req.body;
+
+    if (!phoneToSearch) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required",
+      });
+    }
+    const student = await Student.findOne({
+      where: { student_phone: phoneToSearch },
+      transaction,
+    });
+    console.log(student);
+    await StudentRemark.create(
+      {
+        student_id: student.student_id,
+        lead_status:
+          snapshot?.paymentFor === "admission" ? "Admission" : "Application",
+
+        lead_sub_status:
+          snapshot?.paymentFor === "admission"
+            ? "Partially Paid"
+            : "Form Filled_Degreefyd",
+
+        calling_status: "Connected",
+        sub_calling_status: "Warm",
+
+        remarks: `Payment of amount ${snapshot?.finalAmount} completed successfully via ${snapshot?.onModel}. Payment ID: ${paymentEntity?.id}`,
+
+        feesAmount: snapshot?.finalAmount,
+        created_at: new Date(),
+      },
+      { transaction },
+    );
+
+    await Student.update(
+      {
+        remarks_count: sequelize.literal("remarks_count + 1"),
+      },
+      {
+        where: { student_id: student.student_id },
+        transaction,
+      },
+    );
+
+    await transaction.commit();
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment remark added successfully",
+    });
+  } catch (error) {
+    await transaction.rollback();
+
+    console.error("❌ updatePaymentRemarks error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+    });
+  }
+};
+

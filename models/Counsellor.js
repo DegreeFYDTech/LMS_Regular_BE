@@ -27,13 +27,44 @@ const Counsellor = sequelize.define('counsellors', {
   current_lead_capacity: { type: DataTypes.INTEGER, defaultValue: 0 },
   counsellor_last_login: DataTypes.DATE,
   is_logout: { type: DataTypes.BOOLEAN, defaultValue: false },
-  
+  is_blocked: { type: DataTypes.BOOLEAN, defaultValue: false },
+
   created_at: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW,
   },
   assigned_to: {
     type: DataTypes.STRING,
+  },
+  login_start_time: {
+    type: DataTypes.TIME,
+    allowNull: true,
+    comment: 'Allowed login window start (HH:MM:SS)'
+  },
+  login_end_time: {
+    type: DataTypes.TIME,
+    allowNull: true,
+    comment: 'Allowed login window end (HH:MM:SS)'
+  },
+  allowed_ips: {
+    type: DataTypes.JSON,
+    defaultValue: [],
+    comment: 'Array of permitted IP addresses for this counsellor'
+  },
+  allowed_devices: {
+    type: DataTypes.JSON,
+    defaultValue: [],
+    comment: 'Optional list of allowed device types (e.g. mobile, desktop)'
+  },
+  max_active_sessions: {
+    type: DataTypes.INTEGER,
+    defaultValue: 1,
+    comment: 'Max simultaneous active devices allowed'
+  },
+  active_session_tokens: {
+    type: DataTypes.JSON,
+    defaultValue: [],
+    comment: 'Current valid JWT tokens to enforce max session limits'
   },
   updated_at: {
     type: DataTypes.DATE,

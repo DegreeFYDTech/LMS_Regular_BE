@@ -12,7 +12,12 @@ import {
   updateCounsellorPreferredMode,
   getCounsellorById, assignCounsellorsToStudents,
   makeCounsellorLogout, start_Counsellors_break, end_Counsellors_break, activeBreak, getCounsellor_break_stats,
-  changeSupervisor
+  changeSupervisor,
+  getCounsellorAccessSettings,
+  getLoginAttempts,
+  updateCounsellorAccessSettings,
+  bulkUpdateCounsellorAccessSettings,
+  toggleBlockCounsellor
 } from '../controllers/counsellor.controller.js';
 import { authorize } from '../middlewares/authMiddleware.js';
 
@@ -36,5 +41,10 @@ router.put('/updateCounsellorPreferredMode/:id', authorize(["Supervisor", "to", 
 router.put('/assignCounsellors', authorize(["Supervisor", "to", 'to_l3']), assignCounsellorsToStudents);
 router.put('/break/end', end_Counsellors_break)
 router.put('/change-supervisor', authorize(["Supervisor", "to", 'to_l3']), changeSupervisor);
+router.put('/access-settings/bulk', authorize(["Supervisor", "to", 'to_l3']), bulkUpdateCounsellorAccessSettings);
+router.get('/access-settings/:id', authorize(["Supervisor", "to", 'to_l3']), getCounsellorAccessSettings);
+router.put('/access-settings/:id', authorize(["Supervisor", "to", 'to_l3']), updateCounsellorAccessSettings);
+router.get('/login-attempts', authorize(["Supervisor","to","l2","l3"]), getLoginAttempts);
+router.put('/toggleBlock/:id', authorize(["Supervisor", "to", 'to_l3']), toggleBlockCounsellor);
 
 export default router;

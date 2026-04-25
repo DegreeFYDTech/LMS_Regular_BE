@@ -95,9 +95,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     } = filters;
 
     // Convert leadStatus from array to string if needed - BUT keep as array for multiple values
-    // Convert leadStatus from array to string if needed - BUT keep as array for multiple values
     let leadStatus = rawLeadStatus;
-    if (Array.isArray(leadStatus) && leadStatus.length === 1) {
     if (Array.isArray(leadStatus) && leadStatus.length === 1) {
       leadStatus = leadStatus[0];
       console.log("Converted leadStatus from array to string:", leadStatus);
@@ -497,10 +495,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       where.push(inSQL("s.sub_calling_status_l3", subCallingStatusL3));
 
     // Handle lead_status filter - FIXED: Use case-insensitive OR condition for non-L3
-    // Handle lead_status filter - FIXED: Use case-insensitive OR condition for non-L3
     if (leadStatus && data !== "l3") {
-      // Use case-insensitive OR condition for multiple statuses
-      where.push(inSQLCaseInsensitive("s.current_student_status", leadStatus));
       // Use case-insensitive OR condition for multiple statuses
       where.push(inSQLCaseInsensitive("s.current_student_status", leadStatus));
     }
@@ -1771,7 +1766,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           "Shows first 3 characters of username followed by ***@xxxxxx.com",
       },
     };
-  }
+
     return response;
   } catch (error) {
     console.error("Error in getStudentsRawSQL:", error);

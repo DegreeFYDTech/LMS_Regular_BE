@@ -129,72 +129,14 @@ export const updateStudentStatus = async (req, res) => {
       feesAmount,
       selectedCourse,
       collegeCourseStatus,
-      event_time,
+      event_time, // Add event_time to destructured variables
     } = req.body;
-
+    console.log(event_time, "event_time received in controller");
     const student = await Student.findOne({
       where: { student_id: studentId },
     });
     if (!student) {
       return res.status(404).json({ message: "Student not found" });
-    }
-
-    const courseDetails = await UniversityCourse.findOne({
-      where: { course_id: selectedCourse },
-    });
-    if (courseDetails.university_name.toLowerCase().includes("amity")) {
-      const studentDetails = await Student.findByPk(studentId);
-      const studentleadActivityDetails = await StudentLeadActivity.findOne({
-        where: { student_id: studentId },
-      });
-      const transferResponse = await axios.post(
-        "http://localhost:3007/v1/student/check-and-transfer",
-        {
-          studentDetails: studentDetails,
-          studentleadActivityDetails: studentleadActivityDetails,
-          courseId: selectedCourse,
-          leadStatus,
-          leadSubStatus,
-        },
-      );
-      return res.status(200).json({
-        success: true,
-        message: "Student status updated and transfer checked for Amity",
-        transferResponse: transferResponse.data,
-      });
-    }
-    if (
-      courseDetails.university_name
-        .toLowerCase()
-        .includes("chandigarh group of colleges")
-    ) {
-      console.log("CGC course update - checking transfer");
-      const studentDetails = await Student.findByPk(studentId);
-      const studentleadActivityDetails = await StudentLeadActivity.findOne({
-        where: { student_id: studentId },
-      });
-      console.log({
-        studentDetails: studentDetails,
-        studentleadActivityDetails: studentleadActivityDetails,
-        course_id: selectedCourse,
-        leadStatus,
-        leadSubStatus,
-      });
-      const transferResponse = await axios.post(
-        "https://regular-cgc-api.degreefyd.com/v1/student/check-and-transfer",
-        {
-          studentDetails: studentDetails,
-          studentleadActivityDetails: studentleadActivityDetails,
-          courseId: selectedCourse,
-          leadStatus,
-          leadSubStatus,
-        },
-      );
-      return res.status(200).json({
-        success: true,
-        message: "Student status updated and transfer checked for CGC",
-        transferResponse: transferResponse.data,
-      });
     }
     if (
       leadStatus === "Initial Counselling Completed" &&
@@ -252,8 +194,18 @@ export const updateStudentStatus = async (req, res) => {
     const isSamePriority =
       leadStatus && currentStatus && newPriority === currentPriority;
 
+    console.log("Is Moving Backward:", isMovingBackward);
+    console.log("Current Status:", currentStatus, "Priority:", currentPriority);
+    console.log("New Status:", leadStatus, "Priority:", newPriority);
+
+    // Hybrid NotInterested logic (Priority check against other courses)
     let shouldUpdateGlobalStatus = true;
     if (leadStatus === "NotInterested" || leadStatus === "Not Interested") {
+      console.log("========== NI LOGIC START ==========");
+      console.log("Student ID:", studentId);
+      console.log("Selected Course:", selectedCourse);
+      console.log("Lead Status:", leadStatus);
+
       const distinctCourses = await CourseStatusJourney.findAll({
         where: {
           student_id: studentId,
@@ -354,6 +306,7 @@ export const updateStudentStatus = async (req, res) => {
 
     let updateFields = {};
 
+    // Role-based logic
     if (
       counsellorRole === "l2" ||
       counsellorRole === "to" ||
@@ -439,16 +392,12 @@ export const updateStudentStatus = async (req, res) => {
       (leadStatus === "NotInterested" || leadStatus === "Not Interested"
         ? "NotInterested"
         : leadStatus);
-    const blockedStatuses = [
-      "Pre Application",
-      "Initial Counselling Completed",
-    ];
-    if (
-      effectiveCourseStatus &&
-      selectedCourse &&
-      !blockedStatuses.includes(leadStatus)
-    ) {
-      console.log("kakk");
+
+    if (effectiveCourseStatus && selectedCourse) {
+      console.log("effectiveCourseStatus", effectiveCourseStatus);
+      console.log("selectedCourse", selectedCourse);
+
+      // Get the LATEST journey entry for this course
       const latestJourney = await CourseStatusJourney.findOne({
         where: {
           student_id: studentId,
@@ -458,6 +407,9 @@ export const updateStudentStatus = async (req, res) => {
       });
 
       const latestStatus = latestJourney?.course_status;
+      console.log("Latest status in journey:", latestStatus);
+      console.log("New status:", effectiveCourseStatus);
+
       let assigned_l3_counsellor_id = null;
 
       if (latestStatus !== effectiveCourseStatus) {
@@ -501,6 +453,7 @@ export const updateStudentStatus = async (req, res) => {
           order: [["created_at", "DESC"]],
         });
 
+        // Create journey entry with event_time if provided
         const journeyData = {
           student_id: studentId,
           course_id: selectedCourse,
@@ -541,24 +494,21 @@ export const updateStudentStatus = async (req, res) => {
         );
       } else {
         console.log("Status unchanged - updating existing journey entry");
+        // Update the latest entry with new notes/amount while preserving assigned_l3_counsellor_id
         if (latestJourney) {
           const updateData = {};
-          if (remark) updateData.notes = remark;
-          if (effectiveCourseStatus)
-            updateData.course_status = effectiveCourseStatus;
-          if (counsellorId) updateData.counsellor_id = counsellorId;
-          if (selectedCourse) updateData.course_id = selectedCourse;
-          if (studentId) updateData.student_id = studentId;
+
           if (remark) updateData.notes = remark;
           if (feesAmount) updateData.deposit_amount = feesAmount;
           if (leadStatus === "Admission" && leadSubStatus)
             updateData.fee_type = leadSubStatus;
 
+          // Add event_time if provided (for Exam/Interview Scheduled)
           if (event_time) {
             updateData.event_time = event_time;
           }
-          console.log("Updating journey entry with data:", updateData);
-          await CourseStatusJourney.create(updateData);
+
+          await latestJourney.create(updateData);
           console.log("Updated existing journey entry with:", updateData);
 
           // Also update event_time in CourseStatus
@@ -601,17 +551,11 @@ export const updateStudentStatus = async (req, res) => {
     const newRemark = await createRemark(remarkData);
     try {
       if (leadStatus === "NotInterested" || leadStatus === "Not Interested") {
-        const niRuleResponse = await axios.post(
-          `${process.env.PRIMARY_STORAGE_URL}/ni/transferlead`,
-          {
-            student_id: student?.primary_db_id,
-            source_lms_id: process.env.LMS_ID,
-            student_details: student,
-          },
-        );
+        const niRuleResponse = await axios.post(`${process.env.PRIMARY_STORAGE_URL}/ni/transferlead`, { student_id: student?.primary_db_id, source_lms_id: process.env.LMS_ID, student_details: student })
       }
-    } catch (e) {
-      console.log("erro", e);
+    }
+    catch (e) {
+      console.log("erro", e)
     }
     // console.log("New remark created:", leadStatus, leadSubStatus, remarkData);
 
@@ -843,6 +787,7 @@ export const updateStudentStatus = async (req, res) => {
       ...updatedstudents.get({ plain: true }),
       student_remarks: [newRemark],
     };
+
 
     res.status(200).json({
       success: true,

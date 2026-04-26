@@ -176,7 +176,7 @@ export const updateStudentStatus = async (req, res) => {
         leadSubStatus,
       );
       const TransferResponse = await axios.post(
-        "https://regular-amity-api.degreefyd.com/v1/student//check-and-transfer",
+        "https://regular-amity-api.degreefyd.com/v1/student/check-and-transfer",
         {
           studentDetails: student.dataValues,
           studentleadActivityDetails:
@@ -203,7 +203,7 @@ export const updateStudentStatus = async (req, res) => {
       );
 
       const TransferResponse = await axios.post(
-        "https://regular-cgc-api.degreefyd.com/v1/student//check-and-transfer",
+        "https://regular-cgc-api.degreefyd.com/v1/student/check-and-transfer",
         {
           studentDetails: student.dataValues,
           studentleadActivityDetails:

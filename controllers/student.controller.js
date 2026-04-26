@@ -154,11 +154,11 @@ export const updateStudentStatus = async (req, res) => {
       );
     }
     let courseDetails = null;
-if(selectedCourse){
-     courseDetails = await UniversityCourse.findOne({
-      where: { course_id: selectedCourse },
-    });
-  }
+    if (selectedCourse) {
+      courseDetails = await UniversityCourse.findOne({
+        where: { course_id: selectedCourse },
+      });
+    }
     let studentleadActivityDetails = await StudentLeadActivity.findOne({
       where: { student_id: studentId },
     });
@@ -167,6 +167,14 @@ if(selectedCourse){
       courseDetails?.dataValues?.university_name?.includes("Amity") &&
       leadStatus == "Application"
     ) {
+      console.log(
+        "Amity application transfer logic triggered",
+        student.dataValues,
+        studentleadActivityDetails?.dataValues,
+        selectedCourse,
+        leadStatus,
+        leadSubStatus,
+      );
       const TransferResponse = await axios.post(
         "https://regular-amity-api.degreefyd.com/v1/student//check-and-transfer",
         {
@@ -185,6 +193,15 @@ if(selectedCourse){
       ) &&
       leadStatus == "Application"
     ) {
+      console.log(
+        "Amity application transfer logic triggered",
+        student.dataValues,
+        studentleadActivityDetails?.dataValues,
+        selectedCourse,
+        leadStatus,
+        leadSubStatus,
+      );
+
       const TransferResponse = await axios.post(
         "https://regular-cgc-api.degreefyd.com/v1/student//check-and-transfer",
         {
@@ -555,7 +572,8 @@ if(selectedCourse){
             updateData.event_time = event_time;
           }
           if (latestJourney?.assigned_l3_counsellor_id) {
-            updateData.assigned_l3_counsellor_id = latestJourney.assigned_l3_counsellor_id;
+            updateData.assigned_l3_counsellor_id =
+              latestJourney.assigned_l3_counsellor_id;
           }
           console.log("Updating journey entry with data:", updateData);
           await CourseStatusJourney.create(updateData);

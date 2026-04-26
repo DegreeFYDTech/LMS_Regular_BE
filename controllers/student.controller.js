@@ -186,6 +186,7 @@ export const updateStudentStatus = async (req, res) => {
           leadSubStatus,
         },
       );
+      return
     }
     if (
       courseDetails?.dataValues?.university_name?.includes(
@@ -193,14 +194,6 @@ export const updateStudentStatus = async (req, res) => {
       ) &&
       leadStatus == "Application"
     ) {
-      console.log(
-        "Amity application transfer logic triggered",
-        student.dataValues,
-        studentleadActivityDetails?.dataValues,
-        selectedCourse,
-        leadStatus,
-        leadSubStatus,
-      );
 
       const TransferResponse = await axios.post(
         "https://regular-cgc-api.degreefyd.com/v1/student/check-and-transfer",
@@ -213,6 +206,7 @@ export const updateStudentStatus = async (req, res) => {
           leadSubStatus,
         },
       );
+      return
     }
     const statusPriority = {
       "Pre Application": 1,

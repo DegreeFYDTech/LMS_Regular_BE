@@ -190,11 +190,11 @@ export const updateStudentStatus = async (req, res) => {
     }
     if (
       courseDetails?.dataValues?.university_name?.includes(
-        "chandigarh grounp of colleges",
+        "Chandigarh Group of Colleges",
       ) &&
       leadStatus == "Application"
     ) {
-
+console.log("cgc look")
       const TransferResponse = await axios.post(
         "https://regular-cgc-api.degreefyd.com/v1/student/check-and-transfer",
         {

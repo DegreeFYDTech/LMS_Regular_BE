@@ -186,7 +186,10 @@ export const updateStudentStatus = async (req, res) => {
           leadSubStatus,
         },
       );
-      return
+      return res.status(200).json({
+        success: true,
+        message: "Student transferred to Amity successfully",
+      });
     }
     if (
       courseDetails?.dataValues?.university_name?.includes(
@@ -194,7 +197,6 @@ export const updateStudentStatus = async (req, res) => {
       ) &&
       leadStatus == "Application"
     ) {
-console.log("cgc look")
       const TransferResponse = await axios.post(
         "https://regular-cgc-api.degreefyd.com/v1/student/check-and-transfer",
         {
@@ -206,7 +208,10 @@ console.log("cgc look")
           leadSubStatus,
         },
       );
-      return
+      return res.status(200).json({
+        success: true,
+        message: "Student transferred to CGC successfully",
+      });
     }
     const statusPriority = {
       "Pre Application": 1,

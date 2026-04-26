@@ -139,7 +139,8 @@ export const updateStudentStatus = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
     if (
-      leadStatus === "Initial Counselling Completed" &&
+      (leadStatus === "Initial Counselling Completed" ||
+        leadStatus === "Application") &&
       student.first_icc_date === null
     ) {
       const Response = await Student.update(
@@ -149,6 +150,43 @@ export const updateStudentStatus = async (req, res) => {
         },
         {
           where: { student_id: studentId },
+        },
+      );
+    }
+
+    const courseDetails = await UniversityCourse.findOne({
+      where: { course_id: selectedCourse },
+    });
+    let studentleadActivityDetails = await StudentLeadActivity.findOne({
+      where: { student_id: studentId },
+    });
+    if (courseDetails.dataValues.university_name.includes("Amity")) {
+      const TransferResponse = await axios.post(
+        "https://regular-amity-api.degreefyd.com/v1/student//check-and-transfer",
+        {
+          studentDetails: student.dataValues,
+          studentleadActivityDetails:
+            studentleadActivityDetails?.dataValues || null,
+          courseId: selectedCourse,
+          leadStatus,
+          leadSubStatus,
+        },
+      );
+    }
+    if (
+      courseDetails.dataValues.university_name.includes(
+        "chandigarh grounp of colleges",
+      )
+    ) {
+       const TransferResponse = await axios.post(
+        "https://regular-cgc-api.degreefyd.com/v1/student//check-and-transfer",
+        {
+          studentDetails: student.dataValues,
+          studentleadActivityDetails:
+            studentleadActivityDetails?.dataValues || null,
+          courseId: selectedCourse,
+          leadStatus,
+          leadSubStatus,
         },
       );
     }
@@ -429,7 +467,7 @@ export const updateStudentStatus = async (req, res) => {
               where: { course_id: selectedCourse },
             });
             const l3data = await axios.post(
-              "http://localhost:3007/v1/leadassignmentl3/assign",
+              "http://localhost:3031/v1/leadassignmentl3/assign",
               {
                 studentId,
                 collegeName: courseDetails.university_name,

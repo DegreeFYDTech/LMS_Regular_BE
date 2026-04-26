@@ -466,7 +466,6 @@ if(selectedCourse){
         );
         if (
           leadStatus == "Application" &&
-          effectiveCourseStatus === "Application" &&
           !latestJourney?.assigned_l3_counsellor_id
         ) {
           try {
@@ -554,6 +553,9 @@ if(selectedCourse){
 
           if (event_time) {
             updateData.event_time = event_time;
+          }
+          if (latestJourney?.assigned_l3_counsellor_id) {
+            updateData.assigned_l3_counsellor_id = latestJourney.assigned_l3_counsellor_id;
           }
           console.log("Updating journey entry with data:", updateData);
           await CourseStatusJourney.create(updateData);

@@ -508,7 +508,10 @@ export const updateStudentStatus = async (req, res) => {
             updateData.event_time = event_time;
           }
 
-          await latestJourney.create(updateData);
+          // IMPORTANT: Keep the existing assigned_l3_counsellor_id
+          // Don't set it to null, preserve the previous value
+
+          await latestJourney.update(updateData);
           console.log("Updated existing journey entry with:", updateData);
 
           // Also update event_time in CourseStatus

@@ -153,24 +153,20 @@ export const updateStudentStatus = async (req, res) => {
         },
       );
     }
-
+    let courseDetails = null;
+if(selectedCourse){
+     courseDetails = await UniversityCourse.findOne({
+      where: { course_id: selectedCourse },
+    });
+  }
     let studentleadActivityDetails = await StudentLeadActivity.findOne({
       where: { student_id: studentId },
     });
 
     if (
-      courseDetails.dataValues.university_name.includes("Amity") &&
+      courseDetails?.dataValues?.university_name?.includes("Amity") &&
       leadStatus == "Application"
     ) {
-      const courseDetails = await UniversityCourse.findOne({
-        where: { course_id: selectedCourse },
-      });
-      console.log(
-        "Course Details:",
-        courseDetails?.dataValues,
-        studentleadActivityDetails?.dataValues,
-        student?.dataValues,
-      );
       const TransferResponse = await axios.post(
         "https://regular-amity-api.degreefyd.com/v1/student//check-and-transfer",
         {
@@ -184,14 +180,11 @@ export const updateStudentStatus = async (req, res) => {
       );
     }
     if (
-      courseDetails.dataValues.university_name.includes(
+      courseDetails?.dataValues?.university_name?.includes(
         "chandigarh grounp of colleges",
       ) &&
       leadStatus == "Application"
     ) {
-      const courseDetails = await UniversityCourse.findOne({
-        where: { course_id: selectedCourse },
-      });
       const TransferResponse = await axios.post(
         "https://regular-cgc-api.degreefyd.com/v1/student//check-and-transfer",
         {

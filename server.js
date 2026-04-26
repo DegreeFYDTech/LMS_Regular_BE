@@ -646,6 +646,6 @@ setInterval(async () => {
 io.engine.on('connection_error', (err) => {});
 
 const PORT = process.env.PORT || 3031;
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

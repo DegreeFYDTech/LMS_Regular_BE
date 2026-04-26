@@ -84,7 +84,7 @@ const normalizeConditions = (conditions) => {
 
 export async function autoSending(students_data = []) {
   try {
-    // console.log('autoSending called with data type:', typeof students_data);
+    console.log('autoSending called with data type:', typeof students_data);
 
     // Handle both single object and array inputs
     let studentsArray;

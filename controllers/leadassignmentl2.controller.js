@@ -20,7 +20,8 @@ const cleanConditions = (conditions) => {
       'preferred_degree',
       'preferred_specialization',
       'preferred_city',
-      'preferred_state'
+      'preferred_state',
+      'student_question'
     ];
 
     for (const [key, value] of Object.entries(conditions)) {
@@ -75,7 +76,8 @@ const validateConditionKeys = (conditions) => {
     'preferred_degree',
     'preferred_specialization',
     'preferred_city',
-    'preferred_state'
+    'preferred_state',
+    'student_question'
   ];
   
   const providedKeys = Object.keys(conditions);

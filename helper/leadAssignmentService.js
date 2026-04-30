@@ -37,6 +37,7 @@ export const assignLeadHelper = async (leadData) => {
       "preferred_specialization",
       "preferred_city",
       "preferred_state",
+      "student_question",
     ];
 
     const rules = await LeadAssignmentRuleL2.findAll({
@@ -124,6 +125,25 @@ export const assignLeadHelper = async (leadData) => {
         });
       }
 
+      if (field === "student_question") {
+        if (!Array.isArray(value)) return false; 
+        
+        return ruleConditions.every(ruleQ => {
+          const leadAnsObj = value.find(v => v.question === ruleQ.question);
+          if (!leadAnsObj || !leadAnsObj.answer) return false;
+          
+          const leadAnswers = Array.isArray(leadAnsObj.answer) 
+            ? leadAnsObj.answer.map(a => String(a).trim()) 
+            : [String(leadAnsObj.answer || "").trim()];
+            
+          const acceptedAnswers = Array.isArray(ruleQ.answer) 
+            ? ruleQ.answer.map(a => String(a).trim()) 
+            : [String(ruleQ.answer || "").trim()];
+
+          return leadAnswers.some(ans => acceptedAnswers.includes(ans));
+        });
+      }
+
       // For array fields in rule conditions
       if (Array.isArray(ruleConditions)) {
         return ruleConditions.some(
@@ -167,6 +187,7 @@ export const assignLeadHelper = async (leadData) => {
         preferred_level: conditions.preferred_level || conditions.level || [],
         mode: conditions.mode || [],
         source: conditions.source || [],
+        student_question: conditions.student_question || [],
       };
     };
 
@@ -195,7 +216,7 @@ export const assignLeadHelper = async (leadData) => {
         }
 
         totalConditions++;
-        const value = leadData[field];
+        const value = field === "student_question" ? leadData.student_comment : leadData[field];
 
         // Check if field exists in lead data
         if (value === undefined || value === null || value === "") {

@@ -846,7 +846,8 @@ function CgcApiResponse(apiResponse, collegeName) {
 
   if (
     message === "Duplicate" ||
-    message === "Email/Mobile already registered"
+    message === "Email/Mobile already registered" ||
+    message === "Mobile number already registered"
   ) {
     return "Do not Proceed";
   }

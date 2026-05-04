@@ -950,83 +950,112 @@ export const getAllRemarksofData = async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error' });
   }
 };
-import { formatDate } from './studentcoursestatus.controller.js'
+import { formatDate } from "./studentcoursestatus.controller.js";
 export const downloadAnalysisReport = async (req, res) => {
   try {
-    const { mode, role = 'L2', source, campaign, from, to, counsellorName } = req.query;
-    const results = await getAnalysisReporthelper(req.query)
+    const { mode, source, campaign, from, to, counsellors } = req.query;
 
-    if (!results.success) {
-      return res.status(500).json({
-        success: false,
-        message: 'Internal server error'
-      });
-    }
-    const remarks = results?.data
+    const counsellor_array = counsellors
+      ? counsellors.split(",").map((v) => v.trim())
+      : null;
 
-    const grouped = {};
-    for (const row of remarks) {
-      const hour = parseInt(row.hour, 10);
-      if (hour < 9 || hour > 19) continue;
+    const today = new Date().toISOString().slice(0, 10);
+    const fromDate = from || today;
+    const toDateRaw = to || today;
+    const toDateEnd = new Date(
+      new Date(toDateRaw).setHours(23, 59, 59, 999),
+    ).toISOString();
 
-      const counsellorId = row.counsellorId;
-      const count = parseInt(row.count, 10);
+    let sqlQuery = `
+      SELECT
+        sr.student_id,
+        c.counsellor_name,
+        sr.lead_status,
+        sr.lead_sub_status,
+        sr.calling_status,
+        sr.sub_calling_status,
+        sr.remarks,
+        sr.callback_date,
+        sr.callback_time,
+        timezone('Asia/Kolkata', sr.created_at) AS created_at
+      FROM student_remarks sr
+      JOIN counsellors c ON c.counsellor_id = sr.counsellor_id
+      JOIN students s ON sr.student_id = s.student_id
+      JOIN (
+        SELECT DISTINCT ON (student_id) *
+        FROM student_lead_activities
+        WHERE 1=1
+          ${source ? `AND source ILIKE '%' || :source || '%'` : ""}
+          ${campaign ? `AND utm_campaign = :campaign` : ""}
+        ORDER BY student_id, created_at ASC
+      ) la ON la.student_id = sr.student_id
+      WHERE sr.created_at BETWEEN :fromDate AND :toDateEnd
+        ${mode ? `AND c.counsellor_preferred_mode = :mode` : ""}
+        ${counsellor_array ? `AND sr.counsellor_id = ANY(ARRAY[:counsellor_array])` : ""}
+      ORDER BY sr.created_at DESC
+    `;
 
-      if (!grouped[counsellorId]) {
-        grouped[counsellorId] = {
-          totalRemarks: 0,
-          timeSlots: {}
-        };
-      }
-
-      const slotLabel = `${hour.toString().padStart(2, '0')}:00 - ${(hour + 1)
-        .toString()
-        .padStart(2, '0')}:00`;
-
-      grouped[counsellorId].totalRemarks += count;
-
-      if (!grouped[counsellorId].timeSlots[slotLabel]) {
-        grouped[counsellorId].timeSlots[slotLabel] = { count: 0 };
-      }
-
-      grouped[counsellorId].timeSlots[slotLabel].count += count;
-    }
-
-    console.log(grouped)
-    // Add percentages
-    const finalResult = Object.entries(grouped).map(([counsellorId, data]) => {
-      const total = data.totalRemarks;
-      const timeSlots = Object.entries(data.timeSlots).reduce(
-        (acc, [label, val]) => {
-          acc[label] = {
-            count: val.count,
-            percentage: Math.round((val.count / total) * 10000) / 100
-          };
-          return acc;
-        },
-        {}
-      );
-      return {
-        counsellorName: counsellorId,
-        totalRemarks: total,
-        timeSlots
-      };
+    const rows = await sequelize.query(sqlQuery, {
+      replacements: { fromDate, toDateEnd, mode, source, campaign, counsellor_array },
+      type: QueryTypes.SELECT,
     });
 
-    finalResult.sort((a, b) =>
-      a.counsellorName.localeCompare(b.counsellorName)
+    const formatted = rows.map((r) => ({
+      student_id: r.student_id || "",
+      counsellor_name: r.counsellor_name || "",
+      lead_status: r.lead_status || "",
+      lead_sub_status: r.lead_sub_status || "",
+      calling_status: r.calling_status || "",
+      sub_calling_status: r.sub_calling_status || "",
+      remarks: r.remarks || "",
+      callback_date: r.callback_date
+        ? new Date(r.callback_date).toLocaleDateString("en-IN")
+        : "",
+      callback_time: r.callback_time || "",
+      created_at: r.created_at
+        ? new Date(r.created_at).toLocaleString("en-IN")
+        : "",
+    }));
+
+    const fields = [
+      "student_id",
+      "counsellor_name",
+      "lead_status",
+      "lead_sub_status",
+      "calling_status",
+      "sub_calling_status",
+      "remarks",
+      "callback_date",
+      "callback_time",
+      "created_at",
+    ];
+    const fieldNames = [
+      "Student ID",
+      "Counsellor",
+      "Lead Status",
+      "Lead Sub Status",
+      "Calling Status",
+      "Sub Calling Status",
+      "Remarks",
+      "Callback Date",
+      "Callback Time",
+      "Created At",
+    ];
+
+    const csvData = convertToCSV(formatted, fields, fieldNames);
+
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="remarks_analysis_${date}.csv"`,
     );
-    res.status(200).json({
-      success: true,
-      totalRecords: finalResult.length,
-      success: true,
-      data: finalResult
-    });
+    res.send(csvData);
   } catch (error) {
-    console.error('Error generating SQL analysis report:', error);
+    console.error("Error downloading analysis report:", error);
     res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: "Internal server error",
     });
   }
 };

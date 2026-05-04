@@ -8,6 +8,7 @@ import {
   getFormToAdmissionsReport,
   getStudentJourneyDetails,
   replaceL3CounsellorForSpecificJourney,
+  exportCollegeStatusReports,
   replaceL3CounsellorForStudents,
   getFormData,
 } from "../controllers/StudentCourseStatusLogs.controller.js";
@@ -44,6 +45,7 @@ router.post(
   authorize(["Supervisor", "to", "to_l3"]),
   replaceL3CounsellorForStudents,
 );
+router.get("/reports/export", exportCollegeStatusReports);
 
 router.get("/reports", getCollegeStatusReports);
 

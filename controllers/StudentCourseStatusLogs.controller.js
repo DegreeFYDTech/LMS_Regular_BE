@@ -1971,3 +1971,289 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
     });
   }
 };
+
+
+export const exportCollegeStatusReports = async (req, res) => {
+  try {
+    const {
+      reportType = "colleges",
+      startDate,
+      endDate,
+      collegeId,
+      firstTimeFrom,
+      firstTimeTo,
+    } = req.query;
+
+    const isFirstTimeFilter = !!(firstTimeFrom || firstTimeTo);
+    const isDateFilter = !!(startDate || endDate);
+
+    let sql = "";
+    const replacements = {};
+
+    // ================= FIRST TIME FILTER =================
+    if (isFirstTimeFilter) {
+      sql = `
+        SELECT
+          csh.student_id,
+          s.student_name,
+          s.student_email,
+          s.student_phone,
+          csh.course_id,
+          csh.course_status,
+          csh.created_at,
+          uc.university_name AS college,
+          uc.course_name,
+          c.counsellor_name,
+
+          scc.form_id,
+          scc.coupon_code,
+          scc.user_name,
+          scc.password
+
+        FROM course_status_journeys csh
+
+        INNER JOIN (
+          SELECT student_id, course_id, MIN(created_at) AS first_entry_date
+          FROM course_status_journeys
+          GROUP BY student_id, course_id
+        ) first_entry 
+          ON csh.student_id = first_entry.student_id
+         AND csh.course_id = first_entry.course_id
+         AND csh.created_at = first_entry.first_entry_date
+
+        INNER JOIN university_courses uc 
+          ON csh.course_id = uc.course_id
+
+        LEFT JOIN counsellors c 
+          ON csh.counsellor_id = c.counsellor_id
+
+        LEFT JOIN students s 
+          ON csh.student_id = s.student_id
+
+        LEFT JOIN student_college_credentials scc 
+          ON csh.student_id = scc.student_id 
+         AND csh.course_id = scc.course_id
+
+        WHERE 1=1
+      `;
+
+      if (firstTimeFrom) {
+        sql += ` AND DATE(csh.created_at) >= :firstTimeFrom`;
+        replacements.firstTimeFrom = firstTimeFrom;
+      }
+      if (firstTimeTo) {
+        sql += ` AND DATE(csh.created_at) <= :firstTimeTo`;
+        replacements.firstTimeTo = firstTimeTo;
+      }
+    }
+
+    // ================= DATE FILTER =================
+    else if (isDateFilter) {
+      sql = `
+        SELECT
+          csh.student_id,
+          s.student_name,
+          s.student_email,
+          s.student_phone,
+          csh.course_id,
+          csh.course_status,
+          csh.created_at,
+          uc.university_name AS college,
+          uc.course_name,
+          c.counsellor_name,
+
+          scc.form_id,
+          scc.coupon_code,
+          scc.user_name,
+          scc.password
+
+        FROM course_status_journeys csh
+
+        INNER JOIN (
+          SELECT
+            csh_inner.student_id,
+            csh_inner.course_id,
+            MAX(csh_inner.created_at) AS latest_date
+          FROM course_status_journeys csh_inner
+          WHERE 1=1
+      `;
+
+      if (startDate) {
+        sql += ` AND DATE(csh_inner.created_at) >= :startDate`;
+        replacements.startDate = startDate;
+      }
+      if (endDate) {
+        sql += ` AND DATE(csh_inner.created_at) <= :endDate`;
+        replacements.endDate = endDate;
+      }
+
+      sql += `
+          GROUP BY csh_inner.student_id, csh_inner.course_id
+        ) latest 
+          ON csh.student_id = latest.student_id
+         AND csh.course_id = latest.course_id
+         AND csh.created_at = latest.latest_date
+
+        INNER JOIN university_courses uc 
+          ON csh.course_id = uc.course_id
+
+        LEFT JOIN counsellors c 
+          ON csh.counsellor_id = c.counsellor_id
+
+        LEFT JOIN students s 
+          ON csh.student_id = s.student_id
+
+        LEFT JOIN student_college_credentials scc 
+          ON csh.student_id = scc.student_id 
+         AND csh.course_id = scc.course_id
+
+        WHERE 1=1
+      `;
+    }
+
+    // ================= DEFAULT =================
+    else {
+      sql = `
+        SELECT
+          csh.student_id,
+          s.student_name,
+          s.student_email,
+          s.student_phone,
+          csh.course_id,
+          csh.course_status,
+          csh.created_at,
+          uc.university_name AS college,
+          uc.course_name,
+          c.counsellor_name,
+
+          scc.form_id,
+          scc.coupon_code,
+          scc.user_name,
+          scc.password
+
+        FROM course_status_journeys csh
+
+        INNER JOIN (
+          SELECT student_id, course_id, MAX(created_at) AS latest_date
+          FROM course_status_journeys
+          GROUP BY student_id, course_id
+        ) latest 
+          ON csh.student_id = latest.student_id
+         AND csh.course_id = latest.course_id
+         AND csh.created_at = latest.latest_date
+
+        INNER JOIN university_courses uc 
+          ON csh.course_id = uc.course_id
+
+        LEFT JOIN counsellors c 
+          ON csh.counsellor_id = c.counsellor_id
+
+        LEFT JOIN students s 
+          ON csh.student_id = s.student_id
+
+        LEFT JOIN student_college_credentials scc 
+          ON csh.student_id = scc.student_id 
+         AND csh.course_id = scc.course_id
+
+        WHERE 1=1
+      `;
+    }
+
+    // ================= COMMON FILTER =================
+    if (collegeId) {
+      sql += ` AND uc.course_id = :courseId`;
+      replacements.courseId = collegeId;
+    }
+
+    sql += ` ORDER BY uc.university_name, csh.student_id`;
+
+    const records = await sequelize.query(sql, {
+      replacements,
+      type: QueryTypes.SELECT,
+    });
+
+    // ================= EMPTY CSV =================
+    if (records.length === 0) {
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="college_status_report.csv"`
+      );
+      return res.send(
+        "Student ID,Student Name,Email,Phone,College,Course,Counsellor,Status,Form ID,Coupon Code,Username,Password,Created At\n"
+      );
+    }
+
+    // ================= FORMAT =================
+    const formatted = records.map((r) => ({
+      student_id: r.student_id || "",
+      student_name: r.student_name || "",
+      student_email: r.student_email || "",
+      student_phone: r.student_phone || "",
+      college: r.college || "",
+      course_name: r.course_name || "",
+      counsellor_name: r.counsellor_name || "",
+      course_status: r.course_status || "",
+      form_id: r.form_id || "",
+      coupon_code: r.coupon_code || "",
+      user_name: r.user_name || "",
+      // ⚠️ SECURITY: mask password if needed
+      password: r.password || "",
+      created_at: r.created_at
+        ? new Date(r.created_at).toLocaleString("en-IN", {
+            timeZone: "Asia/Kolkata",
+          })
+        : "",
+    }));
+
+    const fields = [
+      "student_id",
+      "student_name",
+      "student_email",
+      "student_phone",
+      "college",
+      "course_name",
+      "counsellor_name",
+      "course_status",
+      "form_id",
+      "coupon_code",
+      "user_name",
+      "password",
+      "created_at",
+    ];
+
+    const fieldNames = [
+      "Student ID",
+      "Student Name",
+      "Email",
+      "Phone",
+      "College",
+      "Course",
+      "Counsellor",
+      "Status",
+      "Form ID",
+      "Coupon Code",
+      "Username",
+      "Password",
+      "Created At",
+    ];
+
+    const csvData = convertToCSV(formatted, fields, fieldNames);
+
+    const date = new Date().toISOString().slice(0, 10);
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="college_status_report_${date}.csv"`
+    );
+
+    res.send(csvData);
+  } catch (error) {
+    console.error("Error exporting college status reports:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error exporting reports",
+    });
+  }
+};

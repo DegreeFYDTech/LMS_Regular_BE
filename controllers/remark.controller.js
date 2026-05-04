@@ -1,5 +1,7 @@
 import { StudentRemark, Student, Counsellor, StudentLeadActivity, sequelize } from '../models/index.js';
 import { Op, fn, literal, col } from 'sequelize';
+import { convertToCSV } from "../helper/csv_helper.js";
+
 import pMap from 'p-map';
 export const createRemark = async (data) => {
   const requiredFields = [

@@ -9,6 +9,7 @@ import {
 } from "../models/index.js";
 import { col, fn, literal, Op, QueryTypes, Sequelize } from "sequelize";
 import CourseStatusJourney from "../models/course_status_jounreny.js";
+import { convertToCSV } from "../helper/csv_helper.js";
 
 export const getCounsellorStats = async (req, res) => {
   try {

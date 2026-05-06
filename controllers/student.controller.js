@@ -129,6 +129,10 @@ export const updateStudentStatus = async (req, res) => {
       feesAmount,
       selectedCourse,
       collegeCourseStatus,
+      formID,
+      couponCode,
+      userName,
+      password,
       event_time, // Add event_time to destructured variables
     } = req.body;
     console.log(event_time, "event_time received in controller");
@@ -179,6 +183,7 @@ export const updateStudentStatus = async (req, res) => {
         "https://regular-amity-api.degreefyd.com/v1/student/check-and-transfer",
         {
           studentDetails: student.dataValues,
+          studentcreds: { formID, couponCode, userName, password },
           studentleadActivityDetails:
             studentleadActivityDetails?.dataValues || null,
           courseId: selectedCourse,
@@ -201,6 +206,8 @@ export const updateStudentStatus = async (req, res) => {
         "https://regular-cgc-api.degreefyd.com/v1/student/check-and-transfer",
         {
           studentDetails: student.dataValues,
+          studentcreds: { formID, couponCode, userName, password },
+
           studentleadActivityDetails:
             studentleadActivityDetails?.dataValues || null,
           courseId: selectedCourse,

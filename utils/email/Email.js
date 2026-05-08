@@ -5,7 +5,6 @@ export default async function sendMail(
     subject,
     to = [
         "bhuwan@degreefyd.com",
-        "sid@degreefyd.com",
         "deepak@degreefyd.com",
         "manoj.kain@degreefyd.com",
         "harsh.pandey@degreefyd.com",

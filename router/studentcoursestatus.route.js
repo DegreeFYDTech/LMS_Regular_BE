@@ -1,6 +1,6 @@
 import express from 'express';
 import { authorize } from '../middlewares/authMiddleware.js';
-import { getCollegeStatus, getShortlistedColleges, updateStudentCourseStatus, getTrackReport, getTrackerReport2, downloadRecordsForView, getThreeRecordsOfFormFilled, getRecordsForAnalysis, getRecordsForAnalysishelper, downloadRecordsForAnalysis, getLeadStatusApiReport, getLeadAttemptTimeReport, getTrackerReport2RawData, getLeadAttemptTimeReportRawData, getThreeRecordsOfFormFilledDownload, getTrackerReportAnalysis3, getNotInterestedAfterCounselingReport, bulkInsertCourseStatus } from '../controllers/studentcoursestatus.controller.js';
+import { getCollegeStatus, getShortlistedColleges, updateStudentCourseStatus, getTrackReport, getTrackerReport2, downloadRecordsForView, getThreeRecordsOfFormFilled, getRecordsForAnalysis, getRecordsForAnalysishelper, downloadRecordsForAnalysis, getLeadStatusApiReport, getLeadAttemptTimeReport, getTrackerReport2RawData, getLeadAttemptTimeReportRawData, getThreeRecordsOfFormFilledDownload, getTrackerReportAnalysis3, getNotInterestedAfterCounselingReport, bulkInsertCourseStatus, getFormFilledFilterOptions } from '../controllers/studentcoursestatus.controller.js';
 import { getniReports } from '../controllers/student.controller.js';
 const router = express.Router();
 
@@ -10,6 +10,7 @@ router.get('/shortlisted/:studentId/full', authorize(["l2", "l3", "Supervisor", 
 router.get('/download', downloadRecordsForAnalysis);
 router.get('/download-shorilist', downloadRecordsForView);
 router.get('/getrecords/form-filled', authorize(["Supervisor", 'to', 'analyser', 'to_l3']), getThreeRecordsOfFormFilled);
+router.get('/getrecords/form-filled/filter-options', authorize(["Supervisor", 'to', 'analyser', 'to_l3']), getFormFilledFilterOptions);
 router.get('/getRecordsForAnalysis', getRecordsForAnalysishelper)
 router.get('/getrecords/form-filled/download', authorize(["Supervisor", 'to', 'analyser', 'to_l3']), getThreeRecordsOfFormFilledDownload);
 router.get('/:courseId/:studentId', authorize(["l2", "l3", "Supervisor", 'to', 'to_l3']), getCollegeStatus);

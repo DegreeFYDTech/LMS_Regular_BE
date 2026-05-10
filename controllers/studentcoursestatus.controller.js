@@ -775,11 +775,27 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
       counsellor_status,
       sortBy,
       sortOrder,
+      university_name,
+      l3_counsellor_id,
     } = req.query;
 
     const userRole = req.user?.role;
     const userId = req.user?.id;
     const isAnalyser = userRole === "Analyser";
+
+    const sanitizeSql = (v) => v?.trim().replace(/'/g, "''");
+    const safeUniversity = university_name ? sanitizeSql(university_name) : null;
+    const safeL3 = l3_counsellor_id ? sanitizeSql(l3_counsellor_id) : null;
+
+    const cteCollegeJoin = safeUniversity
+      ? `INNER JOIN university_courses uc ON uc.course_id = csj.course_id`
+      : "";
+    const cteExtraConds = (() => {
+      const conds = [];
+      if (safeUniversity) conds.push(`uc.university_name = '${safeUniversity}'`);
+      if (safeL3) conds.push(`csj.assigned_l3_counsellor_id = '${safeL3}'`);
+      return conds.length ? `AND ${conds.join(" AND ")}` : "";
+    })();
 
     let analyserFilters = {};
     if (isAnalyser && userId) {
@@ -1081,23 +1097,24 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     };
 
     const firstAdmissionCTE = `
-      SELECT DISTINCT
-        student_id
-      FROM course_status_journeys
-      WHERE course_status IN (
-        'Registration Done', 
-        'Partially Paid', 
-        'Admission', 
-        'Registration done', 
+      SELECT DISTINCT csj.student_id
+      FROM course_status_journeys csj
+      ${cteCollegeJoin}
+      WHERE csj.course_status IN (
+        'Registration Done',
+        'Partially Paid',
+        'Admission',
+        'Registration done',
         'Walkin marked'
       )
+      ${cteExtraConds}
     `;
 
     const firstFormfilledCTE = `
-      SELECT DISTINCT
-        student_id
-      FROM course_status_journeys
-      WHERE course_status IN (
+      SELECT DISTINCT csj.student_id
+      FROM course_status_journeys csj
+      ${cteCollegeJoin}
+      WHERE csj.course_status IN (
         'Form Submitted – Portal Pending',
         'Form Filled_Partner website',
         'Offer Letter/Results Pending',
@@ -1113,6 +1130,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
         'Registration done',
         'Walkin marked'
       )
+      ${cteExtraConds}
     `;
 
     const firstEnrolledCTE = `
@@ -2301,11 +2319,27 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
       sortBy,
       sortOrder,
       showDetailedColumns,
+      university_name,
+      l3_counsellor_id,
     } = req.query;
 
     const userRole = req.user?.role;
     const userId = req.user?.id;
     const isAnalyser = userRole === "Analyser";
+
+    const sanitizeSql = (v) => v?.trim().replace(/'/g, "''");
+    const safeUniversity = university_name ? sanitizeSql(university_name) : null;
+    const safeL3 = l3_counsellor_id ? sanitizeSql(l3_counsellor_id) : null;
+
+    const cteCollegeJoin = safeUniversity
+      ? `INNER JOIN university_courses uc ON uc.course_id = csj.course_id`
+      : "";
+    const cteExtraConds = (() => {
+      const conds = [];
+      if (safeUniversity) conds.push(`uc.university_name = '${safeUniversity}'`);
+      if (safeL3) conds.push(`csj.assigned_l3_counsellor_id = '${safeL3}'`);
+      return conds.length ? `AND ${conds.join(" AND ")}` : "";
+    })();
 
     console.log("DOWNLOAD - req.user:", req.user);
     console.log("DOWNLOAD - req.user?.role:", req.user?.role);
@@ -2705,23 +2739,24 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
     `;
 
     const firstAdmissionCTE = `
-      SELECT DISTINCT
-        student_id
-      FROM course_status_journeys
-      WHERE course_status IN (
-        'Registration Done', 
-        'Partially Paid', 
-        'Admission', 
-        'Registration done', 
+      SELECT DISTINCT csj.student_id
+      FROM course_status_journeys csj
+      ${cteCollegeJoin}
+      WHERE csj.course_status IN (
+        'Registration Done',
+        'Partially Paid',
+        'Admission',
+        'Registration done',
         'Walkin marked'
       )
+      ${cteExtraConds}
     `;
 
     const firstFormfilledCTE = `
-      SELECT DISTINCT
-        student_id
-      FROM course_status_journeys
-      WHERE course_status IN (
+      SELECT DISTINCT csj.student_id
+      FROM course_status_journeys csj
+      ${cteCollegeJoin}
+      WHERE csj.course_status IN (
         'Form Submitted – Portal Pending',
         'Form Filled_Partner website',
         'Offer Letter/Results Pending',
@@ -2737,6 +2772,7 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
         'Registration done',
         'Walkin marked'
       )
+      ${cteExtraConds}
     `;
 
     let sortColumn;
@@ -5933,5 +5969,40 @@ export const bulkInsertCourseStatus = async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: "Server Error", error: error.message });
+  }
+};
+
+export const getFormFilledFilterOptions = async (req, res) => {
+  try {
+    const [colleges, l3Counsellors] = await Promise.all([
+      sequelize.query(
+        `SELECT DISTINCT uc.university_name
+         FROM university_courses uc
+         INNER JOIN course_status_journeys csj ON csj.course_id = uc.course_id
+         WHERE uc.university_name IS NOT NULL AND uc.university_name <> ''
+         ORDER BY uc.university_name ASC`,
+        { type: sequelize.QueryTypes.SELECT },
+      ),
+      sequelize.query(
+        `SELECT DISTINCT c.counsellor_id, c.counsellor_name
+         FROM counsellors c
+         INNER JOIN course_status_journeys csj ON csj.assigned_l3_counsellor_id = c.counsellor_id
+         WHERE c.role = 'l3'
+         ORDER BY c.counsellor_name ASC`,
+        { type: sequelize.QueryTypes.SELECT },
+      ),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      colleges: colleges.map((r) => r.university_name),
+      l3Counsellors: l3Counsellors.map((r) => ({
+        id: r.counsellor_id,
+        name: r.counsellor_name,
+      })),
+    });
+  } catch (error) {
+    console.error("Error in getFormFilledFilterOptions:", error);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 };

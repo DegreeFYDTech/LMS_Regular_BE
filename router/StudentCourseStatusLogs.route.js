@@ -6,6 +6,9 @@ import {
   getCounsellorStats,
   getDistinctL3CounsellorsByStudentIds,
   getFormToAdmissionsReport,
+  getFormToAdmissionsFilterOptions,
+  getCollegesList,
+  getCourseGraphReport,
   getStudentJourneyDetails,
   replaceL3CounsellorForSpecificJourney,
   exportCollegeStatusReports,
@@ -29,6 +32,7 @@ router.get(
   getCounsellorStats,
 );
 router.use("/course-reports", getFormToAdmissionsReport);
+router.get("/course-reports-filter-options", getFormToAdmissionsFilterOptions);
 
 // Add these routes to your counsellor routes file
 router.post(
@@ -48,7 +52,8 @@ router.post(
 router.get("/reports/export", exportCollegeStatusReports);
 
 router.get("/reports", getCollegeStatusReports);
-
+router.get('/colleges-list', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getCollegesList);
+router.get('/graph-reports', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getCourseGraphReport);
 router.post(
   "/:courseId",
   authorize(["l2", "l3", "Supervisor", "to", "to_l3"]),

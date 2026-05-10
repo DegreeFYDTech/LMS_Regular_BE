@@ -627,7 +627,7 @@ export const getFormData = async (req, res) => {
 
 export const getFormToAdmissionsReport = async (req, res) => {
   try {
-    const { till_date } = req.query;
+    const { till_date, view = "college" } = req.query;
 
     if (!till_date) {
       return res.status(400).json({
@@ -640,135 +640,200 @@ export const getFormToAdmissionsReport = async (req, res) => {
     const year = selectedDate.getFullYear();
     const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
 
-    // Calculate date ranges
     const ytdStartDate = `${year}-01-01`;
     const mtdStartDate = `${year}-${month}-01`;
     const ftdDate = till_date;
 
-    const query = `
-      WITH form_statuses AS (
-        SELECT unnest(ARRAY[
-          'Form Submitted – Portal Pending',
-          'Form Submitted – Completed',
-          'Walkin Completed',
-          'Exam Interview Pending',
-          'Offer Letter/Results Pending',
-          'Offer Letter/Results Released',
-          'Ready For Admission'
-        ]) AS status
-      ),
-      admission_statuses AS (
-        SELECT unnest(ARRAY[
-          'Registration done',
-          'Semester fee paid',
-          'Partially Paid',
-          'Admission'
-        ]) AS status
-      ),
-      -- Get FIRST form date for each student-course
-      first_form_dates AS (
-        SELECT DISTINCT ON (student_id, course_id)
-          student_id,
-          course_id,
-          created_at::date AS form_date
-        FROM course_status_journeys
-        WHERE course_status IN (SELECT status FROM form_statuses)
-          AND created_at::date <= :tillDate::date
-        ORDER BY student_id, course_id, created_at ASC
-      ),
-      -- Get FIRST admission date for each student-course
-      first_admission_dates AS (
-        SELECT DISTINCT ON (student_id, course_id)
-          student_id,
-          course_id,
-          created_at::date AS admission_date
-        FROM course_status_journeys
-        WHERE course_status IN (SELECT status FROM admission_statuses)
-          AND created_at::date <= :tillDate::date
-        ORDER BY student_id, course_id, created_at ASC
-      ),
-      college_metrics AS (
-        SELECT 
-          c.university_name AS college_name,
-          
-          -- YTD Forms (based on first form date)
-          COUNT(DISTINCT CASE 
-            WHEN ffd.form_date >= :ytdStartDate::date
-              AND ffd.form_date <= :tillDate::date
-            THEN ffd.student_id || '-' || ffd.course_id
-          END) AS ytd_forms,
-          
-          -- YTD Admissions (based on first admission date)
-          COUNT(DISTINCT CASE 
-            WHEN fad.admission_date >= :ytdStartDate::date
-              AND fad.admission_date <= :tillDate::date
-            THEN fad.student_id || '-' || fad.course_id
-          END) AS ytd_admissions,
-          
-          -- MTD Forms
-          COUNT(DISTINCT CASE 
-            WHEN ffd.form_date >= :mtdStartDate::date
-              AND ffd.form_date <= :tillDate::date
-            THEN ffd.student_id || '-' || ffd.course_id
-          END) AS mtd_forms,
-          
-          -- MTD Admissions
-          COUNT(DISTINCT CASE 
-            WHEN fad.admission_date >= :mtdStartDate::date
-              AND fad.admission_date <= :tillDate::date
-            THEN fad.student_id || '-' || fad.course_id
-          END) AS mtd_admissions,
-          
-          -- FTD Forms
-          COUNT(DISTINCT CASE 
-            WHEN ffd.form_date = :ftdDate::date
-            THEN ffd.student_id || '-' || ffd.course_id
-          END) AS ftd_forms,
-          
-          -- FTD Admissions
-          COUNT(DISTINCT CASE 
-            WHEN fad.admission_date = :ftdDate::date
-            THEN fad.student_id || '-' || fad.course_id
-          END) AS ftd_admissions
-          
-        FROM university_courses c
-        LEFT JOIN first_form_dates ffd ON c.course_id = ffd.course_id
-        LEFT JOIN first_admission_dates fad ON c.course_id = fad.course_id 
-        GROUP BY c.university_name
-      )
-      
-      SELECT 
-        college_name,
-        ytd_forms,
-        ytd_admissions,
-        CASE 
-          WHEN ytd_forms > 0 THEN ROUND((ytd_admissions * 100.0 / ytd_forms), 1)
-          ELSE 0 
-        END AS ytd_f2a,
-        mtd_forms,
-        mtd_admissions,
-        CASE 
-          WHEN mtd_forms > 0 THEN ROUND((mtd_admissions * 100.0 / mtd_forms), 1)
-          ELSE 0 
-        END AS mtd_f2a,
-        ftd_forms,
-        ftd_admissions,
-        CASE 
-          WHEN ftd_forms > 0 THEN ROUND((ftd_admissions * 100.0 / ftd_forms), 1)
-          ELSE 0 
-        END AS ftd_f2a
-      FROM college_metrics
-      WHERE ytd_forms > 0 OR mtd_forms > 0 OR ftd_forms > 0
-      ORDER BY ytd_forms DESC;
-    `;
+    const replacements = { ytdStartDate, mtdStartDate, ftdDate, tillDate: till_date };
+
+    let query;
+
+    if (view === "l3") {
+      query = `
+        WITH form_statuses AS (
+          SELECT unnest(ARRAY[
+            'Form Submitted – Portal Pending',
+            'Form Submitted – Completed',
+            'Walkin Completed',
+            'Exam Interview Pending',
+            'Offer Letter/Results Pending',
+            'Offer Letter/Results Released',
+            'Ready For Admission'
+          ]) AS status
+        ),
+        admission_statuses AS (
+          SELECT unnest(ARRAY[
+            'Registration done',
+            'Semester fee paid',
+            'Partially Paid',
+            'Admission'
+          ]) AS status
+        ),
+        first_form_dates AS (
+          SELECT DISTINCT ON (student_id, assigned_l3_counsellor_id)
+            student_id,
+            assigned_l3_counsellor_id,
+            created_at::date AS form_date
+          FROM course_status_journeys
+          WHERE course_status IN (SELECT status FROM form_statuses)
+            AND created_at::date <= :tillDate::date
+          ORDER BY student_id, assigned_l3_counsellor_id, created_at ASC
+        ),
+        first_admission_dates AS (
+          SELECT DISTINCT ON (student_id, assigned_l3_counsellor_id)
+            student_id,
+            assigned_l3_counsellor_id,
+            created_at::date AS admission_date
+          FROM course_status_journeys
+          WHERE course_status IN (SELECT status FROM admission_statuses)
+            AND created_at::date <= :tillDate::date
+          ORDER BY student_id, assigned_l3_counsellor_id, created_at ASC
+        ),
+        l3_list AS (
+          SELECT DISTINCT assigned_l3_counsellor_id
+          FROM course_status_journeys
+        ),
+        l3_metrics AS (
+          SELECT
+            CASE
+              WHEN l.assigned_l3_counsellor_id IS NULL THEN 'Unassigned'
+              ELSE COALESCE(c.counsellor_name, l.assigned_l3_counsellor_id)
+            END AS college_name,
+            COUNT(DISTINCT CASE
+              WHEN ffd.form_date >= :ytdStartDate::date AND ffd.form_date <= :tillDate::date
+              THEN ffd.student_id
+            END) AS ytd_forms,
+            COUNT(DISTINCT CASE
+              WHEN fad.admission_date >= :ytdStartDate::date AND fad.admission_date <= :tillDate::date
+              THEN fad.student_id
+            END) AS ytd_admissions,
+            COUNT(DISTINCT CASE
+              WHEN ffd.form_date >= :mtdStartDate::date AND ffd.form_date <= :tillDate::date
+              THEN ffd.student_id
+            END) AS mtd_forms,
+            COUNT(DISTINCT CASE
+              WHEN fad.admission_date >= :mtdStartDate::date AND fad.admission_date <= :tillDate::date
+              THEN fad.student_id
+            END) AS mtd_admissions,
+            COUNT(DISTINCT CASE
+              WHEN ffd.form_date = :ftdDate::date THEN ffd.student_id
+            END) AS ftd_forms,
+            COUNT(DISTINCT CASE
+              WHEN fad.admission_date = :ftdDate::date THEN fad.student_id
+            END) AS ftd_admissions
+          FROM l3_list l
+          LEFT JOIN counsellors c ON c.counsellor_id = l.assigned_l3_counsellor_id
+          LEFT JOIN first_form_dates ffd ON ffd.assigned_l3_counsellor_id = l.assigned_l3_counsellor_id
+          LEFT JOIN first_admission_dates fad ON fad.assigned_l3_counsellor_id = l.assigned_l3_counsellor_id
+          GROUP BY l.assigned_l3_counsellor_id, c.counsellor_name
+        )
+        SELECT
+          college_name,
+          ytd_forms,
+          ytd_admissions,
+          CASE WHEN ytd_forms > 0 THEN ROUND((ytd_admissions * 100.0 / ytd_forms), 1) ELSE 0 END AS ytd_f2a,
+          mtd_forms,
+          mtd_admissions,
+          CASE WHEN mtd_forms > 0 THEN ROUND((mtd_admissions * 100.0 / mtd_forms), 1) ELSE 0 END AS mtd_f2a,
+          ftd_forms,
+          ftd_admissions,
+          CASE WHEN ftd_forms > 0 THEN ROUND((ftd_admissions * 100.0 / ftd_forms), 1) ELSE 0 END AS ftd_f2a
+        FROM l3_metrics
+        WHERE ytd_forms > 0 OR mtd_forms > 0 OR ftd_forms > 0
+        ORDER BY ytd_forms DESC;
+      `;
+    } else {
+      query = `
+        WITH form_statuses AS (
+          SELECT unnest(ARRAY[
+            'Form Submitted – Portal Pending',
+            'Form Submitted – Completed',
+            'Walkin Completed',
+            'Exam Interview Pending',
+            'Offer Letter/Results Pending',
+            'Offer Letter/Results Released',
+            'Ready For Admission'
+          ]) AS status
+        ),
+        admission_statuses AS (
+          SELECT unnest(ARRAY[
+            'Registration done',
+            'Semester fee paid',
+            'Partially Paid',
+            'Admission'
+          ]) AS status
+        ),
+        first_form_dates AS (
+          SELECT DISTINCT ON (student_id, course_id)
+            student_id,
+            course_id,
+            created_at::date AS form_date
+          FROM course_status_journeys
+          WHERE course_status IN (SELECT status FROM form_statuses)
+            AND created_at::date <= :tillDate::date
+          ORDER BY student_id, course_id, created_at ASC
+        ),
+        first_admission_dates AS (
+          SELECT DISTINCT ON (student_id, course_id)
+            student_id,
+            course_id,
+            created_at::date AS admission_date
+          FROM course_status_journeys
+          WHERE course_status IN (SELECT status FROM admission_statuses)
+            AND created_at::date <= :tillDate::date
+          ORDER BY student_id, course_id, created_at ASC
+        ),
+        college_metrics AS (
+          SELECT
+            c.university_name AS college_name,
+            COUNT(DISTINCT CASE
+              WHEN ffd.form_date >= :ytdStartDate::date AND ffd.form_date <= :tillDate::date
+              THEN ffd.student_id || '-' || ffd.course_id
+            END) AS ytd_forms,
+            COUNT(DISTINCT CASE
+              WHEN fad.admission_date >= :ytdStartDate::date AND fad.admission_date <= :tillDate::date
+              THEN fad.student_id || '-' || fad.course_id
+            END) AS ytd_admissions,
+            COUNT(DISTINCT CASE
+              WHEN ffd.form_date >= :mtdStartDate::date AND ffd.form_date <= :tillDate::date
+              THEN ffd.student_id || '-' || ffd.course_id
+            END) AS mtd_forms,
+            COUNT(DISTINCT CASE
+              WHEN fad.admission_date >= :mtdStartDate::date AND fad.admission_date <= :tillDate::date
+              THEN fad.student_id || '-' || fad.course_id
+            END) AS mtd_admissions,
+            COUNT(DISTINCT CASE
+              WHEN ffd.form_date = :ftdDate::date
+              THEN ffd.student_id || '-' || ffd.course_id
+            END) AS ftd_forms,
+            COUNT(DISTINCT CASE
+              WHEN fad.admission_date = :ftdDate::date
+              THEN fad.student_id || '-' || fad.course_id
+            END) AS ftd_admissions
+          FROM university_courses c
+          LEFT JOIN first_form_dates ffd ON c.course_id = ffd.course_id
+          LEFT JOIN first_admission_dates fad ON c.course_id = fad.course_id
+          GROUP BY c.university_name
+        )
+        SELECT
+          college_name,
+          ytd_forms,
+          ytd_admissions,
+          CASE WHEN ytd_forms > 0 THEN ROUND((ytd_admissions * 100.0 / ytd_forms), 1) ELSE 0 END AS ytd_f2a,
+          mtd_forms,
+          mtd_admissions,
+          CASE WHEN mtd_forms > 0 THEN ROUND((mtd_admissions * 100.0 / mtd_forms), 1) ELSE 0 END AS mtd_f2a,
+          ftd_forms,
+          ftd_admissions,
+          CASE WHEN ftd_forms > 0 THEN ROUND((ftd_admissions * 100.0 / ftd_forms), 1) ELSE 0 END AS ftd_f2a
+        FROM college_metrics
+        WHERE ytd_forms > 0 OR mtd_forms > 0 OR ftd_forms > 0
+        ORDER BY ytd_forms DESC;
+      `;
+    }
 
     const results = await sequelize.query(query, {
-      replacements: {
-        ytdStartDate,
-        mtdStartDate,
-        ftdDate,
-        tillDate: till_date,
-      },
+      replacements,
       type: sequelize.QueryTypes.SELECT,
     });
 
@@ -830,6 +895,7 @@ export const getFormToAdmissionsReport = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: responseData,
+      view,
       filters: {
         till_date,
         ytd_range: `${ytdStartDate} to ${till_date}`,
@@ -848,6 +914,42 @@ export const getFormToAdmissionsReport = async (req, res) => {
     });
   }
 };
+
+export const getFormToAdmissionsFilterOptions = async (req, res) => {
+  try {
+    const [colleges, l3Counsellors] = await Promise.all([
+      sequelize.query(
+        `SELECT DISTINCT uc.university_name
+         FROM university_courses uc
+         INNER JOIN course_status_journeys csj ON csj.course_id = uc.course_id
+         WHERE uc.university_name IS NOT NULL AND uc.university_name <> ''
+         ORDER BY uc.university_name ASC`,
+        { type: sequelize.QueryTypes.SELECT },
+      ),
+      sequelize.query(
+        `SELECT DISTINCT c.counsellor_id, c.counsellor_name
+         FROM counsellors c
+         INNER JOIN course_status_journeys csj ON csj.assigned_l3_counsellor_id = c.counsellor_id
+         WHERE c.counsellor_name IS NOT NULL AND c.counsellor_name <> ''
+         ORDER BY c.counsellor_name ASC`,
+        { type: sequelize.QueryTypes.SELECT },
+      ),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      colleges: colleges.map((r) => r.university_name),
+      l3Counsellors: l3Counsellors.map((r) => ({
+        id: r.counsellor_id,
+        name: r.counsellor_name,
+      })),
+    });
+  } catch (error) {
+    console.error("Error in getFormToAdmissionsFilterOptions:", error);
+    return res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+};
+
 export const getStudentJourneyDetails = async (req, res) => {
   try {
     const { studentIds } = req.body;
@@ -1762,26 +1864,26 @@ const getCounsellorPivotReport = async (
     totals: { statusTotals, grandTotal },
   };
 };
-export const getCollegesList = async (req, res) => {
-  try {
-    const colleges = await UniversityCourse.findAll({
-      attributes: ["course_id", "university_name", "level"],
-      group: ["course_id", "university_name", "level"],
-      order: [["university_name", "ASC"]],
-    });
+// export const getCollegesList = async (req, res) => {
+//   try {
+//     const colleges = await UniversityCourse.findAll({
+//       attributes: ["course_id", "university_name", "level"],
+//       group: ["course_id", "university_name", "level"],
+//       order: [["university_name", "ASC"]],
+//     });
 
-    res.status(200).json({
-      success: true,
-      data: colleges,
-    });
-  } catch (error) {
-    console.error("Error fetching colleges:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching colleges list",
-    });
-  }
-};
+//     res.status(200).json({
+//       success: true,
+//       data: colleges,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching colleges:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Error fetching colleges list",
+//     });
+//   }
+// };
 
 export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
   try {
@@ -2256,5 +2358,136 @@ export const exportCollegeStatusReports = async (req, res) => {
       success: false,
       message: "Error exporting reports",
     });
+  }
+};
+
+export const getCollegesList = async (req, res) => {
+  try {
+    const results = await sequelize.query(
+      `SELECT DISTINCT university_name FROM university_courses WHERE university_name IS NOT NULL ORDER BY university_name`,
+      { type: sequelize.QueryTypes.SELECT }
+    );
+    return res.json({ success: true, data: results.map(r => r.university_name) });
+  } catch (error) {
+    console.error('Error in getCollegesList:', error.message);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const getCourseGraphReport = async (req, res) => {
+  try {
+    const { start_date, end_date, colleges } = req.query;
+
+    if (!start_date || !end_date) {
+      return res.status(400).json({ success: false, message: 'start_date and end_date are required' });
+    }
+
+    const collegeList = colleges
+      ? (Array.isArray(colleges) ? colleges : colleges.split(',').map(c => c.trim()).filter(Boolean))
+      : [];
+
+    const collegeCondition = collegeList.length > 0 ? `AND uc.university_name = ANY(:colleges)` : '';
+    const replacements = { start_date, end_date, ...(collegeList.length > 0 ? { colleges: collegeList } : {}) };
+
+    const formsQuery = `
+      WITH ranked AS (
+        SELECT
+          student_id,
+          course_id,
+          course_status,
+          created_at,
+          ROW_NUMBER() OVER (PARTITION BY student_id, course_id ORDER BY created_at ASC) AS rn
+        FROM course_status_journeys
+      ),
+      first_entry AS (
+        SELECT student_id, course_id, course_status, created_at FROM ranked WHERE rn = 1
+      ),
+      second_entry AS (
+        SELECT student_id, course_id, course_status, created_at FROM ranked WHERE rn = 2
+      ),
+      effective_form AS (
+        SELECT
+          f.student_id,
+          f.course_id,
+          CASE
+            WHEN f.course_status = 'Walkin marked' AND s.student_id IS NOT NULL
+              THEN s.created_at
+            WHEN f.course_status = 'Walkin marked' AND s.student_id IS NULL
+              THEN NULL
+            ELSE f.created_at
+          END AS effective_created_at
+        FROM first_entry f
+        LEFT JOIN second_entry s
+          ON s.student_id = f.student_id AND s.course_id = f.course_id
+      )
+      SELECT
+        DATE(ef.effective_created_at)::text AS date,
+        uc.university_name AS college,
+        COUNT(*) AS count
+      FROM effective_form ef
+      JOIN university_courses uc ON ef.course_id = uc.course_id
+      WHERE ef.effective_created_at IS NOT NULL
+        AND ef.effective_created_at >= :start_date::timestamp
+        AND ef.effective_created_at < (:end_date::date + INTERVAL '1 day')::timestamp
+        ${collegeCondition}
+      GROUP BY DATE(ef.effective_created_at), uc.university_name
+      ORDER BY date
+    `;
+
+    const admissionsQuery = `
+      SELECT
+        DATE(first_adm.min_created)::text AS date,
+        uc.university_name AS college,
+        COUNT(*) AS count
+      FROM (
+        SELECT student_id, course_id, MIN(created_at) AS min_created
+        FROM course_status_journeys
+        WHERE course_status = 'Admission'
+        GROUP BY student_id, course_id
+      ) first_adm
+      JOIN university_courses uc ON first_adm.course_id = uc.course_id
+      WHERE first_adm.min_created >= :start_date::timestamp
+        AND first_adm.min_created < (:end_date::date + INTERVAL '1 day')::timestamp
+        ${collegeCondition}
+      GROUP BY DATE(first_adm.min_created), uc.university_name
+      ORDER BY date
+    `;
+
+    const [formsData, admissionsData] = await Promise.all([
+      sequelize.query(formsQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(admissionsQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+    ]);
+
+    // Build full date range array
+    const dates = [];
+    const start = new Date(start_date);
+    const end = new Date(end_date);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      dates.push(d.toISOString().split('T')[0]);
+    }
+
+    // Collect unique colleges from results
+    const collegesSet = new Set([
+      ...formsData.map(r => r.college),
+      ...admissionsData.map(r => r.college),
+    ]);
+    const uniqueColleges = [...collegesSet].sort();
+
+    const series = uniqueColleges.map(college => {
+      const formsMap = {};
+      formsData.filter(r => r.college === college).forEach(r => { formsMap[r.date] = parseInt(r.count, 10); });
+      const admissionsMap = {};
+      admissionsData.filter(r => r.college === college).forEach(r => { admissionsMap[r.date] = parseInt(r.count, 10); });
+      return {
+        college,
+        forms: dates.map(d => formsMap[d] || 0),
+        admissions: dates.map(d => admissionsMap[d] || 0),
+      };
+    });
+
+    return res.json({ success: true, data: { dates, series } });
+  } catch (error) {
+    console.error('Error in getCourseGraphReport:', error.message);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

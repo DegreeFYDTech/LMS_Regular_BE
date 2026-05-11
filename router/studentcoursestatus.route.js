@@ -2,6 +2,7 @@ import express from 'express';
 import { authorize } from '../middlewares/authMiddleware.js';
 import { getCollegeStatus, getShortlistedColleges, updateStudentCourseStatus, getTrackReport, getTrackerReport2, downloadRecordsForView, getThreeRecordsOfFormFilled, getRecordsForAnalysis, getRecordsForAnalysishelper, downloadRecordsForAnalysis, getLeadStatusApiReport, getLeadAttemptTimeReport, getTrackerReport2RawData, getLeadAttemptTimeReportRawData, getThreeRecordsOfFormFilledDownload, getTrackerReportAnalysis3, getNotInterestedAfterCounselingReport, bulkInsertCourseStatus, getFormFilledFilterOptions } from '../controllers/studentcoursestatus.controller.js';
 import { getniReports } from '../controllers/student.controller.js';
+import { getActiveFormCollegeReport } from '../controllers/ActiveFormReportController.js';
 const router = express.Router();
 
 
@@ -25,5 +26,6 @@ router.get('/lead-attempt-report', authorize(["l2", "l3", "Supervisor", 'to', 'a
 router.get('/lead-attempt-report-raw', getLeadAttemptTimeReportRawData);
 router.get('/getnireports', getniReports)
 router.post('/bulkcreate', bulkInsertCourseStatus)
+router.get('/active-form-college-report', getActiveFormCollegeReport);
 
 export default router;

@@ -7,7 +7,7 @@ import {
   Message,
   Chat,
   sequelize,
-  StudentQuestionResponse
+  StudentQuestionResponse,UniversityCourse,CourseStatus
 } from "../models/index.js";
 import { createLeadLog } from "../controllers/Lead_logs.controller.js";
 import { DATE, Op } from "sequelize";
@@ -1012,11 +1012,43 @@ export const processStudentLead = async (leadData) => {
           answer: c.answer,
         }));
 
-      if (responseEntries.length > 0) {
+        if (responseEntries.length > 0) {
         await StudentQuestionResponse.bulkCreate(responseEntries);
-        console.log(
-          `Stored ${responseEntries.length} individual question responses for student ${student.student_id}`,
-        );
+        const questionsList = responseEntries.filter((entry) => entry.question === 'shortlisted_colleges');
+        if (questionsList.length > 0) {
+          const shortlistedColleges = questionsList[0].answer || [];
+          if (shortlistedColleges.length > 0) {
+            for (const collegeName of shortlistedColleges) {
+              try {
+                let course = await UniversityCourse.findOne({
+                  where: {
+                    university_name: sequelize.where(sequelize.fn('LOWER', sequelize.col('university_name')), collegeName.toLowerCase()),
+                    course_name: { [Op.iLike]: '%MBA%' }
+                  }
+                });
+
+                if (!course) {
+                  course = await UniversityCourse.findOne({
+                    where: {
+                      university_name: sequelize.where(sequelize.fn('LOWER', sequelize.col('university_name')), collegeName.toLowerCase())
+                    }
+                  });
+                }
+
+                if (course) {
+                  await CourseStatus.create({
+                    course_id: course.course_id,
+                    student_id: student.student_id,
+                    latest_course_status: 'Shortlisted',
+                    is_shortlisted: true,
+                  });
+                }
+              } catch (err) {
+                console.error(`Error processing shortlisted college "${collegeName}":`, err.message);
+              }
+            }
+          }
+        }
       }
     } catch (responseError) {
       console.error(

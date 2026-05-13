@@ -122,8 +122,8 @@ async function fetchLeadDataWithCampaign(id) {
       where: { page_id: process.env.PAGE_ID },
     });
 
-    if (!tokenData) throw new Error('No page token found in DB');
-    const accessToken = tokenData.page_access_token;
+    // if (!tokenData) throw new Error('No page token found in DB');
+    const accessToken = "EAAaOzA1nQLABPexUIieiejaKznx6GZAZBZBw3QOXq9P7dKkd9DdPtUAVkoMIO55sktz3HhBongPSFLgKhL8QQgjeXZA9jIo2GiHDmq6sHYfJAnBZAUYNWC2ZAa3rXqZAcKqmP8FFPpzEVbEHVSFoDPDQktPql2ecn44nxZBxZCJ2Ix5NMZB2ZAmcwLiSgowDf6Oyd45cZAvh";
 
     const leadUrl = getMetaUrl(`${id}?fields=ad_id,ad_name,field_data,created_time&access_token=${accessToken}`);
     const leadResponse = await axios.get(leadUrl);
@@ -176,7 +176,7 @@ function extractAdditionalFields(fieldDataArray) {
 
 
 export const Manual = async (req, res) => {
-  const ids = [1597479848113379, 1509615670268300];
+  const ids = [1324110256136510];
   try {
     const response = [];
 

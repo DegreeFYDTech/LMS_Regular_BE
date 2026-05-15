@@ -103,32 +103,30 @@ export const getActiveFormCollegeReport = async (req, res) => {
         } else {
             query = `
                 ${baseCTEs},
-                latest_student_remark AS (
+                latest_l3_remark AS (
                     SELECT DISTINCT ON (sr.student_id)
                         sr.student_id,
-                        (sr.created_at + interval '5 hours 30 minutes') as remark_at_ist,
-                        c.role as counsellor_role
+                        (sr.created_at + interval '5 hours 30 minutes') as remark_at_ist
                     FROM student_remarks sr
-                    LEFT JOIN counsellors c ON sr.counsellor_id = c.counsellor_id
+                    JOIN counsellors c ON sr.counsellor_id = c.counsellor_id
+                    WHERE lower(c.role) = 'l3'
                     ORDER BY sr.student_id, sr.created_at DESC
                 ),
                 active_form_analysis AS (
-                    SELECT 
+                    SELECT
                         cas.*,
                         lsr.remark_at_ist,
-                        lsr.counsellor_role,
-                        CASE 
+                        CASE
                             WHEN lsr.student_id IS NULL THEN 'Not Worked'
-                            WHEN lsr.counsellor_role IS NULL OR lower(lsr.counsellor_role) != 'l3' THEN 'Not Worked'
                             ELSE 'Worked'
                         END as worked_status,
-                        CASE 
-                            WHEN lsr.counsellor_role IS NOT NULL AND lower(lsr.counsellor_role) = 'l3' THEN 
+                        CASE
+                            WHEN lsr.student_id IS NOT NULL THEN
                                 EXTRACT(DAY FROM ((CURRENT_TIMESTAMP + interval '5 hours 30 minutes') - lsr.remark_at_ist))
-                            ELSE NULL 
+                            ELSE NULL
                         END as days_since
                     FROM current_active_students cas
-                    LEFT JOIN latest_student_remark lsr ON cas.student_id = lsr.student_id
+                    LEFT JOIN latest_l3_remark lsr ON cas.student_id = lsr.student_id
                 )
                 SELECT 
                     university_name,

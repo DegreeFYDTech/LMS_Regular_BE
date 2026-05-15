@@ -775,27 +775,11 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
       counsellor_status,
       sortBy,
       sortOrder,
-      university_name,
-      l3_counsellor_id,
     } = req.query;
 
     const userRole = req.user?.role;
     const userId = req.user?.id;
     const isAnalyser = userRole === "Analyser";
-
-    const sanitizeSql = (v) => v?.trim().replace(/'/g, "''");
-    const safeUniversity = university_name ? sanitizeSql(university_name) : null;
-    const safeL3 = l3_counsellor_id ? sanitizeSql(l3_counsellor_id) : null;
-
-    const cteCollegeJoin = safeUniversity
-      ? `INNER JOIN university_courses uc ON uc.course_id = csj.course_id`
-      : "";
-    const cteExtraConds = (() => {
-      const conds = [];
-      if (safeUniversity) conds.push(`uc.university_name = '${safeUniversity}'`);
-      if (safeL3) conds.push(`csj.assigned_l3_counsellor_id = '${safeL3}'`);
-      return conds.length ? `AND ${conds.join(" AND ")}` : "";
-    })();
 
     let analyserFilters = {};
     if (isAnalyser && userId) {
@@ -947,27 +931,28 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     let analyserCTEConditions = "";
 
     if (isAnalyser) {
-      if (analyserFilters.sources && analyserFilters.sources.length > 0) {
-        const sourceCondition = `s.source IN ('${analyserFilters.sources.map((v) => v.trim().replace(/'/g, "''")).join("','")}')`;
+      const validSources = (analyserFilters.sources || []).filter(s => s && s !== "Any");
+      if (validSources.length > 0) {
+        const sourceLowerList = validSources.map(v => v.trim().toLowerCase().replace(/'/g, "''"));
+        const sourceCondition = `LOWER(s.source) IN ('${sourceLowerList.join("','")}')`;
         whereConds.push(sourceCondition);
         studentWhereConds.push(sourceCondition);
-        analyserCTEConditions = `INNER JOIN students s_fb ON sla.student_id = s_fb.student_id AND (s_fb.source IN ('${analyserFilters.sources.map((v) => v.trim().replace(/'/g, "''")).join("','")}'))`;
+        analyserCTEConditions = `INNER JOIN students s_fb ON sla.student_id = s_fb.student_id AND (LOWER(s_fb.source) IN ('${sourceLowerList.join("','")}'))`;
       }
 
-      if (analyserFilters.campaigns && analyserFilters.campaigns.length > 0) {
+      const validCampaigns = (analyserFilters.campaigns || []).filter(c => c && c !== "Any");
+      if (validCampaigns.length > 0) {
         whereConds.push(
-          `first_la.utm_campaign IN ('${analyserFilters.campaigns.map((v) => v.trim().replace(/'/g, "''")).join("','")}')`,
+          `first_la.utm_campaign IN ('${validCampaigns.map((v) => v.trim().replace(/'/g, "''")).join("','")}')`,
         );
         analyserCTEConditions += analyserCTEConditions
-          ? ` AND (first_la.utm_campaign IN ('${analyserFilters.campaigns.map((v) => v.trim().replace(/'/g, "''")).join("','")}') OR first_la.utm_campaign IS NULL)`
-          : `INNER JOIN students s_fb ON sla.student_id = s_fb.student_id AND (first_la.utm_campaign IN ('${analyserFilters.campaigns.map((v) => v.trim().replace(/'/g, "''")).join("','")}') OR first_la.utm_campaign IS NULL)`;
+          ? ` AND (first_la.utm_campaign IN ('${validCampaigns.map((v) => v.trim().replace(/'/g, "''")).join("','")}') OR first_la.utm_campaign IS NULL)`
+          : `INNER JOIN students s_fb ON sla.student_id = s_fb.student_id AND (first_la.utm_campaign IN ('${validCampaigns.map((v) => v.trim().replace(/'/g, "''")).join("','")}') OR first_la.utm_campaign IS NULL)`;
       }
 
-      if (
-        analyserFilters.source_urls &&
-        analyserFilters.source_urls.length > 0
-      ) {
-        const sourceUrlCondition = `(s.first_source_url IN ('${analyserFilters.source_urls.map((v) => v.trim().replace(/'/g, "''")).join("','")}') OR s.first_source_url IS NULL)`;
+      const validSourceUrls = (analyserFilters.source_urls || []).filter(u => u && u !== "Any");
+      if (validSourceUrls.length > 0) {
+        const sourceUrlCondition = `(s.first_source_url IN ('${validSourceUrls.map((v) => v.trim().replace(/'/g, "''")).join("','")}') OR s.first_source_url IS NULL)`;
         whereConds.push(sourceUrlCondition);
         studentWhereConds.push(sourceUrlCondition);
       }
@@ -1097,24 +1082,23 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     };
 
     const firstAdmissionCTE = `
-      SELECT DISTINCT csj.student_id
-      FROM course_status_journeys csj
-      ${cteCollegeJoin}
-      WHERE csj.course_status IN (
-        'Registration Done',
-        'Partially Paid',
-        'Admission',
-        'Registration done',
+      SELECT DISTINCT
+        student_id
+      FROM course_status_journeys
+      WHERE course_status IN (
+        'Registration Done', 
+        'Partially Paid', 
+        'Admission', 
+        'Registration done', 
         'Walkin marked'
       )
-      ${cteExtraConds}
     `;
 
     const firstFormfilledCTE = `
-      SELECT DISTINCT csj.student_id
-      FROM course_status_journeys csj
-      ${cteCollegeJoin}
-      WHERE csj.course_status IN (
+      SELECT DISTINCT
+        student_id
+      FROM course_status_journeys
+      WHERE course_status IN (
         'Form Submitted – Portal Pending',
         'Form Filled_Partner website',
         'Offer Letter/Results Pending',
@@ -1130,7 +1114,6 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
         'Registration done',
         'Walkin marked'
       )
-      ${cteExtraConds}
     `;
 
     const firstEnrolledCTE = `
@@ -1200,37 +1183,14 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     `;
 
     const preNICTE = `
-      WITH eligible_students AS (
-        SELECT student_id
-        FROM student_remarks sr
-        WHERE NOT EXISTS (
-          SELECT 1 
-          FROM student_remarks ex 
-          WHERE ex.student_id = sr.student_id
-            AND (
-              ex.lead_sub_status = 'Initial Counseling Completed'
-              OR ex.lead_status IN ('Application', 'Admission')
-            )
+      SELECT s.student_id
+      FROM students s
+      WHERE s."first_icc_date" IS NULL
+        AND s.current_student_status = 'NotInterested'
+        AND NOT EXISTS (
+          SELECT 1 FROM course_status_journeys csj
+          WHERE csj.student_id = s.student_id
         )
-        GROUP BY student_id
-        HAVING (
-          (COUNT(*) = 1 AND BOOL_AND(lead_status = 'NotInterested'))
-          OR
-          (
-            COUNT(*) > 1
-            AND MAX(created_at) FILTER (
-              WHERE lead_status = 'NotInterested'
-            ) = MAX(created_at)
-            AND NOT BOOL_OR(
-              lead_status IN ('Admission', 'Application')
-              OR lead_sub_status = 'Initial Counseling Completed'
-            )
-          )
-          OR
-          (COUNT(*) > 1 AND BOOL_AND(lead_status = 'NotInterested'))
-        )
-      )
-      SELECT student_id FROM eligible_students
     `;
 
     let sortColumn;
@@ -1340,35 +1300,30 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
             AND LOWER(TRIM(sr2.calling_status)) = 'connected'
           ) THEN s.student_id END) as connectedAnytime,
 
-          COUNT(DISTINCT CASE WHEN EXISTS (
-            SELECT 1 FROM student_remarks sr2
-            ${buildCTECondition("sr2")}
-            WHERE sr2.student_id = s.student_id 
-            AND sr2.lead_sub_status = 'Initial Counseling Completed'
-          ) THEN s.student_id END) as icc,
+          COUNT(DISTINCT CASE WHEN s."first_icc_date" IS NOT NULL THEN s.student_id END) as icc,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN (src.total_remarks_count IS NULL OR src.total_remarks_count = 0)
                OR (fps.student_id IS NOT NULL AND (crc.connected_remarks_count IS NULL OR crc.connected_remarks_count < 4))
-            THEN s.student_id 
+            THEN s.student_id
           END) AS under_3_remarks,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN fps.student_id IS NOT NULL
               AND crc.connected_remarks_count BETWEEN 4 AND 7
-            THEN s.student_id 
+            THEN s.student_id
           END) AS remarks_4_7,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN fps.student_id IS NOT NULL
               AND crc.connected_remarks_count BETWEEN 8 AND 10
-            THEN s.student_id 
+            THEN s.student_id
           END) AS remarks_8_10,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN fps.student_id IS NOT NULL
               AND crc.connected_remarks_count > 10
-            THEN s.student_id 
+            THEN s.student_id
           END) AS remarks_gt_10
       `;
     } else {
@@ -1435,35 +1390,30 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
             AND LOWER(TRIM(sr2.calling_status)) = 'connected'
           ) THEN s.student_id END) as connectedAnytime,
 
-          COUNT(DISTINCT CASE WHEN EXISTS (
-            SELECT 1 FROM student_remarks sr2
-            ${buildCTECondition("sr2")}
-            WHERE sr2.student_id = s.student_id 
-            AND sr2.lead_sub_status = 'Initial Counseling Completed'
-          ) THEN s.student_id END) as icc,
+          COUNT(DISTINCT CASE WHEN s."first_icc_date" IS NOT NULL THEN s.student_id END) as icc,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN (src.total_remarks_count IS NULL OR src.total_remarks_count = 0)
                OR (fps.student_id IS NOT NULL AND (crc.connected_remarks_count IS NULL OR crc.connected_remarks_count < 4))
-            THEN s.student_id 
+            THEN s.student_id
           END) AS under_3_remarks,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN fps.student_id IS NOT NULL
               AND crc.connected_remarks_count BETWEEN 4 AND 7
-            THEN s.student_id 
+            THEN s.student_id
           END) AS remarks_4_7,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN fps.student_id IS NOT NULL
               AND crc.connected_remarks_count BETWEEN 8 AND 10
-            THEN s.student_id 
+            THEN s.student_id
           END) AS remarks_8_10,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN fps.student_id IS NOT NULL
               AND crc.connected_remarks_count > 10
-            THEN s.student_id 
+            THEN s.student_id
           END) AS remarks_gt_10
       `;
     }
@@ -2319,27 +2269,11 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
       sortBy,
       sortOrder,
       showDetailedColumns,
-      university_name,
-      l3_counsellor_id,
     } = req.query;
 
     const userRole = req.user?.role;
     const userId = req.user?.id;
     const isAnalyser = userRole === "Analyser";
-
-    const sanitizeSql = (v) => v?.trim().replace(/'/g, "''");
-    const safeUniversity = university_name ? sanitizeSql(university_name) : null;
-    const safeL3 = l3_counsellor_id ? sanitizeSql(l3_counsellor_id) : null;
-
-    const cteCollegeJoin = safeUniversity
-      ? `INNER JOIN university_courses uc ON uc.course_id = csj.course_id`
-      : "";
-    const cteExtraConds = (() => {
-      const conds = [];
-      if (safeUniversity) conds.push(`uc.university_name = '${safeUniversity}'`);
-      if (safeL3) conds.push(`csj.assigned_l3_counsellor_id = '${safeL3}'`);
-      return conds.length ? `AND ${conds.join(" AND ")}` : "";
-    })();
 
     console.log("DOWNLOAD - req.user:", req.user);
     console.log("DOWNLOAD - req.user?.role:", req.user?.role);
@@ -2739,24 +2673,23 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
     `;
 
     const firstAdmissionCTE = `
-      SELECT DISTINCT csj.student_id
-      FROM course_status_journeys csj
-      ${cteCollegeJoin}
-      WHERE csj.course_status IN (
-        'Registration Done',
-        'Partially Paid',
-        'Admission',
-        'Registration done',
+      SELECT DISTINCT
+        student_id
+      FROM course_status_journeys
+      WHERE course_status IN (
+        'Registration Done', 
+        'Partially Paid', 
+        'Admission', 
+        'Registration done', 
         'Walkin marked'
       )
-      ${cteExtraConds}
     `;
 
     const firstFormfilledCTE = `
-      SELECT DISTINCT csj.student_id
-      FROM course_status_journeys csj
-      ${cteCollegeJoin}
-      WHERE csj.course_status IN (
+      SELECT DISTINCT
+        student_id
+      FROM course_status_journeys
+      WHERE course_status IN (
         'Form Submitted – Portal Pending',
         'Form Filled_Partner website',
         'Offer Letter/Results Pending',
@@ -2772,7 +2705,6 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
         'Registration done',
         'Walkin marked'
       )
-      ${cteExtraConds}
     `;
 
     let sortColumn;
@@ -3360,6 +3292,7 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 };
+
 
 export const downloadRecordsForAnalysis = async (req, res) => {
   try {

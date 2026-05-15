@@ -1,6 +1,5 @@
 import { StudentRemark, Student, Counsellor, StudentLeadActivity, sequelize } from '../models/index.js';
-import { Op, fn, literal, col } from 'sequelize';
-import { convertToCSV } from "../helper/csv_helper.js";
+import { Op, fn, literal, col, QueryTypes } from 'sequelize';
 
 import pMap from 'p-map';
 export const createRemark = async (data) => {
@@ -866,6 +865,8 @@ export const downloadAnalysisReport = async (req, res) => {
       new Date(toDateRaw).setHours(23, 59, 59, 999),
     ).toISOString();
 
+    const needsLeadActivityJoin = !!(source || campaign);
+
     let sqlQuery = `
       SELECT
         sr.student_id,
@@ -881,14 +882,22 @@ export const downloadAnalysisReport = async (req, res) => {
       FROM student_remarks sr
       JOIN counsellors c ON c.counsellor_id = sr.counsellor_id
       JOIN students s ON sr.student_id = s.student_id
+    `;
+
+    if (needsLeadActivityJoin) {
+      sqlQuery += `
       JOIN (
-        SELECT DISTINCT ON (student_id) *
+        SELECT DISTINCT ON (student_id) student_id
         FROM student_lead_activities
         WHERE 1=1
           ${source ? `AND source ILIKE '%' || :source || '%'` : ""}
           ${campaign ? `AND utm_campaign = :campaign` : ""}
         ORDER BY student_id, created_at ASC
       ) la ON la.student_id = sr.student_id
+      `;
+    }
+
+    sqlQuery += `
       WHERE sr.created_at BETWEEN :fromDate AND :toDateEnd
         ${mode ? `AND c.counsellor_preferred_mode = :mode` : ""}
         ${counsellor_array ? `AND sr.counsellor_id = ANY(ARRAY[:counsellor_array])` : ""}
@@ -917,40 +926,7 @@ export const downloadAnalysisReport = async (req, res) => {
         : "",
     }));
 
-    const fields = [
-      "student_id",
-      "counsellor_name",
-      "lead_status",
-      "lead_sub_status",
-      "calling_status",
-      "sub_calling_status",
-      "remarks",
-      "callback_date",
-      "callback_time",
-      "created_at",
-    ];
-    const fieldNames = [
-      "Student ID",
-      "Counsellor",
-      "Lead Status",
-      "Lead Sub Status",
-      "Calling Status",
-      "Sub Calling Status",
-      "Remarks",
-      "Callback Date",
-      "Callback Time",
-      "Created At",
-    ];
-
-    const csvData = convertToCSV(formatted, fields, fieldNames);
-
-    const date = new Date().toISOString().slice(0, 10);
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="remarks_analysis_${date}.csv"`,
-    );
-    res.send(csvData);
+    res.status(200).json({ success: true, data: formatted });
   } catch (error) {
     console.error("Error downloading analysis report:", error);
     res.status(500).json({

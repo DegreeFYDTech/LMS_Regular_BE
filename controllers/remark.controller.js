@@ -629,24 +629,21 @@ export const getLatestRemarkByStudent = async (req, res) => {
 
 export const getAnalysisReportSQL = async (req, res) => {
   try {
-    const userRole = req.user?.role; // Get user role from request
-    const isAnalyser = userRole?.toLowerCase() === 'analyser'; // Case-insensitive check
-
-    console.log("User role for analysis report:", userRole, "isAnalyser:", isAnalyser);
+    const userRole = req.user?.role;
+    const isAnalyser = userRole?.toLowerCase() === 'analyser';
 
     const results = await getAnalysisReporthelper(req.query, isAnalyser);
 
     if (!results.success) {
-      return res.status(500).json({
-        success: false,
-        message: 'Internal server error'
-      });
+      return res.status(500).json({ success: false, message: 'Internal server error' });
     }
 
-    const remarks = results?.data;
-    const grouped = {};
+    const currentHour = new Date(
+      new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+    ).getHours();
 
-    for (const row of remarks) {
+    const grouped = {};
+    for (const row of results.data) {
       const hour = parseInt(row.hour, 10);
       if (hour < 9 || hour > 19) continue;
 
@@ -657,110 +654,53 @@ export const getAnalysisReportSQL = async (req, res) => {
         grouped[counsellorId] = {
           totalRemarks: 0,
           timeSlots: {},
-          counsellor_name: row?.counsellorName,
-          supervisor_id: row?.assigned_to || null,
-          supervisor_name: row?.supervisor_name || null
+          counsellor_name: row.counsellorName,
+          supervisor_id: row.assigned_to || null,
+          supervisor_name: row.supervisor_name || 'No Supervisor'
         };
       }
 
-      const slotLabel = `${hour.toString().padStart(2, '0')}:00 - ${(hour + 1)
-        .toString()
-        .padStart(2, '0')}:00`;
-
+      const slotLabel = `${hour.toString().padStart(2, '0')}:00 - ${(hour + 1).toString().padStart(2, '0')}:00`;
       grouped[counsellorId].totalRemarks += count;
-
       if (!grouped[counsellorId].timeSlots[slotLabel]) {
         grouped[counsellorId].timeSlots[slotLabel] = { count: 0 };
       }
       grouped[counsellorId].timeSlots[slotLabel].count += count;
     }
 
-    // Fetch supervisor names if not already in results
-    const counsellorIds = Object.keys(grouped);
-
-    if (counsellorIds.length > 0) {
-      try {
-        const supervisorQuery = `
-          SELECT 
-            c1.counsellor_id,
-            c1.assigned_to,
-            c2.counsellor_name as supervisor_name
-          FROM counsellors c1
-          LEFT JOIN counsellors c2 ON c1.assigned_to = c2.counsellor_id
-          WHERE c1.counsellor_id IN (:counsellorIds)
-        `;
-
-        const supervisorResults = await sequelize.query(supervisorQuery, {
-          replacements: { counsellorIds },
-          type: sequelize.QueryTypes.SELECT
-        });
-
-        const supervisorMap = {};
-        supervisorResults.forEach(sup => {
-          supervisorMap[sup.counsellor_id] = sup.supervisor_name;
-        });
-
-        Object.keys(grouped).forEach(counsellorId => {
-          if (supervisorMap[counsellorId]) {
-            grouped[counsellorId].supervisor_name = supervisorMap[counsellorId];
-          }
-        });
-      } catch (error) {
-        console.error('Error fetching supervisor names:', error);
-      }
-    }
-
     let finalResult = Object.entries(grouped).map(([counsellorId, data]) => {
       const total = data.totalRemarks;
 
-      const currentTimeInIST = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
-      const currentHour = new Date(currentTimeInIST).getHours();
-
       const timeSlots = Object.entries(data.timeSlots).reduce((acc, [label, val]) => {
         const slotHour = parseInt(label.split(':')[0], 10);
-
-        if (slotHour > currentHour) {
-          acc[label] = {
-            count: "-",
-            percentage: "-"
-          };
-        } else {
-          acc[label] = {
-            count: val.count,
-            percentage: total > 0 ? Math.round((val.count / total) * 10000) / 100 : 0
-          };
-        }
+        acc[label] = slotHour > currentHour
+          ? { count: "-", percentage: "-" }
+          : { count: val.count, percentage: total > 0 ? Math.round((val.count / total) * 10000) / 100 : 0 };
         return acc;
       }, {});
 
       return {
-        counsellorId: counsellorId,
+        counsellorId,
         counsellorName: data.counsellor_name,
         supervisorId: data.supervisor_id,
-        supervisorName: data.supervisor_name || 'No Supervisor',
+        supervisorName: data.supervisor_name,
         totalRemarks: total,
         name: data.counsellor_name,
         timeSlots
       };
     });
 
-    // Sort by supervisor name first, then by counsellor name
     finalResult = finalResult.sort((a, b) => {
       const supervisorCompare = a.supervisorName.localeCompare(b.supervisorName);
       if (supervisorCompare !== 0) return supervisorCompare;
       return a.counsellorName.localeCompare(b.counsellorName);
     });
 
-    // Group by supervisor for hierarchical structure
     const groupedBySupervisor = {};
     finalResult.forEach(item => {
       const supervisorName = item.supervisorName;
       if (!groupedBySupervisor[supervisorName]) {
-        groupedBySupervisor[supervisorName] = {
-          supervisorName: supervisorName,
-          totalRemarks: 0,
-          counsellors: []
-        };
+        groupedBySupervisor[supervisorName] = { supervisorName, totalRemarks: 0, counsellors: [] };
       }
       groupedBySupervisor[supervisorName].counsellors.push(item);
       groupedBySupervisor[supervisorName].totalRemarks += item.totalRemarks;
@@ -769,10 +709,9 @@ export const getAnalysisReportSQL = async (req, res) => {
     const hierarchicalResult = Object.values(groupedBySupervisor).map(supervisorGroup => ({
       supervisorName: supervisorGroup.supervisorName,
       totalRemarks: supervisorGroup.totalRemarks,
-      counsellors: supervisorGroup.counsellors
+      counsellors: supervisorGroup.counsellors.sort((a, b) => a.counsellorName.localeCompare(b.counsellorName))
     }));
 
-    // Prepare response
     const response = {
       success: true,
       data: finalResult,
@@ -781,7 +720,6 @@ export const getAnalysisReportSQL = async (req, res) => {
       totalSupervisors: Object.keys(groupedBySupervisor).length
     };
 
-    // Add note for analysers
     if (isAnalyser) {
       response.note = 'Data includes only Facebook leads';
       response.dataFilter = 'Facebook leads only';
@@ -790,27 +728,13 @@ export const getAnalysisReportSQL = async (req, res) => {
     res.status(200).json(response);
   } catch (error) {
     console.error('Error generating SQL analysis report:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
 
 export const getAnalysisReporthelper = async (query, isAnalyser = false) => {
   try {
-    const {
-      mode,
-      source,
-      campaign,
-      from,
-      to,
-      counsellors, sortOrder, sortBy
-    } = query;
-
-    console.log("Analysis report query params:", {
-      mode, source, campaign, from, to, counsellors, isAnalyser
-    });
+    const { mode, source, campaign, from, to, counsellors } = query;
 
     const counsellor_array = counsellors
       ? counsellors.split(',').map(v => v.trim())
@@ -819,86 +743,60 @@ export const getAnalysisReporthelper = async (query, isAnalyser = false) => {
     const today = new Date().toISOString().slice(0, 10);
     const fromDate = from || today;
     const toDateRaw = to || today;
-    const toDateEnd = new Date(
-      new Date(toDateRaw).setHours(23, 59, 59, 999)
-    ).toISOString();
+    const toDateEnd = new Date(new Date(toDateRaw).setHours(23, 59, 59, 999)).toISOString();
 
-    // For analysers, we need to ensure the source is Facebook-related
     let actualSource = source;
     let actualCampaign = campaign;
 
     if (isAnalyser) {
-      // If analyser provides a source, validate it's Facebook-related
       if (source && !source.toLowerCase().includes('facebook') && !source.toLowerCase().includes('fb')) {
-        // If analyser tries to use non-Facebook source, override to Facebook
-        console.log(`Analyser tried to use source "${source}", overriding to Facebook filter`);
         actualSource = 'FaceBook';
       } else if (!source) {
-        // If analyser doesn't specify source, apply Facebook filter
         actualSource = 'FaceBook';
       }
     }
 
-    // Build the SQL query
+    const needsLeadActivityJoin = !!(actualSource || actualCampaign);
+
     let sqlQuery = `
       SELECT
         DATE_PART('hour', timezone('Asia/Kolkata', sr.created_at)) AS hour,
         sr.counsellor_id AS "counsellorId",
         c.counsellor_name AS "counsellorName",
+        c.assigned_to,
+        sup.counsellor_name AS supervisor_name,
         COUNT(*) AS count
       FROM student_remarks sr
       JOIN counsellors c ON c.counsellor_id = sr.counsellor_id
-      JOIN students s ON sr.student_id = s.student_id
+      LEFT JOIN counsellors sup ON c.assigned_to = sup.counsellor_id
+    `;
+
+    if (needsLeadActivityJoin) {
+      sqlQuery += `
       JOIN (
-        SELECT DISTINCT ON (student_id) *
+        SELECT DISTINCT ON (student_id) student_id
         FROM student_lead_activities
         WHERE 1=1
           ${actualSource ? `AND source ILIKE '%' || :actualSource || '%'` : ''}
           ${actualCampaign ? `AND utm_campaign = :actualCampaign` : ''}
-          ${isAnalyser && !actualSource ? `AND (source ILIKE '%facebook%' OR source ILIKE '%fb%')` : ''}
         ORDER BY student_id, created_at ASC
       ) la ON la.student_id = sr.student_id
-      WHERE sr.created_at BETWEEN :fromDate AND :toDateEnd
-        ${mode ? `AND c.counsellor_preferred_mode = :mode` : ''}
-        ${counsellor_array ? `AND sr.counsellor_id = ANY(ARRAY[:counsellor_array])` : ''}
-    `;
-
-    // Add Facebook student filter for analysers
-    if (isAnalyser) {
-      sqlQuery += ` AND (s.source ILIKE '%facebook%' OR s.source ILIKE '%fb%')`;
+      `;
     }
 
+    sqlQuery += ` WHERE sr.created_at BETWEEN :fromDate AND :toDateEnd`;
+    if (mode) sqlQuery += ` AND c.counsellor_preferred_mode = :mode`;
+    if (counsellor_array) sqlQuery += ` AND sr.counsellor_id = ANY(ARRAY[:counsellor_array])`;
+
     sqlQuery += `
-      GROUP BY hour, sr.counsellor_id, c.counsellor_name
+      GROUP BY hour, sr.counsellor_id, c.counsellor_name, c.assigned_to, sup.counsellor_name
       ORDER BY sr.counsellor_id, hour;
     `;
 
-    console.log("SQL Query for analysis report:", sqlQuery);
-    console.log("Query parameters:", {
-      fromDate,
-      toDateEnd,
-      mode,
-      actualSource,
-      actualCampaign,
-      counsellor_array,
-      isAnalyser
+    const [rows] = await sequelize.query(sqlQuery, {
+      replacements: { fromDate, toDateEnd, mode, actualSource, actualCampaign, counsellor_array }
     });
 
-    const [rows] = await sequelize.query(
-      sqlQuery,
-      {
-        replacements: {
-          fromDate,
-          toDateEnd,
-          mode,
-          actualSource,
-          actualCampaign,
-          counsellor_array
-        },
-      }
-    );
-
-    console.log(`Found ${rows.length} records for analysis report`);
     return { success: true, data: rows };
   } catch (error) {
     console.error('Download analysis report SQL error:', error);

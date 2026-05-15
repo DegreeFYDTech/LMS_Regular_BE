@@ -15,13 +15,9 @@ export const getCounsellorStats = async (req, res) => {
   try {
     const { start_date, end_date, counsellor_id } = req.query;
 
-    let dateFilter = "";
-    if (start_date && end_date) {
-      dateFilter = `
-        AND (fs.first_status_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date 
-        BETWEEN '${start_date}' AND '${end_date}'
-      `;
-    }
+    const cteDateFilter = start_date && end_date
+      ? `AND (created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date BETWEEN '${start_date}' AND '${end_date}'`
+      : "";
 
     let counsellorFilter = "";
     if (counsellor_id) {
@@ -30,16 +26,8 @@ export const getCounsellorStats = async (req, res) => {
 
     const stats = await sequelize.query(
       `
-      WITH 
-      -- ALL distinct student-course combinations
-      all_combinations AS (
-        SELECT DISTINCT 
-            student_id, 
-            course_id
-        FROM course_status_journeys
-      ),
-
-      -- Get first status details for each combination
+      WITH
+      -- First active-status entry within the requested date range for each student-course
       first_status AS (
         SELECT DISTINCT ON (student_id, course_id)
             student_id,
@@ -47,8 +35,23 @@ export const getCounsellorStats = async (req, res) => {
             course_status,
             created_at AS first_status_date,
             counsellor_id AS status_created_by,
-            assigned_l3_counsellor_id  -- The L3 counsellor assigned to this student-course
+            assigned_l3_counsellor_id
         FROM course_status_journeys
+        WHERE course_status IN (
+            'Exam Interview Pending',
+            'Ready For Admission',
+            'Offer Letter/Results Pending',
+            'Form Filled_Partner website',
+            'Form Submitted – Portal Pending',
+            'Offer Letter/Results Released',
+            'Application Fee Paid',
+            'Walkin Completed',
+            'Form Submitted – Offline',
+            'Form Filled_Degreefyd',
+            'Exam/Interview Scheduled',
+            'Form Submitted – Completed'
+        )
+        ${cteDateFilter}
         ORDER BY student_id, course_id, created_at ASC
       ),
 
@@ -75,31 +78,28 @@ export const getCounsellorStats = async (req, res) => {
         ORDER BY student_id, course_id, created_at DESC
       ),
 
-      -- Base table with ALL combinations
+      -- Base table: all student-course combos that entered an active status
       base AS (
-        SELECT 
-            ac.student_id,
-            ac.course_id,
+        SELECT
+            fs.student_id,
+            fs.course_id,
             fs.first_status_date,
             fs.status_created_by,
             fs.assigned_l3_counsellor_id,
-            fr.first_remark_date,  -- First remark by assigned L3 counsellor (NULL if no remark)
+            fr.first_remark_date,
             ls.latest_status,
-            -- Calculate days difference ONLY if remark exists
-            CASE 
-                WHEN fr.first_remark_date IS NOT NULL 
+            CASE
+                WHEN fr.first_remark_date IS NOT NULL
                 THEN GREATEST(0, EXTRACT(DAY FROM (fr.first_remark_date - fs.first_status_date)))
                 ELSE NULL
             END AS days_to_first_action,
             c.counsellor_name,
-            CONCAT(ac.student_id, '_', ac.course_id) AS student_course_key
-        FROM all_combinations ac
-        JOIN first_status fs ON ac.student_id = fs.student_id AND ac.course_id = fs.course_id
-        LEFT JOIN first_remark_by_l3 fr ON ac.student_id = fr.student_id AND ac.course_id = fr.course_id
-        LEFT JOIN latest_status ls ON ac.student_id = ls.student_id AND ac.course_id = ls.course_id
+            CONCAT(fs.student_id, '_', fs.course_id) AS student_course_key
+        FROM first_status fs
+        LEFT JOIN first_remark_by_l3 fr ON fs.student_id = fr.student_id AND fs.course_id = fr.course_id
+        LEFT JOIN latest_status ls ON fs.student_id = ls.student_id AND fs.course_id = ls.course_id
         LEFT JOIN counsellors c ON fs.assigned_l3_counsellor_id = c.counsellor_id
-        WHERE fs.course_status <> 'Shortlisted'
-        ${dateFilter}
+        WHERE 1=1
         ${counsellorFilter}
       )
 

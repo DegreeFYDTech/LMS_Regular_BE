@@ -110,16 +110,23 @@ export const getCounsellorStats = async (req, res) => {
           -- TOTAL FORMS: All combinations for this L3 counsellor
           COUNT(DISTINCT b.student_course_key) AS total_forms,
           
-          -- ACTIVE FORMS: Where latest status is not completed
-          COUNT(DISTINCT CASE 
-              WHEN b.latest_status NOT IN (
-                'Registration done',
-                'Partially Paid',
-                'Semester Paid',
-                'Enrollment in Process',
-                'Enrolled'
-              ) OR b.latest_status IS NULL
-              THEN b.student_course_key 
+          -- ACTIVE FORMS: Where latest status is one of the 12 active form statuses
+          COUNT(DISTINCT CASE
+              WHEN b.latest_status IN (
+                'Exam Interview Pending',
+                'Ready For Admission',
+                'Offer Letter/Results Pending',
+                'Form Filled_Partner website',
+                'Form Submitted – Portal Pending',
+                'Offer Letter/Results Released',
+                'Application Fee Paid',
+                'Walkin Completed',
+                'Form Submitted – Offline',
+                'Form Filled_Degreefyd',
+                'Exam/Interview Scheduled',
+                'Form Submitted – Completed'
+              )
+              THEN b.student_course_key
           END) AS active_forms,
           
           -- NOT INITIATED: NO remark from assigned L3 counsellor

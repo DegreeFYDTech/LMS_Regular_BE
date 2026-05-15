@@ -38,12 +38,13 @@ export const getActiveFormCollegeReport = async (req, res) => {
                 SELECT DISTINCT ON (student_id, course_id)
                     student_id,
                     course_id,
-                    course_status
+                    course_status,
+                    assigned_l3_counsellor_id
                 FROM course_status_journeys
                 ORDER BY student_id, course_id, created_at DESC
             ),
             active_now AS (
-                SELECT student_id, course_id, course_status
+                SELECT student_id, course_id, course_status, assigned_l3_counsellor_id
                 FROM latest_status
                 WHERE course_status IN (:statuses)
             ),
@@ -59,13 +60,14 @@ export const getActiveFormCollegeReport = async (req, res) => {
                 ORDER BY student_id, course_id, (created_at + interval '5 hours 30 minutes') ASC
             ),
             current_active_students AS (
-                SELECT 
+                SELECT
                     fe.student_id,
                     fe.course_id,
                     fe.entry_date,
                     uc.university_name,
                     uc.course_name,
-                    an.course_status
+                    an.course_status,
+                    an.assigned_l3_counsellor_id
                 FROM first_entry_in_range fe
                 JOIN active_now an ON fe.student_id = an.student_id AND fe.course_id = an.course_id
                 JOIN university_courses uc ON fe.course_id = uc.course_id
@@ -73,7 +75,48 @@ export const getActiveFormCollegeReport = async (req, res) => {
         `;
 
         let query = '';
-        if (type === 'raw') {
+        if (type === 'l3_summary') {
+            query = `
+                ${baseCTEs},
+                latest_l3_remark AS (
+                    SELECT DISTINCT ON (sr.student_id)
+                        sr.student_id,
+                        (sr.created_at + interval '5 hours 30 minutes') as remark_at_ist
+                    FROM student_remarks sr
+                    JOIN counsellors c ON sr.counsellor_id = c.counsellor_id
+                    WHERE lower(c.role) = 'l3'
+                    ORDER BY sr.student_id, sr.created_at DESC
+                ),
+                active_form_analysis AS (
+                    SELECT
+                        cas.*,
+                        COALESCE(c.counsellor_name, 'Unassigned') as assigned_l3_name,
+                        lsr.remark_at_ist,
+                        CASE
+                            WHEN lsr.student_id IS NULL THEN 'Not Worked'
+                            ELSE 'Worked'
+                        END as worked_status,
+                        CASE
+                            WHEN lsr.student_id IS NOT NULL THEN
+                                EXTRACT(DAY FROM ((CURRENT_TIMESTAMP + interval '5 hours 30 minutes') - lsr.remark_at_ist))
+                            ELSE NULL
+                        END as days_since
+                    FROM current_active_students cas
+                    LEFT JOIN counsellors c ON cas.assigned_l3_counsellor_id = c.counsellor_id
+                    LEFT JOIN latest_l3_remark lsr ON cas.student_id = lsr.student_id
+                )
+                SELECT
+                    assigned_l3_name,
+                    COUNT(*) FILTER (WHERE worked_status = 'Not Worked') as not_worked_cases,
+                    COUNT(*) FILTER (WHERE worked_status = 'Worked' AND days_since >= 0 AND days_since <= 3) as days_0_3,
+                    COUNT(*) FILTER (WHERE worked_status = 'Worked' AND days_since >= 4 AND days_since <= 6) as days_4_6,
+                    COUNT(*) FILTER (WHERE worked_status = 'Worked' AND days_since > 6) as days_6_plus,
+                    COUNT(*) as total_count
+                FROM active_form_analysis
+                GROUP BY assigned_l3_name
+                ORDER BY assigned_l3_name;
+            `;
+        } else if (type === 'raw') {
             query = `
                 ${baseCTEs},
                 latest_l3_remark AS (

@@ -10,6 +10,23 @@ import {
 import { col, fn, literal, Op, QueryTypes, Sequelize } from "sequelize";
 import CourseStatusJourney from "../models/course_status_jounreny.js";
 import { convertToCSV } from "../helper/csv_helper.js";
+import GenerateEmailFunction from "../utils/email/TriggerEmail.js";
+
+const APPLICATION_STATUSES = [
+  "Form Submitted – Portal Pending",
+  "Form Submitted – Completed",
+  "Form Submitted – Offline",
+  "Form Filled_Partner website",
+  "Form Filled_Degreefyd",
+  "Walkin Completed",
+  "Exam Interview Pending",
+  "Exam/Interview Pending",
+  "Exam/Interview Scheduled",
+  "Offer Letter/Results Pending",
+  "Offer Letter/Results Released",
+  "Ready For Admission",
+  "Application Fee Paid",
+];
 
 export const getCounsellorStats = async (req, res) => {
   try {
@@ -1174,7 +1191,20 @@ export const createStatusLog = async (req, res) => {
     if (!courseDetails) {
       return res.status(404).json({ message: "Course not found" });
     }
-    console.log("hello");
+
+    // Check BEFORE creating whether this is the student's first application entry for this course
+    let isFirstApplicationEntry = false;
+    if (APPLICATION_STATUSES.includes(status)) {
+      const existingCount = await CourseStatusJourney.count({
+        where: {
+          student_id: studentId,
+          course_id: courseId,
+          course_status: APPLICATION_STATUSES,
+        },
+      });
+      isFirstApplicationEntry = existingCount === 0;
+    }
+
     const journeyEntry = await CourseStatusJourney.create({
       student_id: studentId,
       course_id: courseId,
@@ -1233,6 +1263,28 @@ export const createStatusLog = async (req, res) => {
       { first_form_filled_date: new Date() },
       { where: { student_id: studentId, first_form_filled_date: null } },
     );
+
+    if (isFirstApplicationEntry) {
+      try {
+        const student = await Student.findOne({
+          where: { student_id: studentId },
+          attributes: ["student_name", "student_email", "student_phone", "student_current_state"],
+        });
+        await GenerateEmailFunction(
+          {
+            student_id: studentId,
+            student_name: student?.student_name,
+            student_email: student?.student_email,
+            student_phone: student?.student_phone,
+            student_current_state: student?.student_current_state,
+            college_For_Applied: courseDetails.university_name,
+          },
+          `New Application – ${courseDetails.university_name}`,
+        );
+      } catch (emailErr) {
+        console.error("Application email trigger failed:", emailErr.message);
+      }
+    }
 
     res.status(201).json({
       message: "Status log created successfully",

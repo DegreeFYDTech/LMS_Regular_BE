@@ -3,12 +3,14 @@ import {
   Student,
   UniversityCourse,
   StudentCollegeApiSentStatus,
+  CuBotSending,
 } from "../models/index.js";
 import { createCollegeApiSentStatus } from "./collegeApiSentStatus.controller.js";
 import CourseHeaderValue from "../models/university_header_values.js";
-import { Op, fn, col, where } from "sequelize";
+import { Op, fn, col, where,Sequelize } from "sequelize";
 import { getEligibleCourseIds } from "./getEligibleCourseIds.js";
 import sendMail from "../config/SendTechIssueMail.js";
+import { addCuBotJob } from "../cu_bot/queues/cuBotQueue.js";
 
 async function handleTechnicalFailure(
   studentId,
@@ -1496,6 +1498,107 @@ async function handleJaypeeNoPaperForms(
     throw error;
   }
 }
+
+function getRandomDob2000_2001() {
+  const start = new Date(2000, 0, 1).getTime();
+  const end = new Date(2001, 11, 31).getTime();
+  const randomTime = start + Math.random() * (end - start);
+  const date = new Date(randomTime);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+async function handleCucetBotFallback(
+  collegeName,
+  userResponse,
+  studentId,
+  sendType,
+  studentEmail,
+  studentPhone,
+  isPrimary,
+  courseId,
+  isPartnerPortal,
+  errorMsg,
+  courseHeaderValue,
+  specialPayload = null,
+  headers = null
+) {
+  console.log(` CUCET API technical failure for ${collegeName}. Routing to BullMQ fallback...`);
+
+  const botRecord = await CuBotSending.create({
+    student_id: userResponse.student_id || studentId,
+    phone: studentPhone || userResponse.student_phone,
+    email: studentEmail || userResponse.student_email,
+    status: "pending"
+  });
+
+  // Resolve campus dynamically based on config and college name
+  let campus = courseHeaderValue?.values?.Campus;
+  if (!campus) {
+    campus = (collegeName && (collegeName.toLowerCase().includes("lucknow") || collegeName.toLowerCase().includes("unnao"))) 
+      ? "Unnao Uttar Pradesh" 
+      : "Mohali";
+  } else {
+    if (campus.toLowerCase().includes("lucknow") || campus.toLowerCase().includes("unnao")) {
+      campus = "Unnao Uttar Pradesh";
+    }
+  }
+
+  // Resolve discipline and program fallbacks based on campus
+  let discipline = courseHeaderValue?.values?.mx_Discipline_New;
+  let program = courseHeaderValue?.values?.mx_Program_New;
+
+  if (campus === "Unnao Uttar Pradesh") {
+    if (!discipline) discipline = "Engineering";
+    if (!program) program = "Bachelor of Technology - Computer Science & Engineering";
+  } else {
+    if (!discipline) discipline = "Engineering";
+    if (!program) program = "Bachelor of Engineering (Computer Science and Engineering)";
+  }
+
+  // Resolve city
+  let city = userResponse.preferred_city?.[0] || userResponse.student_current_city;
+  if (!city) {
+    const commonCities = (campus === "Unnao Uttar Pradesh") 
+      ? ["Lucknow", "Kanpur", "Agra", "Varanasi", "Ghaziabad", "Bareilly", "Unnao", "Meerut", "Aligarh", "Gorakhpur"]
+      : ["Chandigarh", "Mohali", "Panchkula", "Ludhiana", "Amritsar", "Jalandhar", "Patiala", "Bathinda", "Shimla", "Delhi"];
+    city = commonCities[Math.floor(Math.random() * commonCities.length)];
+  }
+
+  await addCuBotJob({
+    dbRecordId: botRecord.id,
+    studentId: userResponse.student_id || studentId,
+    studentName: userResponse.student_name,
+    phone: studentPhone || userResponse.student_phone,
+    email: studentEmail || userResponse.student_email,
+    courseId: courseId,
+    collegeName: collegeName,
+    campus: campus,
+    city: city,
+    discipline: discipline,
+    program: program,
+    dob: getRandomDob2000_2001()
+  });
+
+  await updateStudentShortlistStatus(
+    studentId,
+    collegeName,
+    "Queued in Bot",
+    specialPayload,
+    { info: "API technical failure fallback. Routed to automation worker.", error: errorMsg },
+    headers,
+    sendType,
+    studentEmail || userResponse.student_email,
+    studentPhone || userResponse.student_phone,
+    isPrimary,
+    isPartnerPortal
+  );
+
+  return "Queued in Bot";
+}
+
 async function handleSpecialUniversity(
   collegeName,
   userResponse,
@@ -1612,6 +1715,24 @@ async function handleSpecialUniversity(
       collegeName,
     );
 
+    if (statusResult === "Failed due to Technical Issues" && collegeName && collegeName.includes("Chandigarh University")) {
+      return await handleCucetBotFallback(
+        collegeName,
+        userResponse,
+        studentId,
+        sendType,
+        studentEmail,
+        studentPhone,
+        isPrimary,
+        courseId,
+        isPartnerPortal,
+        "API returned Failed due to Technical Issues status",
+        courseHeaderValue,
+        specialPayload,
+        headers
+      );
+    }
+
     if (studentId) {
       await updateStudentShortlistStatus(
         studentId,
@@ -1629,6 +1750,24 @@ async function handleSpecialUniversity(
 
     return statusResult;
   } catch (error) {
+    if (collegeName && collegeName.includes("Chandigarh University")) {
+      return await handleCucetBotFallback(
+        collegeName,
+        userResponse,
+        studentId,
+        sendType,
+        studentEmail,
+        studentPhone,
+        isPrimary,
+        courseId,
+        isPartnerPortal,
+        error.message,
+        courseHeaderValue,
+        specialPayload,
+        headers
+      );
+    }
+
     return await handleTechnicalFailure(
       studentId,
       collegeName,
@@ -2678,6 +2817,116 @@ export const sentStatustoCollege = async (req, res) => {
       }
     }
 
+    if (collegeName && collegeName.includes("Chandigarh University")) {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const apiCount = await StudentCollegeApiSentStatus.count({
+  where: {
+    college_name: {
+      [Op.iLike]: "%Chandigarh University%",
+    },
+    sent_type: {
+      [Op.ne]: "bot",
+    },
+    [Op.and]: Sequelize.where(
+      Sequelize.literal(`(created_at AT TIME ZONE 'Asia/Kolkata')::date`),
+      new Date().toLocaleDateString('en-CA', {
+        timeZone: 'Asia/Kolkata',
+      })
+    ),
+  },
+});
+
+      console.log(` [CUCET Route] Today's official API count for Chandigarh University: ${apiCount}`);
+
+      if (apiCount <= 120) {
+        console.log(` CUCET Official API limit reached (${apiCount}/120). Routing to BullMQ Queue...`);
+
+        const courseHeaderValue = await findHeaderValue(
+          collegeName,
+          courseId,
+          studentId,
+          isPartnerPortal,
+        );
+
+        const botRecord = await CuBotSending.create({
+          student_id: userResponse.student_id || studentId,
+          phone: studentPhone || userResponse.student_phone,
+          email: studentEmail || userResponse.student_email,
+          status: "pending"
+        });
+
+        // Resolve campus dynamically based on config and college name
+        let campus = courseHeaderValue?.values?.Campus;
+        if (!campus) {
+          campus = (collegeName && (collegeName.toLowerCase().includes("lucknow") || collegeName.toLowerCase().includes("unnao"))) 
+            ? "Unnao Uttar Pradesh" 
+            : "Mohali";
+        } else {
+          if (campus.toLowerCase().includes("lucknow") || campus.toLowerCase().includes("unnao")) {
+            campus = "Unnao Uttar Pradesh";
+          }
+        }
+
+        // Resolve discipline and program fallbacks based on campus
+        let discipline = courseHeaderValue?.values?.mx_Discipline_New;
+        let program = courseHeaderValue?.values?.mx_Program_New;
+
+        if (campus === "Unnao Uttar Pradesh") {
+          if (!discipline) discipline = "Engineering";
+          if (!program) program = "Bachelor of Technology - Computer Science & Engineering";
+        } else {
+          if (!discipline) discipline = "Engineering";
+          if (!program) program = "Bachelor of Engineering (Computer Science and Engineering)";
+        }
+
+        // Resolve city
+        let city = userResponse.preferred_city?.[0] || userResponse.student_current_city;
+        if (!city) {
+          const commonCities = (campus === "Unnao Uttar Pradesh") 
+            ? ["Lucknow", "Kanpur", "Agra", "Varanasi", "Ghaziabad", "Bareilly", "Unnao", "Meerut", "Aligarh", "Gorakhpur"]
+            : ["Chandigarh", "Mohali", "Panchkula", "Ludhiana", "Amritsar", "Jalandhar", "Patiala", "Bathinda", "Shimla", "Delhi"];
+          city = commonCities[Math.floor(Math.random() * commonCities.length)];
+        }
+
+        await addCuBotJob({
+          dbRecordId: botRecord.id,
+          studentId: userResponse.student_id || studentId,
+          studentName: userResponse.student_name,
+          phone: studentPhone || userResponse.student_phone,
+          email: studentEmail || userResponse.student_email,
+          courseId: courseId,
+          collegeName: collegeName,
+          campus: campus,
+          city: city,
+          discipline: discipline,
+          program: program,
+          dob: getRandomDob2000_2001()
+        });
+
+        await updateStudentShortlistStatus(
+          studentId,
+          collegeName,
+          "Queued in Bot",
+          null,
+          { info: "Daily limit exceeded. Routed to automation worker." },
+          null,
+          sendType,
+          studentEmail || userResponse.student_email,
+          studentPhone || userResponse.student_phone,
+          isPrimary,
+          isPartnerPortal
+        );
+
+        return res.status(200).json({
+          success: true,
+          message: "API daily limit reached. Lead queued for automated CUCET submission.",
+          status: "Queued in Bot"
+        });
+      }
+    }
+
     const isSpecialUniversity =
       collegeName &&
       (collegeName.includes("Chandigarh University") ||
@@ -2883,7 +3132,7 @@ export const sentStatustoCollege = async (req, res) => {
     }
 
     return res.status(200).json({
-      success: statusResult === "Proceed",
+      success: statusResult === "Proceed" || statusResult === "Queued in Bot",
       message: statusResult,
       status: statusResult,
     });

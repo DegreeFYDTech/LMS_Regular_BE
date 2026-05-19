@@ -43,6 +43,7 @@ import WebhookEvent from './WebhookEvent.js';
 import Admission from './Admission.js';
 import Registration from './Registration.js';
 import StudentQuestionResponse from './StudentQuestionResponse.js';
+import CuBotSending from './CuBotSending.js';
 
 Student.belongsTo(Counsellor, { foreignKey: 'assigned_counsellor_id', as: 'assignedCounsellor' });
 Student.belongsTo(Counsellor, { foreignKey: 'assigned_counsellor_l3_id', as: 'assignedCounsellorL3' });
@@ -191,6 +192,10 @@ WebsiteChatMessage.belongsTo(WebsiteChat, { foreignKey: 'chat_id', as: 'chat' })
 WebsiteChat.belongsTo(Counsellor, { foreignKey: 'counsellor_id' });
 Counsellor.hasMany(WebsiteChat, { foreignKey: 'counsellor_id' });
 
+// CuBotSending associations
+Student.hasMany(CuBotSending, { foreignKey: 'student_id', as: 'cuBotSendings', onDelete: 'CASCADE' });
+CuBotSending.belongsTo(Student, { foreignKey: 'student_id', as: 'student' });
+
 export {
   sequelize,
   Counsellor,
@@ -229,5 +234,6 @@ export {
   StudentCollegeApiClickLog,
   UserActionLog,
   LoginAttempt,
-  StudentQuestionResponse
+  StudentQuestionResponse,
+  CuBotSending
 };

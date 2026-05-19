@@ -2,9 +2,13 @@
 import Redis from "ioredis";
 import dotenv from "dotenv";
 dotenv.config();
-const redis = new Redis(process.env.REDIS_URL, {
-    tls: {},
-    maxRetriesPerRequest: null,
+const redisUrl = process.env.REDIS_URL;
+const isSecure = redisUrl && redisUrl.startsWith('rediss://');
+const redis = new Redis(redisUrl, {
+    socket: isSecure ? {
+        tls: true,
+        rejectUnauthorized: false 
+    } : undefined   
 });
 
 redis.on("connect", () => {

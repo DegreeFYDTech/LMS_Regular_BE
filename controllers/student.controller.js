@@ -544,7 +544,37 @@ export const updateStudentStatus = async (req, res) => {
           journeyData.event_time = event_time;
         }
 
+        let isFirstApplicationEntry = false;
+        if (leadStatus === "Application") {
+          const priorCount = await CourseStatusJourney.count({
+            where: {
+              student_id: studentId,
+              course_id: selectedCourse,
+              course_status: APPLICATION_STATUSES,
+            },
+          });
+          isFirstApplicationEntry = priorCount === 0;
+        }
+
         await CourseStatusJourney.create(journeyData);
+
+        if (isFirstApplicationEntry) {
+          try {
+            await GenerateEmailFunction(
+              {
+                student_id: studentId,
+                student_name: student?.student_name,
+                student_email: student?.student_email,
+                student_phone: student?.student_phone,
+                student_current_state: student?.student_current_state,
+                college_For_Applied: courseDetails?.university_name,
+              },
+              `New Application – ${courseDetails?.university_name}`,
+            );
+          } catch (emailErr) {
+            console.error("Application email trigger failed:", emailErr.message);
+          }
+        }
 
         // Update the latest status in CourseStatus table
         await CourseStatus.update(
@@ -2613,6 +2643,23 @@ async () => {
 import ExcelJS from "exceljs";
 import { autoSending } from "../helper/autoSending.js";
 import CourseStatusJourney from "../models/course_status_jounreny.js";
+import GenerateEmailFunction from "../utils/email/TriggerEmail.js";
+
+const APPLICATION_STATUSES = [
+  "Form Submitted – Portal Pending",
+  "Form Submitted – Completed",
+  "Form Submitted – Offline",
+  "Form Filled_Partner website",
+  "Form Filled_Degreefyd",
+  "Walkin Completed",
+  "Exam Interview Pending",
+  "Exam/Interview Pending",
+  "Exam/Interview Scheduled",
+  "Offer Letter/Results Pending",
+  "Offer Letter/Results Released",
+  "Ready For Admission",
+  "Application Fee Paid",
+];
 
 export const getniReports = async (req, res) => {
   try {

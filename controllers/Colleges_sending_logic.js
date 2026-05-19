@@ -2840,7 +2840,7 @@ export const sentStatustoCollege = async (req, res) => {
 
       console.log(` [CUCET Route] Today's official API count for Chandigarh University: ${apiCount}`);
 
-      if (apiCount <= 120) {
+      if (apiCount >= 120) {
         console.log(` CUCET Official API limit reached (${apiCount}/120). Routing to BullMQ Queue...`);
 
         const courseHeaderValue = await findHeaderValue(

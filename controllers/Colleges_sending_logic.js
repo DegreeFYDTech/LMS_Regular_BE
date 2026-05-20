@@ -11,7 +11,7 @@ import { Op, fn, col, where,Sequelize } from "sequelize";
 import { getEligibleCourseIds } from "./getEligibleCourseIds.js";
 import sendMail from "../config/SendTechIssueMail.js";
 import { addCuBotJob } from "../cu_bot/queues/cuBotQueue.js";
-
+import StudentInfoCollection from "../models/studentsInfoCollection.js";
 async function handleTechnicalFailure(
   studentId,
   collegeName,
@@ -1526,11 +1526,11 @@ async function handleCucetBotFallback(
   headers = null
 ) {
   console.log(` CUCET API technical failure for ${collegeName}. Routing to BullMQ fallback...`);
-
+  const finalLeadData= await CheckDetails(userResponse.student_id || studentId)
   const botRecord = await CuBotSending.create({
     student_id: userResponse.student_id || studentId,
-    phone: studentPhone || userResponse.student_phone,
-    email: studentEmail || userResponse.student_email,
+    phone: finalLeadData.phone || studentPhone || userResponse.student_phone,
+    email: finalLeadData.email || studentEmail || userResponse.student_email,
     status: "pending"
   });
 
@@ -1571,8 +1571,8 @@ async function handleCucetBotFallback(
     dbRecordId: botRecord.id,
     studentId: userResponse.student_id || studentId,
     studentName: userResponse.student_name,
-    phone: studentPhone || userResponse.student_phone,
-    email: studentEmail || userResponse.student_email,
+    phone: finalLeadData.phone || studentPhone || userResponse.student_phone,
+    email: finalLeadData.email || studentEmail || userResponse.student_email,
     courseId: courseId,
     collegeName: collegeName,
     campus: campus,
@@ -1582,19 +1582,19 @@ async function handleCucetBotFallback(
     dob: getRandomDob2000_2001()
   });
 
-  await updateStudentShortlistStatus(
-    studentId,
-    collegeName,
-    "Queued in Bot",
-    specialPayload,
-    { info: "API technical failure fallback. Routed to automation worker.", error: errorMsg },
-    headers,
-    sendType,
-    studentEmail || userResponse.student_email,
-    studentPhone || userResponse.student_phone,
-    isPrimary,
-    isPartnerPortal
-  );
+  // await updateStudentShortlistStatus(
+  //   studentId,
+  //   collegeName,
+  //   "Queued in Bot",
+  //   specialPayload,
+  //   { info: "API technical failure fallback. Routed to automation worker.", error: errorMsg },
+  //   headers,
+  //   sendType,
+  //   studentEmail || userResponse.student_email,
+  //   studentPhone || userResponse.student_phone,
+  //   isPrimary,
+  //   isPartnerPortal
+  // );
 
   return "Queued in Bot";
 }
@@ -1751,6 +1751,18 @@ async function handleSpecialUniversity(
     return statusResult;
   } catch (error) {
     if (collegeName && collegeName.includes("Chandigarh University")) {
+      await handleTechnicalFailure(
+      studentId,
+      collegeName,
+      error,
+      specialPayload,
+      headers,
+      sendType,
+      studentEmail,
+      userResponse.student_phone,
+      isPrimary,
+      isPartnerPortal,
+    );
       return await handleCucetBotFallback(
         collegeName,
         userResponse,
@@ -2849,13 +2861,15 @@ export const sentStatustoCollege = async (req, res) => {
           studentId,
           isPartnerPortal,
         );
+  const finalLeadData= await CheckDetails(userResponse.student_id || studentId)
+  const botRecord = await CuBotSending.create({
+    student_id: userResponse.student_id || studentId,
+    phone: finalLeadData.phone || studentPhone || userResponse.student_phone,
+    email: finalLeadData.email || studentEmail || userResponse.student_email,
+    status: "pending"
+  });
 
-        const botRecord = await CuBotSending.create({
-          student_id: userResponse.student_id || studentId,
-          phone: studentPhone || userResponse.student_phone,
-          email: studentEmail || userResponse.student_email,
-          status: "pending"
-        });
+      
 
         // Resolve campus dynamically based on config and college name
         let campus = courseHeaderValue?.values?.Campus;
@@ -2894,8 +2908,8 @@ export const sentStatustoCollege = async (req, res) => {
           dbRecordId: botRecord.id,
           studentId: userResponse.student_id || studentId,
           studentName: userResponse.student_name,
-          phone: studentPhone || userResponse.student_phone,
-          email: studentEmail || userResponse.student_email,
+          phone: finalLeadData.phone || studentPhone || userResponse.student_phone,
+          email: finalLeadData.email || studentEmail || userResponse.student_email,
           courseId: courseId,
           collegeName: collegeName,
           campus: campus,
@@ -3166,5 +3180,54 @@ export const sentStatustoCollege = async (req, res) => {
     console.log("=".repeat(60));
     console.log(`🏁 END: Sending status to college`);
     console.log("=".repeat(60) + "\n");
+  }
+};
+const CheckDetails = async (student_id) => {
+  try {
+
+    const previous_state =
+      await StudentCollegeApiSentStatus.findOne({
+        where: {
+          student: student_id,
+          api_sent_status: 'Do not Proceed'
+        },
+        order: [['created_at', 'DESC']]
+      });
+
+    const student_data = {
+      email: null,
+      phone: null
+    };
+
+    if (previous_state) {
+
+      const student_secondary_info =
+        await StudentInfoCollection.findOne({
+          where: { student_id }
+        });
+
+      if (student_secondary_info) {
+
+        const secondary_data =
+          student_secondary_info?.secondary_details?.[0] || {};
+
+        student_data.email =
+          secondary_data.email || null;
+
+        student_data.phone =
+          secondary_data.phone || null;
+      }
+    }
+
+    return student_data;
+
+  } catch (err) {
+
+    console.log("CheckDetails Error:", err);
+
+    return {
+      email: null,
+      phone: null
+    };
   }
 };

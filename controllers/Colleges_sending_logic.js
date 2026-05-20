@@ -3188,7 +3188,7 @@ const CheckDetails = async (student_id) => {
     const previous_state =
       await StudentCollegeApiSentStatus.findOne({
         where: {
-          student: student_id,
+          student_id: student_id,
           api_sent_status: 'Do not Proceed'
         },
         order: [['created_at', 'DESC']]

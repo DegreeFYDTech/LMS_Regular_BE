@@ -655,7 +655,7 @@ export const getFormData = async (req, res) => {
 
 export const getFormToAdmissionsReport = async (req, res) => {
   try {
-    const { start_date, end_date, group_by = 'college' } = req.query;
+    const { start_date, end_date, group_by = 'college', type, college_name, metric } = req.query;
 
     if (!start_date || !end_date) {
       return res.status(400).json({
@@ -663,6 +663,127 @@ export const getFormToAdmissionsReport = async (req, res) => {
         message: "Please provide start_date and end_date parameters (YYYY-MM-DD)",
       });
     }
+
+    // ── RAW DRILL-DOWN ──────────────────────────────────────────────────────────
+    if (type === 'raw' && college_name && metric) {
+      const pad = (n) => String(n).padStart(2, '0');
+      const startD = new Date(start_date + 'T00:00:00');
+      const endD   = new Date(end_date   + 'T00:00:00');
+
+      let reportMonthDate;
+      if (startD.getMonth() === endD.getMonth() && startD.getFullYear() === endD.getFullYear()) {
+        reportMonthDate = startD;
+      } else {
+        const lastDayOfStartMonth = new Date(startD.getFullYear(), startD.getMonth() + 1, 0).getDate();
+        reportMonthDate = (lastDayOfStartMonth - startD.getDate()) < 7 ? startD : endD;
+      }
+
+      const reportYear  = reportMonthDate.getFullYear();
+      const reportMonth = reportMonthDate.getMonth();
+      const monthStart  = `${reportYear}-${pad(reportMonth + 1)}-01`;
+      const monthEnd    = `${reportYear}-${pad(reportMonth + 1)}-${pad(new Date(reportYear, reportMonth + 1, 0).getDate())}`;
+      const yearStart   = `${reportYear}-01-01`;
+      const yearEnd     = `${reportYear}-12-31`;
+
+      const metricConfig = {
+        range_forms:       { dateStart: start_date, dateEnd: end_date,  admissionOnly: false },
+        range_admissions:  { dateStart: start_date, dateEnd: end_date,  admissionOnly: true  },
+        month_forms:       { dateStart: monthStart,  dateEnd: monthEnd,  admissionOnly: false },
+        month_admissions:  { dateStart: monthStart,  dateEnd: monthEnd,  admissionOnly: true  },
+        year_forms:        { dateStart: yearStart,   dateEnd: yearEnd,   admissionOnly: false },
+        year_admissions:   { dateStart: yearStart,   dateEnd: yearEnd,   admissionOnly: true  },
+      };
+
+      const cfg = metricConfig[metric];
+      if (!cfg) {
+        return res.status(400).json({ success: false, message: `Invalid metric: ${metric}` });
+      }
+
+      const groupByL3 = group_by === 'l3';
+      const groupFilter = groupByL3
+        ? `COALESCE(co.counsellor_name, 'Unassigned') = :collegeName`
+        : `uc.university_name = :collegeName`;
+
+      const admissionJoin = cfg.admissionOnly
+        ? `INNER JOIN got_admission_ever ga ON ffd.student_id = ga.student_id AND ffd.course_id = ga.course_id`
+        : `LEFT JOIN got_admission_ever ga ON ffd.student_id = ga.student_id AND ffd.course_id = ga.course_id`;
+
+      const rawQuery = `
+        WITH form_statuses AS (
+          SELECT unnest(ARRAY[
+            'Form Submitted – Portal Pending',
+            'Form Submitted – Completed',
+            'Walkin Completed',
+            'Exam Interview Pending',
+            'Exam/Interview Pending',
+            'Exam/Interview Scheduled',
+            'Offer Letter/Results Pending',
+            'Offer Letter/Results Released',
+            'Ready For Admission',
+            'Form Filled_Partner website',
+            'Form Filled_Degreefyd',
+            'Application Fee Paid',
+            'Form Submitted – Offline'
+          ]) AS status
+        ),
+        admission_statuses AS (
+          SELECT unnest(ARRAY[
+            'Registration done',
+            'Semester fee paid',
+            'Partially Paid',
+            'Admission Blocked',
+            'Admission'
+          ]) AS status
+        ),
+        first_form_ever AS (
+          SELECT DISTINCT ON (student_id, course_id)
+            student_id,
+            course_id,
+            assigned_l3_counsellor_id,
+            (created_at + interval '5 hours 30 minutes')::date AS form_date
+          FROM course_status_journeys
+          WHERE course_status IN (SELECT status FROM form_statuses)
+          ORDER BY student_id, course_id, created_at ASC
+        ),
+        got_admission_ever AS (
+          SELECT DISTINCT ON (student_id, course_id)
+            student_id,
+            course_id,
+            (created_at + interval '5 hours 30 minutes')::date AS admission_date
+          FROM course_status_journeys
+          WHERE course_status IN (SELECT status FROM admission_statuses)
+          ORDER BY student_id, course_id, created_at ASC
+        )
+        SELECT
+          ffd.student_id,
+          s.student_name,
+          uc.university_name  AS college_name,
+          uc.course_name,
+          ffd.form_date       AS form_filled_date,
+          ga.admission_date,
+          COALESCE(co.counsellor_name, 'Unassigned') AS assigned_l3_name
+        FROM first_form_ever ffd
+        JOIN university_courses uc ON ffd.course_id = uc.course_id
+        JOIN students s             ON ffd.student_id = s.student_id
+        ${admissionJoin}
+        LEFT JOIN counsellors co    ON ffd.assigned_l3_counsellor_id = co.counsellor_id
+        WHERE ${groupFilter}
+          AND ffd.form_date BETWEEN :dateStart::date AND :dateEnd::date
+        ORDER BY ffd.form_date DESC;
+      `;
+
+      const rows = await sequelize.query(rawQuery, {
+        replacements: {
+          collegeName: college_name,
+          dateStart: cfg.dateStart,
+          dateEnd: cfg.dateEnd,
+        },
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+      return res.status(200).json({ success: true, data: rows });
+    }
+    // ── END RAW DRILL-DOWN ──────────────────────────────────────────────────────
 
     // Determine which month to attribute this range to
     const startD = new Date(start_date + 'T00:00:00');

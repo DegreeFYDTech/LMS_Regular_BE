@@ -98,7 +98,17 @@ export default async function GenerateEmailFunction(data, subject, reason) {
 </body>
 </html>
 `
-        const emailFunction = await EmailFunction(emailContent, subject)
+        const DEFAULT_RECIPIENTS = [
+            "bhuwan@degreefyd.com",
+            "deepak@degreefyd.com",
+            "manoj.kain@degreefyd.com",
+            "harsh.pandey@degreefyd.com",
+        ];
+        const recipients = [...DEFAULT_RECIPIENTS];
+        if (data.counsellor_l3_email) {
+            recipients.push(data.counsellor_l3_email);
+        }
+        const emailFunction = await EmailFunction(emailContent, subject, recipients)
         return emailFunction
     }
     catch (error) {

@@ -1715,7 +1715,7 @@ async function handleSpecialUniversity(
       collegeName,
     );
 
-    if (statusResult === "Failed due to Technical Issues" && collegeName && collegeName.includes("Chandigarh University")) {
+    if ((statusResult === "Failed due to Technical Issues" || statusResult.includes('timeout')) && collegeName && collegeName.includes("Chandigarh University")) {
       return await handleCucetBotFallback(
         collegeName,
         userResponse,

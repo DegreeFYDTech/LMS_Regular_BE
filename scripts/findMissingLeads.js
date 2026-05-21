@@ -20,7 +20,7 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 // ─── Meta Config ────────────────────────────────────────────────────────────
 const META_VERSION   = process.env.META_GRAPH_VERSION || 'v21.0';
 const BASE_URL       = `https://graph.facebook.com/${META_VERSION}`;
-const PAGE_ID        = '718284908040065'; // university admit page
+const PAGE_ID        = '500516373142238'; // university admit page
 
 // ─── DB Connection Strings ───────────────────────────────────────────────────
 // Regular: read from .env (same URL the backend uses)
@@ -161,7 +161,7 @@ async function findMissingLeads() {
     if (!tokenRes.rowCount) {
       // Fallback: grab whichever token was updated most recently
       const altRes = await onlinePool.query(
-        `SELECT page_id, page_access_token FROM meta_ads_tokens ORDER BY updated_at DESC LIMIT 1`
+        `SELECT page_id, page_access_token FROM meta_ads_tokens ORDER BY updated_at asc LIMIT 1`
       );
       if (!altRes.rowCount) {
         console.error('❌ No token rows found in Online LMS meta_ads_tokens. Please ensure a token has been saved.');
@@ -268,3 +268,7 @@ async function findMissingLeads() {
 //   console.error('💥 Unexpected error:', err);
 //   process.exit(1);
 // });
+findMissingLeads().catch(err => {
+  console.error('💥 Unexpected error:', err);
+  process.exit(1);
+});

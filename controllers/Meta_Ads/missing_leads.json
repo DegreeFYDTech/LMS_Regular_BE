@@ -1,32 +1,90 @@
 {
-  "generated_at": "2026-04-10T06:13:45.059Z",
+  "generated_at": "2026-05-21T07:35:38.101Z",
   "description": "Meta leads fetched from Graph API — not found in Regular, Online, or Enterprise LMS",
-  "total": 1,
+  "total": 3,
   "leads": [
     {
-      "lead_id": 1670162857742976,
-      "name": "Aayush Kumar",
-      "phone_number": "7550169278",
-      "email": "akkeshri137@gmail.com",
-      "preferred_city": "Gurugram",
-      "source": "FaceBook",
-      "form_name": "1670162857742976",
+      "lead_id": 3191903267658554,
+      "name": "Monik Borad",
+      "phone_number": "9274277446",
+      "email": "boradmonik2@gmail.com",
+      "preferred_city": "Ho Chi Minh City",
+      "source": "FaceBook_University_Admit",
+      "form_name": "3191903267658554",
       "mode": "Online",
-      "sourceUrl": "F_UA1_FEB_MBA_Aryan v1.5",
-      "utm_campaign": "F_UA1_FEB_MBA_Aryan v1.5 C1.3",
-      "utm_campaign_id": "120241579139270690",
+      "sourceUrl": "F_UA01_{UG All Colleges V03.1}",
+      "utm_campaign": "F_UA01_{UG All Colleges 3.1} {INT 01} {C1.3}",
+      "utm_campaign_id": "120239716183810690",
+      "student_comment": [
+        {
+          "question": "how_much_work_experience_do_you_have?",
+          "answer": "online_b.com"
+        },
+        {
+          "question": "what_is_your_current_status?",
+          "answer": "yes,_completed"
+        },
+        {
+          "question": "why_do_you_want_to_pursue_an_mba?",
+          "answer": "immediately"
+        }
+      ]
+    },
+    {
+      "lead_id": 1304598781117546,
+      "name": "Ujjwal Verma Uv",
+      "phone_number": "9708652491",
+      "email": "ujjwalverma1109@gmail.com",
+      "preferred_city": "Bangalore",
+      "source": "FaceBook_University_Admit",
+      "form_name": "1304598781117546",
+      "mode": "Online",
+      "sourceUrl": "F_UA1_All Colleges_MBA_Aryan v1.3",
+      "utm_campaign": "F_UA1_All Colleges_MBA_Aryan V1.3 (INT 01)_ 1.1",
+      "utm_campaign_id": "120240485252000690",
       "student_comment": [
         {
           "question": "what_is_your_current_status?",
           "answer": "working_professional"
         },
         {
+          "question": "why_do_you_want_to_pursue_an_mba?",
+          "answer": "this_month"
+        },
+        {
           "question": "how_much_work_experience_do_you_have?",
-          "answer": "mba_in_data_science_&_analytics"
+          "answer": "mba_in_finance"
+        },
+        {
+          "question": "inbox_url",
+          "answer": "https://business.facebook.com/latest/27549295041334185?nav_ref=thread_view_by_psid"
+        }
+      ]
+    },
+    {
+      "lead_id": 990762540125293,
+      "name": "Meenakshi pawar",
+      "phone_number": "9833192224",
+      "email": "mp906880@gmail.com",
+      "preferred_city": "Mumbai",
+      "source": "FaceBook_University_Admit",
+      "form_name": "990762540125293",
+      "mode": "Online",
+      "sourceUrl": "F_UA1_All Colleges_MBA_Aryan v1.1",
+      "utm_campaign": "F_UA1_All Colleges_MBA_Aryan (INT 03)_ 1.3",
+      "utm_campaign_id": "120241197587580690",
+      "student_comment": [
+        {
+          "question": "what_is_your_current_status?",
+          "answer": "graduated"
+        },
+        {
+          "question": "how_much_work_experience_do_you_have?",
+          "answer": "mba_in_finance"
         },
         {
           "question": "why_do_you_want_to_pursue_an_mba?",
-          "answer": "nmims,_mumbai"
+          "answer": "need_guidance"
         }
       ]
     }

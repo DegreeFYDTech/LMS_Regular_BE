@@ -291,23 +291,23 @@ export const PostWebhookManual = async (lead_id) => {
                 where: { form_id: leadDetails.id },
               });
 
-              if (existing) {
-                await axios.post('http://localhost:3031/v1/student/create', {
-                name: existing.full_name,
-                phone_number: existing.phone_number?.length === 13
-                  ? existing.phone_number?.slice(3)
-                  : existing.phone_number,
-                email: existing.email,
-                preferred_city: existing.city,
-                source: 'FaceBook_University_Admit',
-                form_name: leadDetails.id,
-                mode: 'Online',
-                sourceUrl: campaignDetails?.name || '',
-                utm_campaign: leadDetails?.ad_name || '',
-                utm_campaign_id: leadDetails?.ad_id || '',
-                student_comment: formatToQuestionAnswerArray(existing.additional_fields),
-              });
-              }
+              // if (existing) {
+              //   await axios.post('http://localhost:3031/v1/student/create', {
+              //   name: existing.full_name,
+              //   phone_number: existing.phone_number?.length === 13
+              //     ? existing.phone_number?.slice(3)
+              //     : existing.phone_number,
+              //   email: existing.email,
+              //   preferred_city: existing.city,
+              //   source: 'FaceBook_University_Admit',
+              //   form_name: leadDetails.id,
+              //   mode: 'Online',
+              //   sourceUrl: campaignDetails?.name || '',
+              //   utm_campaign: leadDetails?.ad_name || '',
+              //   utm_campaign_id: leadDetails?.ad_id || '',
+              //   student_comment: formatToQuestionAnswerArray(existing.additional_fields),
+              // });
+              // }
 
               const formattedLead = {
                 created_time: new Date(leadDetails.created_time),
@@ -323,23 +323,37 @@ export const PostWebhookManual = async (lead_id) => {
                 additional_fields: extractAdditionalFields(leadDetails.field_data),
               };
 
-
-               await axios.post('http://localhost:3031/v1/student/create', {
+              const final_data={
                 name: formattedLead.full_name,
                 phone_number: formattedLead.phone_number?.length === 13
                   ? formattedLead.phone_number?.slice(3)
                   : formattedLead.phone_number,
                 email: formattedLead.email,
                 preferred_city: formattedLead.city,
-                source: 'FaceBook',
+                source: 'FaceBook_University_Admit',
                 form_name: leadDetails.id,
                 mode: 'Online',
                 sourceUrl: campaignDetails?.name || '',
                 utm_campaign: leadDetails?.ad_name || '',
                 utm_campaign_id: leadDetails?.ad_id || '',
                 student_comment: formatToQuestionAnswerArray(formattedLead.additional_fields),
-              });
-           return dataToSend;
+              };
+              //  await axios.post('http://localhost:3031/v1/student/create', {
+              //   name: formattedLead.full_name,
+              //   phone_number: formattedLead.phone_number?.length === 13
+              //     ? formattedLead.phone_number?.slice(3)
+              //     : formattedLead.phone_number,
+              //   email: formattedLead.email,
+              //   preferred_city: formattedLead.city,
+              //   source: 'FaceBook',
+              //   form_name: leadDetails.id,
+              //   mode: 'Online',
+              //   sourceUrl: campaignDetails?.name || '',
+              //   utm_campaign: leadDetails?.ad_name || '',
+              //   utm_campaign_id: leadDetails?.ad_id || '',
+              //   student_comment: formatToQuestionAnswerArray(formattedLead.additional_fields),
+              // });
+           return final_data;
             
             } catch (err) {
               console.error('Error processing lead:', err.message);
@@ -347,7 +361,9 @@ export const PostWebhookManual = async (lead_id) => {
 };
 
 const ua_array = [
- 1670162857742976
+3191903267658554,
+1304598781117546,
+990762540125293
 ];
 
 
@@ -383,4 +399,4 @@ async function processLeads() {
 
   await writeFile(outPath, JSON.stringify(output, null, 2), 'utf-8');
 }
-// processLeads();
+processLeads();

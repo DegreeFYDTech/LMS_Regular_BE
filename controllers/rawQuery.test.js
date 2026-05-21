@@ -761,9 +761,40 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       }
     }
 
+    const cteStudentConditions = where
+      .filter(
+        (w) =>
+          w &&
+          !w.includes("lr.") &&
+          !w.includes("lje.") &&
+          !w.includes("fje.") &&
+          !w.includes("rcc.") &&
+          !w.includes("frl2.") &&
+          !w.includes("frl3.") &&
+          !w.includes("ficc.") &&
+          !w.includes("ccc.") &&
+          !w.includes("adm.") &&
+          !w.includes("hia.") &&
+          !w.includes("pns.") &&
+          !w.includes("far.")
+      )
+      .filter(Boolean);
+
+    const filteredStudentsSQL =
+      cteStudentConditions.length > 0
+        ? `WHERE ${cteStudentConditions.join(" AND ")}`
+        : "";
+
     const baseCTEs =
       data === "l3"
         ? `
+  filtered_students AS (
+    SELECT DISTINCT s.student_id
+    FROM students s
+    LEFT JOIN counsellors c1 ON s.assigned_counsellor_id = c1.counsellor_id
+    LEFT JOIN counsellors c2_single ON s.assigned_counsellor_l3_id = c2_single.counsellor_id
+    ${filteredStudentsSQL}
+  ),
   latest_journey_entries AS (
     SELECT DISTINCT ON (csj.student_id)
       csj.student_id,
@@ -771,7 +802,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       csj.created_at as journey_timestamp,
       csj.course_status as journey_course_status
     FROM course_status_journeys csj
-    WHERE ${l3CounsellorFilter}
+    WHERE ${l3CounsellorFilter} AND csj.student_id IN (SELECT student_id FROM filtered_students)
     ORDER BY csj.student_id, csj.created_at DESC
   ),
   first_journey_entries AS (
@@ -779,7 +810,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       csj.student_id,
       csj.created_at as first_journey_timestamp
     FROM course_status_journeys csj
-    WHERE ${l3CounsellorFilter}
+    WHERE ${l3CounsellorFilter} AND csj.student_id IN (SELECT student_id FROM filtered_students)
     ORDER BY csj.student_id, csj.created_at ASC
   ),
   l3_counsellor_details AS (
@@ -796,7 +827,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       sr.sub_calling_status, sr.remarks, sr.callback_date, sr.callback_time,
       sr.created_at as remark_created_at, sr.counsellor_id
     FROM student_remarks sr
-    ${latestRemarkWhere}
+    ${latestRemarkWhere ? latestRemarkWhere + ' AND' : 'WHERE'} sr.student_id IN (SELECT student_id FROM filtered_students)
     ORDER BY sr.student_id, sr.created_at DESC
   ),
   remarks_count_by_counsellor AS (
@@ -804,7 +835,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       sr.student_id,
       COUNT(*) as total_remarks_by_this_counsellor
     FROM student_remarks sr
-    ${latestRemarkWhere}
+    ${latestRemarkWhere ? latestRemarkWhere + ' AND' : 'WHERE'} sr.student_id IN (SELECT student_id FROM filtered_students)
     GROUP BY sr.student_id
   ),
   first_lead_activity AS (
@@ -813,17 +844,25 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       la.utm_campaign_id, la.utm_adgroup_id, la.utm_creative_id, la.source,
       la.source_url, la.created_at as activity_created_at
     FROM student_lead_activities la
-    ${utmWhere.length > 0 ? "WHERE " + utmWhere.join(" AND ") : ""}
+    WHERE la.student_id IN (SELECT student_id FROM filtered_students)
+    ${utmWhere.length > 0 ? "AND " + utmWhere.join(" AND ") : ""}
     ORDER BY la.student_id, la.created_at ASC
   )`
         : `
+  filtered_students AS (
+    SELECT DISTINCT s.student_id
+    FROM students s
+    LEFT JOIN counsellors c1 ON s.assigned_counsellor_id = c1.counsellor_id
+    LEFT JOIN counsellors c2_single ON s.assigned_counsellor_l3_id = c2_single.counsellor_id
+    ${filteredStudentsSQL}
+  ),
   latest_remark AS (
     SELECT DISTINCT ON (sr.student_id)
       sr.student_id, sr.remark_id, sr.lead_status, sr.lead_sub_status, sr.calling_status,
       sr.sub_calling_status, sr.remarks, sr.callback_date, sr.callback_time,
       sr.created_at as remark_created_at, sr.counsellor_id
     FROM student_remarks sr
-    ${latestRemarkWhere}
+    ${latestRemarkWhere ? latestRemarkWhere + ' AND' : 'WHERE'} sr.student_id IN (SELECT student_id FROM filtered_students)
     ORDER BY sr.student_id, sr.created_at DESC
   ),
   first_lead_activity AS (
@@ -832,7 +871,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       la.utm_campaign_id, la.utm_adgroup_id, la.utm_creative_id, la.source,
       la.source_url, la.created_at as activity_created_at
     FROM student_lead_activities la
-    ${utmWhere.length > 0 ? "WHERE " + utmWhere.join(" AND ") : ""}
+    WHERE la.student_id IN (SELECT student_id FROM filtered_students)
+    ${utmWhere.length > 0 ? "AND " + utmWhere.join(" AND ") : ""}
     ORDER BY la.student_id, la.created_at ASC
   )`;
 
@@ -843,7 +883,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           sr.student_id,
           sr.created_at as first_form_filled_date
         FROM student_remarks sr
-        WHERE sr.lead_status ILIKE 'Application'
+        WHERE sr.lead_status ILIKE 'Application' AND sr.student_id IN (SELECT student_id FROM filtered_students)
         ORDER BY sr.student_id, sr.created_at ASC
       ),
       first_remark_l2 AS (
@@ -852,7 +892,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           MIN(sr.created_at) as first_call_date_l2
         FROM student_remarks sr
         INNER JOIN counsellors c ON sr.counsellor_id = c.counsellor_id
-        WHERE c.role = 'l2'
+        WHERE c.role = 'l2' AND sr.student_id IN (SELECT student_id FROM filtered_students)
         GROUP BY sr.student_id
       ),
       first_remark_l3 AS (
@@ -861,7 +901,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           MIN(sr.created_at) as first_call_date_l3
         FROM student_remarks sr
         INNER JOIN counsellors c ON sr.counsellor_id = c.counsellor_id
-        WHERE c.role = 'l3'
+        WHERE c.role = 'l3' AND sr.student_id IN (SELECT student_id FROM filtered_students)
         GROUP BY sr.student_id
       ),
       first_icc_remark AS (
@@ -869,7 +909,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           sr.student_id,
           sr.created_at as first_icc_date
         FROM student_remarks sr
-        WHERE sr.lead_sub_status ILIKE 'Initial Counseling Completed'
+        WHERE sr.lead_sub_status ILIKE 'Initial Counseling Completed' AND sr.student_id IN (SELECT student_id FROM filtered_students)
         ORDER BY sr.student_id, sr.created_at ASC
       ),
       connected_calls_count AS (
@@ -877,7 +917,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           sr.student_id,
           COUNT(*) as total_connected_calls
         FROM student_remarks sr
-        WHERE sr.calling_status ILIKE 'Connected'
+        WHERE sr.calling_status ILIKE 'Connected' AND sr.student_id IN (SELECT student_id FROM filtered_students)
         GROUP BY sr.student_id
       ),
       admission_remark AS (
@@ -885,15 +925,16 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           sr.student_id,
           sr.created_at as admission_date
         FROM student_remarks sr
-        WHERE sr.lead_status ILIKE 'Admission'
+        WHERE sr.lead_status ILIKE 'Admission' AND sr.student_id IN (SELECT student_id FROM filtered_students)
         ORDER BY sr.student_id, sr.created_at ASC
       ),
       has_icc_or_admission AS (
         SELECT DISTINCT
           sr.student_id
         FROM student_remarks sr
-        WHERE sr.lead_sub_status ILIKE 'Initial Counseling Completed'
-           OR sr.lead_status ILIKE 'Admission Application Enrolled'
+        WHERE (sr.lead_sub_status ILIKE 'Initial Counseling Completed'
+           OR sr.lead_status ILIKE 'Admission Application Enrolled')
+           AND sr.student_id IN (SELECT student_id FROM filtered_students)
       ),
       pre_ni_students AS (
         WITH eligible_students AS (
@@ -907,7 +948,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
                 ex.lead_sub_status = 'Initial Counseling Completed'
                 OR ex.lead_status IN ('Application', 'Admission')
               )
-          )
+          ) AND sr.student_id IN (SELECT student_id FROM filtered_students)
           GROUP BY student_id
           HAVING (
             (COUNT(*) = 1 AND BOOL_AND(lead_status = 'NotInterested'))
@@ -1191,6 +1232,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       SELECT
         ${isDownload ? downloadSelectFields : ""}
         ${maskedSelectFields}
+        COUNT(*) OVER() as __total_count,
         COALESCE(rcc.total_remarks_by_this_counsellor, 0) as total_remarks_l3,
         fje.first_journey_timestamp as created_at_l3,
         fje.first_journey_timestamp as assigned_l3_date_from_journey,
@@ -1263,6 +1305,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       SELECT
         ${isDownload ? downloadSelectFields : ""}
         ${maskedSelectFields}
+        COUNT(*) OVER() as __total_count,
         s.total_remarks_l3,
         c1.counsellor_id as counsellor_id,
         c1.counsellor_name as counsellor_name,
@@ -1352,58 +1395,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       ${orderBySQL}
       ${!isDownload ? `LIMIT ${limitNum} OFFSET ${offset}` : ""}`;
 
-    const countQuery =
-      data === "l3"
-        ? `
-      ${ctesSQL}
-      SELECT COUNT(DISTINCT s.student_id) as total
-      FROM students s
-      INNER JOIN latest_journey_entries lje ON s.student_id = lje.student_id
-      INNER JOIN first_journey_entries fje ON s.student_id = fje.student_id
-      LEFT JOIN l3_counsellor_details lcd ON lje.assigned_l3_counsellor_id = lcd.counsellor_id
-      LEFT JOIN counsellors c1 ON s.assigned_counsellor_id = c1.counsellor_id
-      LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
-      LEFT JOIN remarks_count_by_counsellor rcc ON s.student_id = rcc.student_id
-      LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
-      ${
-        isDownload
-          ? `
-      LEFT JOIN first_remark_l2 frl2 ON s.student_id = frl2.student_id
-      LEFT JOIN first_remark_l3 frl3 ON s.student_id = frl3.student_id
-      LEFT JOIN first_icc_remark ficc ON s.student_id = ficc.student_id
-      LEFT JOIN connected_calls_count ccc ON s.student_id = ccc.student_id
-      LEFT JOIN admission_remark adm ON s.student_id = adm.student_id
-      LEFT JOIN has_icc_or_admission hia ON s.student_id = hia.student_id
-      LEFT JOIN pre_ni_students pns ON s.student_id = pns.student_id
-      LEFT JOIN first_application_remark far ON s.student_id = far.student_id
-      `
-          : ""
-      }
-      ${whereSQL}`
-        : `
-      ${ctesSQL}
-      SELECT COUNT(DISTINCT s.student_id) as total
-      FROM students s
-      LEFT JOIN counsellors c1 ON s.assigned_counsellor_id = c1.counsellor_id
-      LEFT JOIN counsellors c2_single ON c2_single.counsellor_id = s.assigned_counsellor_l3_id
-      LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
-      LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
-      ${
-        isDownload
-          ? `
-      LEFT JOIN first_remark_l2 frl2 ON s.student_id = frl2.student_id
-      LEFT JOIN first_remark_l3 frl3 ON s.student_id = frl3.student_id
-      LEFT JOIN first_icc_remark ficc ON s.student_id = ficc.student_id
-      LEFT JOIN connected_calls_count ccc ON s.student_id = ccc.student_id
-      LEFT JOIN admission_remark adm ON s.student_id = adm.student_id
-      LEFT JOIN has_icc_or_admission hia ON s.student_id = hia.student_id
-      LEFT JOIN pre_ni_students pns ON s.student_id = pns.student_id
-      LEFT JOIN first_application_remark far ON s.student_id = far.student_id
-      `
-          : ""
-      }
-      ${whereSQL}`;
-
     const studentWhereStr =
       where
         .filter((w) => !w.includes("lr."))
@@ -1449,7 +1440,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     if (!isDownload && freshLeads !== "Fresh" && leadStatus !== "Fresh") {
       if (data === "l3") {
         // For L3 view, use the stats function that calculates fresh from student.current_student_status
-        overallStats = await getL3OverallStatsFromJourney({
+        const getL3OverallStatsFromJourneyPromise = getL3OverallStatsFromJourney({
           journeyWhere,
           remarkWhere: remarkWhereStr,
           utmWhere: utmWhereStr,
@@ -1465,8 +1456,16 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           freshLeads,
           studentWhere: studentWhereStr,
         });
+        
+        const [studentsResult, statsResult] = await Promise.all([
+          sequelize.query(mainQuery, { type: QueryTypes.SELECT }),
+          getL3OverallStatsFromJourneyPromise
+        ]);
+        
+        overallStats = statsResult;
+        var students = studentsResult;
       } else {
-        overallStats = await getOptimizedOverallStatsFromHelper({
+        const getOptimizedOverallStatsFromHelperPromise = getOptimizedOverallStatsFromHelper({
           studentWhere: studentWhereStr,
           remarkWhere: remarkWhereStr,
           utmWhere: utmWhereStr,
@@ -1476,13 +1475,21 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           callback,
           role: data,
         });
+        
+        const [studentsResult, statsResult] = await Promise.all([
+          sequelize.query(mainQuery, { type: QueryTypes.SELECT }),
+          getOptimizedOverallStatsFromHelperPromise
+        ]);
+        
+        overallStats = statsResult;
+        var students = studentsResult;
       }
+    } else {
+      const [studentsResult] = await Promise.all([
+        sequelize.query(mainQuery, { type: QueryTypes.SELECT }),
+      ]);
+      var students = studentsResult;
     }
-
-    const [students, countResult] = await Promise.all([
-      sequelize.query(mainQuery, { type: QueryTypes.SELECT }),
-      sequelize.query(countQuery, { type: QueryTypes.SELECT }),
-    ]);
 
     function convertFlatArrayToNested(arr) {
       if (data === "l3") {
@@ -1707,7 +1714,9 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       }
     }
 
-    const totalCount = parseInt(countResult[0]?.total || 0);
+    const totalCount = isDownload 
+      ? students.length 
+      : parseInt(students[0]?.__total_count || 0, 10);
 
     if (isDownload) {
       return {

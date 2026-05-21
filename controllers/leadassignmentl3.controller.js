@@ -837,3 +837,26 @@ export const toggleRuleSetStatus = async (req, res) => {
 };
 
 
+
+export const internalAssignL3 = async (data) => {
+  return new Promise(async (resolve, reject) => {
+    const req = { body: data };
+    const res = {
+      status: (statusCode) => ({
+        json: (response) => {
+          if (statusCode >= 400) {
+            reject(new Error(response.message || 'Assignment failed'));
+          } else {
+            resolve(response);
+          }
+        }
+      })
+    };
+    try {
+      await assignedtoL3byruleSet(req, res);
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+

@@ -16,6 +16,7 @@ import {
   Admission,
   Registration,
 } from "../models/index.js";
+import { internalAssignL3 } from "./leadassignmentl3.controller.js";
 import { processStudentLead } from "../helper/leadAssignmentService.js";
 import { createRemark } from "./remark.controller.js";
 import { Op, QueryTypes } from "sequelize";
@@ -488,27 +489,27 @@ export const updateStudentStatus = async (req, res) => {
           assigned_l3_counsellor_id,
         );
         if (
-          leadStatus == "Application" &&
+          (leadStatus === "Application" || leadStatus === "Admission" || leadStatus === "Enrolled") &&
           !latestJourney?.assigned_l3_counsellor_id
         ) {
           try {
             const courseDetails = await UniversityCourse.findOne({
               where: { course_id: selectedCourse },
             });
-            const l3data = await axios.post(
-              "http://localhost:3031/v1/leadassignmentl3/assign",
-              {
-                studentId,
-                collegeName: courseDetails.university_name,
-                Course: courseDetails.course_name,
-                Degree: courseDetails.degree_name,
-                Specialization: courseDetails.specialization,
-                level: courseDetails.level,
-                source: courseDetails.level,
-                stream: courseDetails.stream,
-              },
-            );
-            assigned_l3_counsellor_id = l3data?.data?.assigned_l3_counsellor_id;
+            console.log("Triggering internal L3 assignment function...");
+            
+            const l3data = await internalAssignL3({
+              studentId,
+              collegeName: courseDetails?.university_name,
+              Course: courseDetails?.course_name,
+              Degree: courseDetails?.degree_name,
+              Specialization: courseDetails?.specialization,
+              level: courseDetails?.level,
+              source: student.source,
+              stream: courseDetails?.stream,
+            });
+            assigned_l3_counsellor_id = l3data?.assigned_l3_counsellor_id;
+            console.log("L3 Assignment successful:", assigned_l3_counsellor_id);
           } catch (l3error) {
             console.error("L3 Assignment failed:", l3error.message);
           }
@@ -3516,3 +3517,4 @@ export const bulkCreateStudents = async (req, res) => {
     });
   }
 };
+

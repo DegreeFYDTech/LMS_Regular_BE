@@ -387,13 +387,11 @@ export const updateStudentStatus = async (req, res) => {
         latestJourney?.fee_type !== leadSubStatus;
 
       if (latestStatus !== actualCourseStatus || admissionFeeTypeChanged) {
-        console.log(
-          leadStatus,
-          effectiveCourseStatus,
-          assigned_l3_counsellor_id,
-        );
+      
         if (
-          (leadStatus === "Application" || leadStatus === "Admission" || leadStatus === "Enrolled") &&
+          (leadStatus === "Application" ||
+            leadStatus === "Admission" ||
+            leadStatus === "Enrolled") &&
           !latestJourney?.assigned_l3_counsellor_id
         ) {
           try {
@@ -401,7 +399,7 @@ export const updateStudentStatus = async (req, res) => {
               where: { course_id: selectedCourse },
             });
             console.log("Triggering internal L3 assignment function...");
-            
+
             const l3data = await internalAssignL3({
               studentId,
               collegeName: courseDetails?.university_name,
@@ -449,6 +447,19 @@ export const updateStudentStatus = async (req, res) => {
           journeyData.event_time = event_time;
         }
 
+        // Check if this is the first time an application status is being set for this student+course
+        let isFirstApplicationEntry = false;
+        if (leadStatus === "Application" && selectedCourse) {
+          const existingAppCount = await CourseStatusJourney.count({
+            where: {
+              student_id: studentId,
+              course_id: selectedCourse,
+              course_status: APPLICATION_STATUSES,
+            },
+          });
+          isFirstApplicationEntry = existingAppCount === 0;
+        }
+
         await CourseStatusJourney.create(journeyData);
 
         // Update the latest status in CourseStatus table
@@ -464,6 +475,33 @@ export const updateStudentStatus = async (req, res) => {
           },
           { where: { course_id: selectedCourse, student_id: studentId } },
         );
+
+        // Trigger email on first form/application entry for this course
+        if (isFirstApplicationEntry) {
+          try {
+            const courseDetailsEmail = await UniversityCourse.findOne({
+              where: { course_id: selectedCourse },
+              attributes: ["university_name"],
+            });
+            await GenerateEmailFunction(
+              {
+                student_id: studentId,
+                student_name: student?.student_name,
+                student_email: student?.student_email,
+                student_phone: student?.student_phone,
+                counsellor_l3_email: assigned_l3_counsellor_id,
+                student_current_state: student?.student_current_state,
+                college_For_Applied: courseDetailsEmail?.university_name,
+              },
+              `New Application – ${courseDetailsEmail?.university_name}`,
+            );
+          } catch (emailErr) {
+            console.error(
+              "Application email trigger failed:",
+              emailErr.message,
+            );
+          }
+        }
       } else {
         if (latestJourney) {
           const updateData = {};
@@ -3462,4 +3500,3 @@ export const bulkCreateStudents = async (req, res) => {
     });
   }
 };
-

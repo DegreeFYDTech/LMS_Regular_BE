@@ -483,13 +483,17 @@ export const updateStudentStatus = async (req, res) => {
               where: { course_id: selectedCourse },
               attributes: ["university_name"],
             });
+            const counsellorDetails = await Counsellor.findOne({
+              where: { counsellor_id: assigned_l3_counsellor_id ,role: 'l3'},
+              attributes: ["counsellor_email"],
+            });
             await GenerateEmailFunction(
               {
                 student_id: studentId,
                 student_name: student?.student_name,
                 student_email: student?.student_email,
                 student_phone: student?.student_phone,
-                counsellor_l3_email: assigned_l3_counsellor_id,
+                counsellor_l3_email: counsellorDetails?.counsellor_email,
                 student_current_state: student?.student_current_state,
                 college_For_Applied: courseDetailsEmail?.university_name,
               },

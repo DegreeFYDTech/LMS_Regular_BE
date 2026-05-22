@@ -34,6 +34,7 @@ import dbRuleSetRoutes from '../router/regularRulesetRoutes.js';
 import paymentRoutes from './payment.route.js';
 import couponRoutes from './coupon.route.js';
 import pricingRuleRoutes from './pricingRule.route.js';
+import firstRemarkTimeRoutes from './firstRemarkTime.route.js';
 
 import centralMgmtRoutes from './centralMgmt.route.js';
 
@@ -76,5 +77,6 @@ router.use('/dbRuleset', dbRuleSetRoutes);
 router.use('/payment', paymentRoutes);
 router.use('/coupons', couponRoutes);
 router.use('/pricing-rules', pricingRuleRoutes);
+router.use('/first-remark-time', firstRemarkTimeRoutes);
 
 export default router;

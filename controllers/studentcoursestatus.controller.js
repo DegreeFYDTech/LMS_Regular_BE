@@ -1273,30 +1273,35 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
             THEN s.student_id 
           END) AS attempted,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN ffs.student_id IS NOT NULL
-            THEN s.student_id 
+            THEN s.student_id
           END) AS formFilled,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
+            WHEN s.current_student_status = 'Pre Application'
+            THEN s.student_id
+          END) AS need_active,
+
+          COUNT(DISTINCT CASE
             WHEN fas.student_id IS NOT NULL
-            THEN s.student_id 
+            THEN s.student_id
           END) AS admission_count,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN fes.student_id IS NOT NULL
-            THEN s.student_id 
+            THEN s.student_id
           END) AS enrolled,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN fnis.student_id IS NOT NULL
-            THEN s.student_id 
+            THEN s.student_id
           END) AS ni,
 
           COUNT(DISTINCT CASE WHEN EXISTS (
             SELECT 1 FROM student_remarks sr2
             ${buildCTECondition("sr2")}
-            WHERE sr2.student_id = s.student_id 
+            WHERE sr2.student_id = s.student_id
             AND LOWER(TRIM(sr2.calling_status)) = 'connected'
           ) THEN s.student_id END) as connectedAnytime,
 
@@ -1334,59 +1339,64 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
           ${supervisorSelect},
           NULL::text AS counsellor_id,
           NULL::text AS counsellor_status,
-          
+
           COUNT(DISTINCT s.student_id) AS lead_count,
-          
-          COUNT(DISTINCT CASE 
+
+          COUNT(DISTINCT CASE
             WHEN src.total_remarks_count IS NULL OR src.total_remarks_count = 0
-            THEN s.student_id 
+            THEN s.student_id
           END) AS freshCount,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN pns.student_id IS NOT NULL
-            THEN s.student_id 
+            THEN s.student_id
           END) AS pre_ni_count,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN fps.student_id IS NOT NULL
-            THEN s.student_id 
+            THEN s.student_id
           END) AS pre_application_count,
 
-          COUNT(DISTINCT CASE 
-            WHEN (src.total_remarks_count IS NULL OR src.total_remarks_count = 0) 
+          COUNT(DISTINCT CASE
+            WHEN (src.total_remarks_count IS NULL OR src.total_remarks_count = 0)
                OR fps.student_id IS NOT NULL
-            THEN s.student_id 
+            THEN s.student_id
           END) AS active_cases,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN src.total_remarks_count > 0
-            THEN s.student_id 
+            THEN s.student_id
           END) AS attempted,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN ffs.student_id IS NOT NULL
-            THEN s.student_id 
+            THEN s.student_id
           END) AS formFilled,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
+            WHEN s.current_student_status = 'Pre Application'
+            THEN s.student_id
+          END) AS need_active,
+
+          COUNT(DISTINCT CASE
             WHEN fas.student_id IS NOT NULL
-            THEN s.student_id 
+            THEN s.student_id
           END) AS admission_count,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN fes.student_id IS NOT NULL
-            THEN s.student_id 
+            THEN s.student_id
           END) AS enrolled,
 
-          COUNT(DISTINCT CASE 
+          COUNT(DISTINCT CASE
             WHEN fnis.student_id IS NOT NULL
-            THEN s.student_id 
+            THEN s.student_id
           END) AS ni,
 
           COUNT(DISTINCT CASE WHEN EXISTS (
             SELECT 1 FROM student_remarks sr2
             ${buildCTECondition("sr2")}
-            WHERE sr2.student_id = s.student_id 
+            WHERE sr2.student_id = s.student_id
             AND LOWER(TRIM(sr2.calling_status)) = 'connected'
           ) THEN s.student_id END) as connectedAnytime,
 
@@ -1616,6 +1626,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
             active_cases: 0,
             attempted: 0,
             formFilled: 0,
+            need_active: 0,
             admission_count: 0,
             enrolled: 0,
             ni: 0,
@@ -1673,6 +1684,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
       const pre_application_count = getValue(row, "pre_application_count");
       const active_cases = getValue(row, "active_cases");
       const formFilled = getValue(row, "formFilled");
+      const need_active = getValue(row, "need_active");
       const connectedAnytime = getValue(row, "connectedAnytime");
       const icc = getValue(row, "icc");
       const attempted = getValue(row, "attempted");
@@ -1696,6 +1708,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
             : 0,
         attempted,
         formFilled,
+        need_active,
         formfilled: formFilled,
         admission: admission_count,
         connectedAnytime,
@@ -1740,6 +1753,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
         pre_application_count: 0,
         attempted: 0,
         formFilled: 0,
+        need_active: 0,
         admission_count: 0,
         enrolled: 0,
         ni: 0,
@@ -1776,6 +1790,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
         overall.pre_application_count += getValue(row, "pre_application_count");
         overall.attempted += getValue(row, "attempted");
         overall.formFilled += getValue(row, "formFilled");
+        overall.need_active += getValue(row, "need_active");
         overall.admission_count += getValue(row, "admission_count");
         overall.enrolled += getValue(row, "enrolled");
         overall.ni += getValue(row, "ni");
@@ -2779,30 +2794,35 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
           THEN s.student_id 
         END) AS attempted,
 
-        COUNT(DISTINCT CASE 
+        COUNT(DISTINCT CASE
           WHEN ffs.student_id IS NOT NULL
-          THEN s.student_id 
+          THEN s.student_id
         END) AS formFilled,
 
-        COUNT(DISTINCT CASE 
+        COUNT(DISTINCT CASE
+          WHEN s.current_student_status = 'Pre Application'
+          THEN s.student_id
+        END) AS need_active,
+
+        COUNT(DISTINCT CASE
           WHEN fas.student_id IS NOT NULL
-          THEN s.student_id 
+          THEN s.student_id
         END) AS admission_count,
 
-        COUNT(DISTINCT CASE 
+        COUNT(DISTINCT CASE
           WHEN lr.lead_status = 'Enrolled'
-          THEN s.student_id 
+          THEN s.student_id
         END) AS enrolled,
 
-        COUNT(DISTINCT CASE 
+        COUNT(DISTINCT CASE
           WHEN lr.lead_status = 'NotInterested'
-          THEN s.student_id 
+          THEN s.student_id
         END) AS ni,
 
         COUNT(DISTINCT CASE WHEN EXISTS (
           SELECT 1 FROM student_remarks sr2
           ${buildCTECondition("sr2")}
-          WHERE sr2.student_id = s.student_id 
+          WHERE sr2.student_id = s.student_id
           AND LOWER(TRIM(sr2.calling_status)) = 'connected'
         ) THEN s.student_id END) as connectedAnytime,
 
@@ -2921,6 +2941,7 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
             active_cases: 0,
             attempted: 0,
             formFilled: 0,
+            need_active: 0,
             admission_count: 0,
             enrolled: 0,
             ni: 0,
@@ -3027,6 +3048,7 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
       const pre_application_count = getValue(row, "pre_application_count");
       const active_cases = getValue(row, "active_cases");
       const formFilled = getValue(row, "formFilled");
+      const need_active = getValue(row, "need_active");
       const connectedAnytime = getValue(row, "connectedAnytime");
       const icc = getValue(row, "icc");
       const attempted = getValue(row, "attempted");
@@ -3043,6 +3065,7 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
           connectedAnytime,
           icc,
           formfilled: formFilled,
+          need_active,
           admission: admission_count,
           preNI: pre_ni_count,
           connectedAnytimePercent:
@@ -3082,6 +3105,7 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
           remarks_8_10,
           remarks_gt_10,
           application: formFilled,
+          need_active,
           enrolled,
           preNI: pre_ni_count,
           preNIPercent:
@@ -3102,6 +3126,7 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
         pre_application_count: 0,
         attempted: 0,
         formFilled: 0,
+        need_active: 0,
         admission_count: 0,
         enrolled: 0,
         ni: 0,
@@ -3121,6 +3146,7 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
         overall.pre_application_count += getValue(row, "pre_application_count");
         overall.attempted += getValue(row, "attempted");
         overall.formFilled += getValue(row, "formFilled");
+        overall.need_active += getValue(row, "need_active");
         overall.admission_count += getValue(row, "admission_count");
         overall.enrolled += getValue(row, "enrolled");
         overall.ni += getValue(row, "ni");

@@ -103,6 +103,8 @@ export default async function GenerateEmailFunction(data, subject, reason) {
             "deepak@degreefyd.com",
             "manoj.kain@degreefyd.com",
             "harsh.pandey@degreefyd.com",
+            "sid@degreefyd.com",
+            "guruvinder.singh@degreefyd.com"
         ];
         const recipients = [...DEFAULT_RECIPIENTS];
         if (data.counsellor_l3_email) {

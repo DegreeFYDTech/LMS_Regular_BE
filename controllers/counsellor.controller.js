@@ -313,42 +313,64 @@ export const changePassword = async (req, res) => {
 
 
 export const getAllCounsellors = async (req, res) => {
-  const { role } = req.query;
+  const { role, search, status, supervisor_id, start_date, end_date } = req.query;
   const user = req.user;
 
   try {
     let whereClause = {};
 
-    if (role) {
+    // Role filter
+    if (role && role !== "all") {
       if (role === "to") {
         whereClause.role = { [Op.in]: ["to", "to_l3"] };
       } else {
         whereClause.role = role;
       }
-    } else {
+    } else if (!role) {
       whereClause.role = { [Op.ne]: "to" };
     }
 
+    // Scope to team owner's counsellors
     if (user?.role === "to" && user?.id) {
       whereClause.assigned_to = user.id;
     }
     if (user?.role === "to_l3" && user?.id) {
       whereClause.assigned_to = user.id;
     }
-    console.log("Fetching counsellors with where clause:", whereClause);
+
+    // Search by name or email
+    if (search && search.trim()) {
+      whereClause[Op.or] = [
+        { counsellor_name: { [Op.iLike]: `%${search.trim()}%` } },
+        { counsellor_email: { [Op.iLike]: `%${search.trim()}%` } },
+      ];
+    }
+
+    // Status filter
+    if (status) {
+      whereClause.status = status;
+    }
+
+    // Supervisor filter
+    if (supervisor_id) {
+      whereClause.assigned_to = supervisor_id === "unassigned" ? null : supervisor_id;
+    }
+
+    // Onboarding date range
+    if (start_date || end_date) {
+      whereClause.created_at = {};
+      if (start_date) whereClause.created_at[Op.gte] = new Date(start_date);
+      if (end_date)   whereClause.created_at[Op.lte] = new Date(end_date);
+    }
+
     const counsellors = await Counsellor.findAll({
       where: whereClause,
-      attributes: {
-        exclude: ["counsellor_password", "counsellor_real_password"],
-      },
+      attributes: { exclude: ["counsellor_password", "counsellor_real_password"] },
+      order: [["counsellor_name", "ASC"]],
     });
 
     const supervisors = await Counsellor.findAll({
-      where: {
-        role: {
-          [Op.in]: ["to","to_l3"],
-        },
-      },
+      where: { role: { [Op.in]: ["to", "to_l3"] } },
       attributes: ["counsellor_id", "counsellor_name"],
     });
 

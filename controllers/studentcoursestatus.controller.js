@@ -768,6 +768,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     const {
       type,
       source,
+      source_url,
       utm_campaign,
       created_at_start,
       created_at_end,
@@ -809,6 +810,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     const utm_array = utm_campaign && utm_campaign.split(",");
     const counsellor_array = counsellor_id && counsellor_id.split(",");
     const source_array = source && source.split(",");
+    const source_url_array = source_url && source_url.split(",");
 
     if (
       !["agent", "source", "campaign", "created_at", "source_url"].includes(
@@ -966,6 +968,12 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
       const sourceCondition = `s.source IN ('${source_array.map((v) => v.trim().replace(/'/g, "''")).join("','")}')`;
       whereConds.push(sourceCondition);
       studentWhereConds.push(sourceCondition);
+    }
+
+    if (source_url && !isAnalyser) {
+      const sourceUrlCondition = `s.first_source_url IN ('${source_url_array.map((v) => v.trim().replace(/'/g, "''")).join("','")}')`;
+      whereConds.push(sourceUrlCondition);
+      studentWhereConds.push(sourceUrlCondition);
     }
 
     if (
@@ -2277,6 +2285,7 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
     const {
       type,
       source,
+      source_url,
       utm_campaign,
       created_at_start,
       created_at_end,
@@ -2323,6 +2332,7 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
     const utm_array = utm_campaign && utm_campaign.split(",");
     const counsellor_array = counsellor_id && counsellor_id.split(",");
     const source_array = source && source.split(",");
+    const source_url_array = source_url && source_url.split(",");
 
     if (
       !["agent", "source", "campaign", "created_at", "source_url"].includes(
@@ -2489,6 +2499,12 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
       const sourceCondition = `s.source IN ('${source_array.map((v) => v.trim().replace(/'/g, "''")).join("','")}')`;
       whereConds.push(sourceCondition);
       studentWhereConds.push(sourceCondition);
+    }
+
+    if (source_url && !isAnalyser) {
+      const sourceUrlCondition = `s.first_source_url IN ('${source_url_array.map((v) => v.trim().replace(/'/g, "''")).join("','")}')`;
+      whereConds.push(sourceUrlCondition);
+      studentWhereConds.push(sourceUrlCondition);
     }
 
     // Apply regular date filters (will be overridden by analyser date filter if both exist)

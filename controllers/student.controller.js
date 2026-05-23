@@ -130,6 +130,10 @@ export const updateStudentStatus = async (req, res) => {
       feesAmount,
       selectedCourse,
       collegeCourseStatus,
+      formID,
+      couponCode,
+      userName,
+      password,
       event_time, // Add event_time to destructured variables
     } = req.body;
     const student = await Student.findOne({
@@ -164,6 +168,69 @@ export const updateStudentStatus = async (req, res) => {
           where: { student_id: studentId },
         },
       );
+    }
+    let courseDetails = null;
+    if (selectedCourse) {
+      courseDetails = await UniversityCourse.findOne({
+        where: { course_id: selectedCourse },
+      });
+    }
+    let studentleadActivityDetails = await StudentLeadActivity.findOne({
+      where: { student_id: studentId },
+    });
+
+    if (
+      courseDetails?.dataValues?.university_name?.includes("Amity") &&
+      leadStatus == "Application"
+    ) {
+      console.log(
+        "Amity application transfer logic triggered",
+        student.dataValues,
+        studentleadActivityDetails?.dataValues,
+        selectedCourse,
+        leadStatus,
+        leadSubStatus,
+      );
+      const TransferResponse = await axios.post(
+        "https://regular-amity-api.degreefyd.com/v1/student/check-and-transfer",
+        {
+          studentDetails: student.dataValues,
+          studentcreds: { formID, couponCode, userName, password },
+          studentleadActivityDetails:
+            studentleadActivityDetails?.dataValues || null,
+          courseId: selectedCourse,
+          leadStatus,
+          leadSubStatus,
+        },
+      );
+      return res.status(200).json({
+        success: true,
+        message: "Student transferred to Amity successfully",
+      });
+    }
+    if (
+      courseDetails?.dataValues?.university_name?.includes(
+        "Chandigarh Group of Colleges",
+      ) &&
+      leadStatus == "Application"
+    ) {
+      const TransferResponse = await axios.post(
+        "https://regular-cgc-api.degreefyd.com/v1/student/check-and-transfer",
+        {
+          studentDetails: student.dataValues,
+          studentcreds: { formID, couponCode, userName, password },
+
+          studentleadActivityDetails:
+            studentleadActivityDetails?.dataValues || null,
+          courseId: selectedCourse,
+          leadStatus,
+          leadSubStatus,
+        },
+      );
+      return res.status(200).json({
+        success: true,
+        message: "Student transferred to CGC successfully",
+      });
     }
     const statusPriority = {
       "Pre Application": 1,

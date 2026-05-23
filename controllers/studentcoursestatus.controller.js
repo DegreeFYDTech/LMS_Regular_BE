@@ -1287,7 +1287,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
           END) AS formFilled,
 
           COUNT(DISTINCT CASE
-            WHEN s.current_student_status = 'Pre Application'
+            WHEN s.current_student_status IN ('Pre Application', 'Initial Counselling Completed')
             THEN s.student_id
           END) AS need_active,
 
@@ -1382,7 +1382,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
           END) AS formFilled,
 
           COUNT(DISTINCT CASE
-            WHEN s.current_student_status = 'Pre Application'
+            WHEN s.current_student_status IN ('Pre Application', 'Initial Counselling Completed')
             THEN s.student_id
           END) AS need_active,
 
@@ -2816,7 +2816,7 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
         END) AS formFilled,
 
         COUNT(DISTINCT CASE
-          WHEN s.current_student_status = 'Pre Application'
+          WHEN s.current_student_status IN ('Pre Application', 'Initial Counselling Completed')
           THEN s.student_id
         END) AS need_active,
 

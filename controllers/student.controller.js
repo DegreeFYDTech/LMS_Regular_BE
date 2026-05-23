@@ -219,7 +219,7 @@ export const updateStudentStatus = async (req, res) => {
         {
           studentDetails: student.dataValues,
           studentcreds: { formID, couponCode, userName, password },
-
+          regularCounsellorName: req.user.counsellor_name,
           studentleadActivityDetails:
             studentleadActivityDetails?.dataValues || null,
           courseId: selectedCourse,
@@ -454,7 +454,6 @@ export const updateStudentStatus = async (req, res) => {
         latestJourney?.fee_type !== leadSubStatus;
 
       if (latestStatus !== actualCourseStatus || admissionFeeTypeChanged) {
-      
         if (
           (leadStatus === "Application" ||
             leadStatus === "Admission" ||
@@ -551,7 +550,7 @@ export const updateStudentStatus = async (req, res) => {
               attributes: ["university_name"],
             });
             const counsellorDetails = await Counsellor.findOne({
-              where: { counsellor_id: assigned_l3_counsellor_id ,role: 'l3'},
+              where: { counsellor_id: assigned_l3_counsellor_id, role: "l3" },
               attributes: ["counsellor_email"],
             });
             await GenerateEmailFunction(

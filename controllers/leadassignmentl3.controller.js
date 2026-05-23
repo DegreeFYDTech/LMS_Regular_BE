@@ -201,8 +201,8 @@ export const assignedtoL3byruleSet = async (req, res) => {
       });
 
       if (!dummyAgent) {
-        console.log("Dummy agent not found, searching for any L3 agent");
-        const anyL3Agent = await Counsellor.findOne({ where: { role: "l3" } });
+        console.log("Dummy agent not found, searching for any active L3 agent");
+        const anyL3Agent = await Counsellor.findOne({ where: { role: "l3", status: "active" } });
         if (anyL3Agent) {
           console.log(`Found L3 agent:`, JSON.stringify(anyL3Agent, null, 2));
           fallbackAgentId = anyL3Agent.counsellor_id;
@@ -399,6 +399,23 @@ export const assignedtoL3byruleSet = async (req, res) => {
     let assignmentMethod;
     let currentRoundRobinIndex = 0;
 
+    // Fetch active status for all counsellors in the ruleset upfront
+    const activeCounsellors = await Counsellor.findAll({
+      where: {
+        counsellor_id: { [Op.in]: assignedCounsellors },
+        status: "active",
+        is_blocked: false,
+      },
+      attributes: ["counsellor_id"],
+    });
+    const activeCounsellorIds = new Set(activeCounsellors.map(c => c.counsellor_id));
+    console.log(`Active counsellors in ruleset: ${activeCounsellors.length} / ${assignedCounsellors.length}`);
+
+    if (activeCounsellors.length === 0) {
+      console.log("No active counsellors in selected ruleset - throwing error");
+      return res.status(404).json({ message: "No active counsellors assigned to the selected ruleset" });
+    }
+
     if (assignedCounsellors.length === 1) {
       selectedCounsellorId = assignedCounsellors[0];
       assignmentMethod = "direct";
@@ -409,47 +426,46 @@ export const assignedtoL3byruleSet = async (req, res) => {
     } else {
       console.log("Multiple counsellors found - using round-robin assignment");
       currentRoundRobinIndex = selectedRuleset.round_robin_index || 0;
-      console.log("Current round-robin index:", currentRoundRobinIndex);
 
       if (currentRoundRobinIndex >= assignedCounsellors.length) {
-        console.log("Round-robin index out of range - resetting to 0");
         currentRoundRobinIndex = 0;
       }
 
-      selectedCounsellorId = assignedCounsellors[currentRoundRobinIndex];
+      // Find next active counsellor starting from currentRoundRobinIndex
+      let found = false;
+      for (let i = 0; i < assignedCounsellors.length; i++) {
+        const idx = (currentRoundRobinIndex + i) % assignedCounsellors.length;
+        if (activeCounsellorIds.has(assignedCounsellors[idx])) {
+          selectedCounsellorId = assignedCounsellors[idx];
+          currentRoundRobinIndex = idx;
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        return res.status(404).json({ message: "No active counsellors available in selected ruleset" });
+      }
+
       assignmentMethod = "round-robin";
       console.log("Selected counsellor via round-robin:", selectedCounsellorId);
 
-      const nextIndex =
-        (currentRoundRobinIndex + 1) % assignedCounsellors.length;
-      console.log(
-        `Updating round-robin index from ${currentRoundRobinIndex} to ${nextIndex}`,
-      );
-
+      const nextIndex = (currentRoundRobinIndex + 1) % assignedCounsellors.length;
       await LeadAssignmentRuleL3.update(
         { round_robin_index: nextIndex },
-        {
-          where: {
-            l3_assignment_rulesets_id:
-              selectedRuleset.l3_assignment_rulesets_id,
-          },
-        },
+        { where: { l3_assignment_rulesets_id: selectedRuleset.l3_assignment_rulesets_id } },
       );
-      console.log("Round-robin index updated successfully");
+      console.log(`Round-robin index updated to ${nextIndex}`);
     }
 
     console.log(`Fetching counsellor details for ID: ${selectedCounsellorId}`);
     let counsellorDetails = await Counsellor.findOne({
-      where: { counsellor_id: selectedCounsellorId },
+      where: { counsellor_id: selectedCounsellorId, status: "active", is_blocked: false },
     });
-    console.log(
-      "Counsellor details retrieved:",
-      JSON.stringify(counsellorDetails, null, 2),
-    );
 
     if (!counsellorDetails) {
-      console.log("Selected counsellor not found - throwing error");
-      return res.status(404).json({ message: "Selected counsellor not found" });
+      console.log("Selected counsellor not found or inactive - throwing error");
+      return res.status(404).json({ message: "Selected counsellor not found or is inactive" });
     }
 
     const responseMessage = matchedAt !== "college-name-only"

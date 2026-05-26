@@ -100,10 +100,8 @@ export default async function GenerateEmailFunction(data, subject, reason) {
 `
         const DEFAULT_RECIPIENTS = [
             "bhuwan@degreefyd.com",
-            "deepak@degreefyd.com",
             "manoj.kain@degreefyd.com",
             "harsh.pandey@degreefyd.com",
-            "sid@degreefyd.com",
             "guruvinder.singh@degreefyd.com"
         ];
         const recipients = [...DEFAULT_RECIPIENTS];

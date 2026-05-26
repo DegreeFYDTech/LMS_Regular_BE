@@ -1,4 +1,10 @@
-import { Student, StudentLeadActivity } from "../models/index.js";
+import {
+  CourseStatus,
+  StudentLeadActivity,
+  UniversityCourse,
+  sequelize,
+} from "../models/index.js";
+import { Op } from "sequelize";
 export const normalizeLeadAnswers = (input) => {
   if (!Array.isArray(input)) return [];
 
@@ -30,8 +36,13 @@ export const normalizeLeadAnswers = (input) => {
 };
 
 export const createLeadActivity = async (leadData, studentId) => {
-  console.log("Creating lead activity for studentId:", leadData);
   try {
+    console.log(
+      "Creating lead activity with data:",
+      leadData,
+      "for student ID:",
+      studentId,
+    );
     const sourceurl =
       leadData.first_source_url ||
       leadData.sourceUrl ||
@@ -42,7 +53,8 @@ export const createLeadActivity = async (leadData, studentId) => {
 
     const newLeadActivity = await StudentLeadActivity.create({
       student_id: studentId || "",
-
+      lead_type: leadData.lead_type || "",
+      preferred_college_cll: leadData.preferred_college_cll || [],
       student_name: leadData.name || "",
       student_email: leadData.email || "",
       student_phone: leadData.phoneNumber || leadData.mobile || "",
@@ -50,11 +62,10 @@ export const createLeadActivity = async (leadData, studentId) => {
       whatsapp: leadData.whatsapp || "",
       cta_name: leadData.ctaName || leadData.cta_name || "",
       form_name: leadData.formName || leadData.form_name || "",
-      is_transfer: leadData.isTransfer || false,
+
       source: source,
       source_url: sourceurl,
-      lead_type: leadData.lead_type || "",
-      preferred_college_cll: leadData.preferred_college_cll || [],
+
       utm_source: leadData.utmSource || "",
       utm_medium: leadData.utmMedium || "",
       utm_keyword: leadData.utmKeyword || "",
@@ -62,19 +73,22 @@ export const createLeadActivity = async (leadData, studentId) => {
       utm_campaign_id: leadData.utmCampaignId || "",
       utm_adgroup_id: leadData.utmAdgroupId || "",
       utm_creative_id: leadData.utmCreativeId || "",
-
+      lead_type: leadData.leadType || "",
+      preferred_college_cll: leadData.preferred_college_cll || [],
       ip_city: leadData.ipCity || "",
       browser: leadData.browser || "",
       device: leadData.device || "",
-
+      lead_type: leadData.leadType || "",
+      preferred_college_cll: leadData.preferred_college_cll || [],
       student_comment:
-        source == "Google_Lead_form"
-          ? leadData.student_comment
+        source == "Google_Lead_Form"
+          ? leadData.student_comment || []
           : normalizeLeadAnswers(leadData.student_comment || []),
 
       highest_qualification: leadData.highestQualification || "",
       working_professional: leadData.workingProfessional ?? false,
       student_status: "new",
+
       destination_number: leadData.DestinationNumber || "",
       dial_whom_number: leadData.DialWhomNumber || "",
       call_duration: leadData.CallDuration || "",
@@ -82,9 +96,48 @@ export const createLeadActivity = async (leadData, studentId) => {
       start_time: leadData.StartTime || "",
       end_time: leadData.EndTime || "",
       call_sid: leadData.CallSid || "",
-      call_recording_url: leadData.CallRecordingUrl || "",
+      call_recording_url: leadData.call_recording_url || "",
       talk_duration: leadData.TalkDuration || "",
+      is_transfer: leadData.isTransfer || false,
     });
+    const shortlistColleges = leadData.preferred_college_cll || [];
+    if (shortlistColleges.length > 0) {
+      for (const collegeName of shortlistColleges) {
+        console.log(
+          `Processing college: ${collegeName} for student ID: ${studentId}`,
+        );
+        const courses = await UniversityCourse.findAll({
+          where: {
+            university_name: { [Op.iLike]: `%${collegeName}%` },
+          },
+          attributes: ["course_id"],
+        });
+
+        if (courses.length === 0) continue;
+
+        const courseIds = courses.map((c) => c.course_id);
+
+        const existingStatus = await CourseStatus.findOne({
+          where: {
+            student_id: studentId,
+            course_id: courseIds,
+          },
+        });
+        console.log(
+          `Existing course status for student ${studentId} and courses ${courseIds}:`,
+          existingStatus,
+        );
+        if (!existingStatus) {
+          await CourseStatus.create({
+            course_id: courseIds[0],
+            student_id: studentId,
+            selection_type: "student_selected",
+            latest_course_status: "Shortlisted",
+            is_shortlisted: true,
+          });
+        }
+      }
+    }
 
     return { success: true, leadActivity: newLeadActivity };
   } catch (error) {
@@ -324,62 +377,125 @@ export const getLeadActivitiesByDateRange = async (req, res) => {
   }
 };
 
-export const bulkInsertStudentLeadActivities = async (req, res) => {
-  try {
-    const activities = req.body;
+import fs from "fs";
+import path from "path";
 
-    if (!Array.isArray(activities) || activities.length === 0) {
-      return res.status(400).json({
+export const updateCommentsFromFile = async (req, res) => {
+  try {
+    // File is named data.json in root directory
+    const filePath = path.join(process.cwd(), "data.json");
+
+    console.log("Reading file from:", filePath);
+
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
         success: false,
-        message: "activities must be a non-empty array",
+        message: "data.json file not found in root directory",
       });
     }
 
-    // 1️⃣ Get all valid student_ids
-    const students = await Student.findAll({
-      attributes: ["student_id"],
-      raw: true,
-    });
+    // Read and parse the file
+    const fileContent = fs.readFileSync(filePath, "utf8");
+    const jsonData = JSON.parse(fileContent);
 
-    const validStudentIds = new Set(students.map((s) => s.student_id));
+    console.log(`Found ${jsonData.length} records in data.json`);
 
-    // 2️⃣ Split valid & invalid records
-    const validActivities = [];
-    const skippedActivities = [];
+    let updatedCount = 0;
+    let failedCount = 0;
+    const errors = [];
+    const notFoundEmails = [];
 
-    for (const activity of activities) {
-      if (activity.student_id && validStudentIds.has(activity.student_id)) {
-        validActivities.push(activity);
-      } else {
-        skippedActivities.push({
-          student_id: activity.student_id || null,
-          reason: "student_id not found in students table",
+    // Process each record
+    for (const record of jsonData) {
+      try {
+        const email = record.email;
+        const question = record["additional_fields[0].question"];
+        const answer = record["additional_fields[0].answer"];
+
+        // Skip if missing data
+        if (!email || !question || !answer) {
+          failedCount++;
+          continue;
+        }
+
+        // Clean email (lowercase, trim)
+        const cleanEmail = email.toLowerCase().trim();
+
+        // Create comment object
+        const newComment = {
+          question: question,
+          answer: answer,
+          timestamp: new Date().toISOString(),
+          source: "data.json",
+        };
+
+        // Find existing student
+        const student = await StudentLeadActivity.findOne({
+          where: { student_email: cleanEmail },
         });
+
+        if (student) {
+          // Get existing comments or initialize as array
+          const existingComments = student.student_comment || [];
+
+          // Add new comment to the array
+          const updatedComments = [...existingComments, newComment];
+
+          // Update the record
+          await StudentLeadActivity.update(
+            {
+              student_comment: updatedComments,
+              updated_at: new Date(),
+            },
+            {
+              where: { student_email: cleanEmail },
+            },
+          );
+
+          updatedCount++;
+          console.log(
+            `✓ Updated: ${cleanEmail} (${existingComments.length} → ${updatedComments.length} comments)`,
+          );
+        } else {
+          console.log(`✗ Not found in DB: ${cleanEmail}`);
+          notFoundEmails.push(cleanEmail);
+          failedCount++;
+        }
+      } catch (error) {
+        failedCount++;
+        errors.push(
+          `Error processing ${record.email || "unknown"}: ${error.message}`,
+        );
+        console.error(`Error with ${record.email}:`, error.message);
       }
     }
 
-    // 3️⃣ Insert only valid records
-    let insertedCount = 0;
-    if (validActivities.length > 0) {
-      const inserted = await StudentLeadActivity.bulkCreate(validActivities, {
-        validate: true,
-      });
-      insertedCount = inserted.length;
-    }
-
+    // Send response
     return res.status(200).json({
       success: true,
-      message: "Bulk insert completed",
-      inserted: insertedCount,
-      skipped: skippedActivities.length,
-      skippedRecords: skippedActivities,
+      message: `Processed ${jsonData.length} records from data.json`,
+      stats: {
+        totalRecords: jsonData.length,
+        updated: updatedCount,
+        failed: failedCount,
+        successRate: `${((updatedCount / jsonData.length) * 100).toFixed(1)}%`,
+      },
+      notFound:
+        notFoundEmails.length > 0 ? notFoundEmails.slice(0, 10) : undefined,
+      totalNotFound: notFoundEmails.length,
+      errors: errors.length > 0 ? errors.slice(0, 10) : undefined,
+      totalErrors: errors.length,
+      filePath: filePath,
     });
   } catch (error) {
-    console.error("Bulk Lead Activity Error:", error);
+    console.error("Error updating from file:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Error processing data.json file",
       error: error.message,
+      suggestion:
+        "Make sure data.json is valid JSON format and in the root directory",
     });
   }
 };

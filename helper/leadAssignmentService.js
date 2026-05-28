@@ -716,7 +716,7 @@ export const processStudentLead = async (leadData) => {
     preferred_level: leadData.preferred_level || "",
     preferred_budget: leadData.preferred_budget || "",
     preferred_specialization: leadData.preferred_specialization || "",
-    lead_type: leadData.leadType || "",
+    lead_type: leadData.lead_type || "",
     preferred_college_cll: leadData.preferred_college_cll || [],
     // Campaign fields with proper separation
     utmCampaign: utmCampaign,

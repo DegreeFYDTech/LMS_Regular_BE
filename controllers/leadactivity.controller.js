@@ -53,7 +53,6 @@ export const createLeadActivity = async (leadData, studentId) => {
 
     const newLeadActivity = await StudentLeadActivity.create({
       student_id: studentId || "",
-      lead_type: leadData.lead_type || "",
       preferred_college_cll: leadData.preferred_college_cll || [],
       student_name: leadData.name || "",
       student_email: leadData.email || "",
@@ -73,12 +72,11 @@ export const createLeadActivity = async (leadData, studentId) => {
       utm_campaign_id: leadData.utmCampaignId || "",
       utm_adgroup_id: leadData.utmAdgroupId || "",
       utm_creative_id: leadData.utmCreativeId || "",
-      lead_type: leadData.leadType || "",
       preferred_college_cll: leadData.preferred_college_cll || [],
       ip_city: leadData.ipCity || "",
       browser: leadData.browser || "",
       device: leadData.device || "",
-      lead_type: leadData.leadType || "",
+      lead_type: leadData.lead_type || "",
       preferred_college_cll: leadData.preferred_college_cll || [],
       student_comment:
         source == "Google_Lead_Form"

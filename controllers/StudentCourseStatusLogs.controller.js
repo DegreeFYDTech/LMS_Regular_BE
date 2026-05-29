@@ -2527,7 +2527,7 @@ export const getCourseGraphReport = async (req, res) => {
 
     const admissionsQuery = `
       SELECT
-        DATE(first_adm.min_created)::text AS date,
+        DATE(first_adm.min_created AT TIME ZONE 'Asia/Kolkata')::text AS date,
         uc.university_name AS college,
         COUNT(*) AS count
       FROM (
@@ -2537,10 +2537,10 @@ export const getCourseGraphReport = async (req, res) => {
         GROUP BY student_id, course_id
       ) first_adm
       JOIN university_courses uc ON first_adm.course_id = uc.course_id
-      WHERE first_adm.min_created >= :start_date::timestamp
-        AND first_adm.min_created < (:end_date::date + INTERVAL '1 day')::timestamp
+      WHERE DATE(first_adm.min_created AT TIME ZONE 'Asia/Kolkata') >= :start_date::date
+        AND DATE(first_adm.min_created AT TIME ZONE 'Asia/Kolkata') <= :end_date::date
         ${collegeCondition}
-      GROUP BY DATE(first_adm.min_created), uc.university_name
+      GROUP BY DATE(first_adm.min_created AT TIME ZONE 'Asia/Kolkata'), uc.university_name
       ORDER BY date
     `;
 

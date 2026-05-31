@@ -83,12 +83,12 @@ export const markWalkin = async (req, res) => {
       student_id,
       course_id,
       counsellor_id: userid,
-      course_status: "Walkin Marked",
+      course_status: "Walkin Completed",
       event_time: event_time ? new Date(event_time) : new Date(),
     });
     const lateststudentJourney = await CourseStatus.update(
       {
-        latest_course_status: "Walkin Marked",
+        latest_course_status: "Walkin Completed",
       },
       { where: { student_id, course_id } },
     );
@@ -105,6 +105,8 @@ export const markWalkin = async (req, res) => {
     });
   }
 };
+const VALID_FEE_TYPES = new Set(["Partially Paid", "Semester Paid", "Admission Blocked"]);
+
 const COUNTRY_CODE = "91";
 const ensureCountryCode = (phoneNumber) => {
   return phoneNumber?.startsWith(COUNTRY_CODE)
@@ -409,17 +411,12 @@ export const updateStudentStatus = async (req, res) => {
       returning: true,
     });
 
-    const effectiveCourseStatus =
-      collegeCourseStatus ||
-      (leadStatus === "NotInterested" || leadStatus === "Not Interested"
-        ? "NotInterested"
-        : leadStatus);
+    const effectiveCourseStatus = collegeCourseStatus || leadStatus;
 
     const ALLOWED_JOURNEY_STATUSES = new Set([
       "Form Submitted – Portal Pending",
       "Form Submitted – Completed",
       "Walkin Completed",
-      "Exam/Interview Pending",
       "Exam/Interview Scheduled",
       "Offer Letter/Results Pending",
       "Offer Letter/Results Released",
@@ -499,7 +496,7 @@ export const updateStudentStatus = async (req, res) => {
               ? leadSubStatus
               : effectiveCourseStatus,
           deposit_amount: feesAmount || 0,
-          fee_type: leadStatus === "Admission" ? leadSubStatus : null,
+          fee_type: leadStatus === "Admission" && VALID_FEE_TYPES.has(leadSubStatus) ? leadSubStatus : null,
           currency: "INR",
           assigned_l3_counsellor_id:
             latestCourse?.assigned_l3_counsellor_id ||
@@ -577,7 +574,7 @@ export const updateStudentStatus = async (req, res) => {
           const updateData = {};
           if (remark) updateData.notes = remark;
           if (feesAmount) updateData.deposit_amount = feesAmount;
-          if (leadStatus === "Admission" && leadSubStatus)
+          if (leadStatus === "Admission" && leadSubStatus && VALID_FEE_TYPES.has(leadSubStatus))
             updateData.fee_type = leadSubStatus;
           if (event_time) updateData.event_time = event_time;
 

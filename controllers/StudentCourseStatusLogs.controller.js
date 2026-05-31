@@ -2477,8 +2477,13 @@ export const getCourseGraphReport = async (req, res) => {
       ? (Array.isArray(colleges) ? colleges : colleges.split(',').map(c => c.trim()).filter(Boolean))
       : [];
 
-    const collegeCondition = collegeList.length > 0 ? `AND uc.university_name = ANY(:colleges)` : '';
-    const replacements = { start_date, end_date, ...(collegeList.length > 0 ? { colleges: collegeList } : {}) };
+    const collegeReplacements = {};
+    const collegePlaceholders = collegeList.map((c, i) => {
+      collegeReplacements[`college_${i}`] = c;
+      return `:college_${i}`;
+    }).join(', ');
+    const collegeCondition = collegeList.length > 0 ? `AND uc.university_name IN (${collegePlaceholders})` : '';
+    const replacements = { start_date, end_date, ...collegeReplacements };
 
     const formsQuery = `
       WITH ranked AS (
@@ -2501,9 +2506,9 @@ export const getCourseGraphReport = async (req, res) => {
           f.student_id,
           f.course_id,
           CASE
-            WHEN f.course_status = 'Walkin marked' AND s.student_id IS NOT NULL
+            WHEN f.course_status = 'Walkin Completed' AND s.student_id IS NOT NULL
               THEN s.created_at
-            WHEN f.course_status = 'Walkin marked' AND s.student_id IS NULL
+            WHEN f.course_status = 'Walkin Completed' AND s.student_id IS NULL
               THEN NULL
             ELSE f.created_at
           END AS effective_created_at

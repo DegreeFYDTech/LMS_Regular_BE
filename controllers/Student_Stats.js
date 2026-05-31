@@ -13,6 +13,7 @@ export const getOptimizedOverallStatsFromHelper = async ({
   selectedagent,
   callback,
   role = "l2",
+  is_CSL,
 }) => {
   try {
     const wishlistAgentFilter = selectedagent
@@ -46,6 +47,27 @@ export const getOptimizedOverallStatsFromHelper = async ({
             : ""
         }
         WHERE (${studentWhere})
+        ${
+          is_CSL === "yes"
+            ? `AND EXISTS (
+              SELECT 1 FROM (
+                SELECT DISTINCT ON (la2.student_id) la2.student_id, la2.lead_type
+                FROM student_lead_activities la2
+                WHERE la2.student_id = s.student_id
+                ORDER BY la2.student_id, la2.created_at DESC
+              ) latest_la WHERE latest_la.lead_type ILIKE 'CSL'
+            )`
+            : is_CSL === "no"
+              ? `AND NOT EXISTS (
+              SELECT 1 FROM (
+                SELECT DISTINCT ON (la2.student_id) la2.student_id, la2.lead_type
+                FROM student_lead_activities la2
+                WHERE la2.student_id = s.student_id
+                ORDER BY la2.student_id, la2.created_at DESC
+              ) latest_la WHERE latest_la.lead_type ILIKE 'CSL'
+            )`
+              : ""
+        }
       ),
      fresh_leads AS (
         ${

@@ -92,6 +92,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       totalConnectedCalls_max,
       isPreNi,
       advancedFilters,
+      is_CSL,
     } = filters;
 
     // Convert leadStatus from array to string if needed - BUT keep as array for multiple values
@@ -847,6 +848,13 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     WHERE la.student_id IN (SELECT student_id FROM filtered_students)
     ${utmWhere.length > 0 ? "AND " + utmWhere.join(" AND ") : ""}
     ORDER BY la.student_id, la.created_at ASC
+  ),
+  latest_lead_activity AS (
+    SELECT DISTINCT ON (la.student_id)
+      la.student_id, la.lead_type
+    FROM student_lead_activities la
+    WHERE la.student_id IN (SELECT student_id FROM filtered_students)
+    ORDER BY la.student_id, la.created_at DESC
   )`
         : `
   filtered_students AS (
@@ -874,6 +882,13 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     WHERE la.student_id IN (SELECT student_id FROM filtered_students)
     ${utmWhere.length > 0 ? "AND " + utmWhere.join(" AND ") : ""}
     ORDER BY la.student_id, la.created_at ASC
+  ),
+  latest_lead_activity AS (
+    SELECT DISTINCT ON (la.student_id)
+      la.student_id, la.lead_type
+    FROM student_lead_activities la
+    WHERE la.student_id IN (SELECT student_id FROM filtered_students)
+    ORDER BY la.student_id, la.created_at DESC
   )`;
 
     const downloadCTEs = isDownload
@@ -1153,6 +1168,12 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       whereClauses.push("fla.student_id IS NOT NULL");
     }
 
+    if (is_CSL === "yes") {
+      whereClauses.push(`lla.lead_type ILIKE 'CSL'`);
+    } else if (is_CSL === "no") {
+      whereClauses.push(`(lla.lead_type IS NULL OR lla.lead_type NOT ILIKE 'CSL')`);
+    }
+
     const whereSQL =
       whereClauses.length > 0
         ? "WHERE " + whereClauses.filter(Boolean).join(" AND ")
@@ -1273,7 +1294,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         fla.utm_creative_id,
         fla.source,
         fla.source_url,
-        fla.activity_created_at
+        fla.activity_created_at,
+        lla.lead_type
 
       FROM students s
       INNER JOIN latest_journey_entries lje ON s.student_id = lje.student_id
@@ -1283,6 +1305,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
       LEFT JOIN remarks_count_by_counsellor rcc ON s.student_id = rcc.student_id
       LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
+      LEFT JOIN latest_lead_activity lla ON s.student_id = lla.student_id
       ${
         isDownload
           ? `
@@ -1347,13 +1370,15 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         fla.utm_creative_id,
         fla.source,
         fla.source_url,
-        fla.activity_created_at
+        fla.activity_created_at,
+        lla.lead_type
 
       FROM students s
       LEFT JOIN counsellors c1 ON s.assigned_counsellor_id = c1.counsellor_id
       LEFT JOIN counsellors c2_single ON c2_single.counsellor_id = s.assigned_counsellor_l3_id
       LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
       LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
+      LEFT JOIN latest_lead_activity lla ON s.student_id = lla.student_id
       ${
         isDownload
           ? `
@@ -1377,7 +1402,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         lr.remark_created_at,
         fla.utm_source, fla.utm_medium, fla.utm_campaign, fla.utm_keyword,
         fla.utm_campaign_id, fla.utm_adgroup_id, fla.utm_creative_id,
-        fla.source, fla.source_url, fla.activity_created_at
+        fla.source, fla.source_url, fla.activity_created_at,
+        lla.lead_type
         ${
           isDownload
             ? `,
@@ -1474,6 +1500,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           selectedagent,
           callback,
           role: data,
+          is_CSL,
         });
         
         const [studentsResult, statsResult] = await Promise.all([
@@ -1559,6 +1586,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
                   },
                 ]
               : [],
+            lead_type: item.lead_type || null,
           };
 
           if (isDownload) {
@@ -1669,6 +1697,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
                   },
                 ]
               : [],
+            lead_type: item.lead_type || null,
           };
 
           if (isDownload) {

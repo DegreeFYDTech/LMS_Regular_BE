@@ -30,6 +30,7 @@ export const getStudentshelper = async (filters) => {
       utmCampaignId,
       utmAdgroupId,
       utmCreativeId,
+      is_CSL,
       callingStatus,
       subCallingStatus,
       callingStatusL3,
@@ -931,6 +932,7 @@ export const mapFiltersForGetStudentsHelper = (
     lead_reactive:
       params?.lead_reactive && (params?.lead_reactive == "true" ? true : false),
     isReassignedYet: params?.isReassignedYet || params?.is_reassigned_yet,
+    is_CSL: params?.is_CSL,
     advancedFilters: params?.advancedFilters,
     // Add analyser-specific filters for SQL function
     ...(isAnalyser && {

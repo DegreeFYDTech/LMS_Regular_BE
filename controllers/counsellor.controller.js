@@ -1094,7 +1094,7 @@ export const getCounsellorAccessSettings = async (req, res) => {
       attributes: ['counsellor_id', 'login_start_time', 'login_end_time', 'allowed_ips', 'allowed_devices', 'max_active_sessions']
     });
     if (!counsellor) return res.status(404).json({ message: 'Counsellor not found' });
-    res.json({ accessSettings: counsellor });
+    res.json({ settings: counsellor });
   } catch (err) {
     console.error('getCounsellorAccessSettings error', err);
     res.status(500).json({ message: 'Server error' });

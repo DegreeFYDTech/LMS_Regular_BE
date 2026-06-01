@@ -133,15 +133,7 @@ export const createLeadActivity = async (leadData, studentId) => {
             latest_course_status: "Shortlisted",
             is_shortlisted: true,
           });
-          const logResponse = await axios.post(
-            "http://localhost:3031/v1/StudentCourseStatusLogs/sentStatustoCollege",
-            {
-              collegeName: leadData.preferred_college_cll[0],
-              studentId: studentId,
-              courseId: courseIds[0],
-              sendType: "auto",
-            },
-          );
+      
         }
       }
     }

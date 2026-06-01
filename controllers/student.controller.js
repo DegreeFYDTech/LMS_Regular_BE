@@ -512,14 +512,16 @@ export const updateStudentStatus = async (req, res) => {
         const courseGroup    = normalizeUniv(courseInfo?.university_name);
         const regCollegeGroup = normalizeUniv(ApplicationType?.collegeForApplied);
         const regCampusGroup  = normalizeUniv(ApplicationType?.campusLocation);
-
+console.log("Course Group:", courseGroup);
+console.log("Registration College Group:", regCollegeGroup);
+console.log("Registration Campus Group:", regCampusGroup);
         const form_type =
           courseGroup &&
           (regCollegeGroup === courseGroup || regCampusGroup === courseGroup) &&
           ApplicationType?.paymentStatus === "COMPLETED"
             ? "paid"
             : "web";
-
+console.log(form_type, "determined form type");
         const journeyData = {
           student_id: studentId,
           course_id: selectedCourse,

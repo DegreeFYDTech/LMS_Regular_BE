@@ -21,7 +21,11 @@ async function databaseConnection() {
         ADD COLUMN IF NOT EXISTS max_active_sessions INTEGER DEFAULT 1,
         ADD COLUMN IF NOT EXISTS active_session_tokens JSON DEFAULT '[]';
     `);
-    console.log('✅ Counsellor column migrations applied.');
+    await sequelize.query(`
+      ALTER TABLE course_status_journeys
+        ADD COLUMN IF NOT EXISTS form_type VARCHAR(100);
+    `);
+    console.log('✅ Column migrations applied.');
 
     // Ping the DB once to warm up query planner and buffers
     await sequelize.query('SELECT 1');

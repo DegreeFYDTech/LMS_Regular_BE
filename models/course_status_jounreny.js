@@ -49,7 +49,7 @@ const CourseStatusJourney = sequelize.define(
       type: DataTypes.DATE,
       allowNull: true,
     },
-  
+
     last_admission_date: {
       type: DataTypes.DATE,
       allowNull: true,
@@ -65,6 +65,11 @@ const CourseStatusJourney = sequelize.define(
     fee_type: {
       type: DataTypes.STRING(100),
       allowNull: true,
+    },
+    form_type: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      enum: ["paid", "web"],
     },
     assigned_l3_counsellor_id: {
       type: DataTypes.STRING(50),

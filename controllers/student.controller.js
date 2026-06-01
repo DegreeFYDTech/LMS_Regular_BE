@@ -105,7 +105,11 @@ export const markWalkin = async (req, res) => {
     });
   }
 };
-const VALID_FEE_TYPES = new Set(["Partially Paid", "Semester Paid", "Admission Blocked"]);
+const VALID_FEE_TYPES = new Set([
+  "Partially Paid",
+  "Semester Paid",
+  "Admission Blocked",
+]);
 
 const COUNTRY_CODE = "91";
 const ensureCountryCode = (phoneNumber) => {
@@ -136,7 +140,7 @@ export const updateStudentStatus = async (req, res) => {
       couponCode,
       userName,
       password,
-      event_time, // Add event_time to destructured variables
+      event_time,
     } = req.body;
     const student = await Student.findOne({
       where: { student_id: studentId },
@@ -185,14 +189,6 @@ export const updateStudentStatus = async (req, res) => {
       courseDetails?.dataValues?.university_name?.includes("Amity") &&
       leadStatus == "Application"
     ) {
-      console.log(
-        "Amity application transfer logic triggered",
-        student.dataValues,
-        studentleadActivityDetails?.dataValues,
-        selectedCourse,
-        leadStatus,
-        leadSubStatus,
-      );
       const TransferResponse = await axios.post(
         "https://regular-amity-api.degreefyd.com/v1/student/check-and-transfer",
         {
@@ -486,6 +482,31 @@ export const updateStudentStatus = async (req, res) => {
           },
           order: [["created_at", "DESC"]],
         });
+        const student = await Student.findByPk(studentId);
+
+        const [ApplicationType, courseInfo] = await Promise.all([
+          Registration.findOne({
+            where: { mobile: student.student_phone },
+            attributes: ["interestedCourse", "collegeForApplied", "paymentStatus"],
+            raw: true,
+          }),
+          selectedCourse
+            ? UniversityCourse.findOne({
+                where: { course_id: selectedCourse },
+                attributes: ["university_name"],
+                raw: true,
+              })
+            : Promise.resolve(null),
+        ]);
+
+        const form_type =
+          ApplicationType?.collegeForApplied &&
+          courseInfo?.university_name &&
+          ApplicationType.collegeForApplied.trim().toLowerCase() ===
+            courseInfo.university_name.trim().toLowerCase() &&
+          ApplicationType.paymentStatus === "COMPLETED"
+            ? "paid"
+            : "web";
 
         const journeyData = {
           student_id: studentId,
@@ -496,12 +517,16 @@ export const updateStudentStatus = async (req, res) => {
               ? leadSubStatus
               : effectiveCourseStatus,
           deposit_amount: feesAmount || 0,
-          fee_type: leadStatus === "Admission" && VALID_FEE_TYPES.has(leadSubStatus) ? leadSubStatus : null,
+          fee_type:
+            leadStatus === "Admission" && VALID_FEE_TYPES.has(leadSubStatus)
+              ? leadSubStatus
+              : null,
           currency: "INR",
           assigned_l3_counsellor_id:
             latestCourse?.assigned_l3_counsellor_id ||
             assigned_l3_counsellor_id,
           notes: remark,
+          form_type,
           created_at: new Date(),
         };
 
@@ -574,7 +599,11 @@ export const updateStudentStatus = async (req, res) => {
           const updateData = {};
           if (remark) updateData.notes = remark;
           if (feesAmount) updateData.deposit_amount = feesAmount;
-          if (leadStatus === "Admission" && leadSubStatus && VALID_FEE_TYPES.has(leadSubStatus))
+          if (
+            leadStatus === "Admission" &&
+            leadSubStatus &&
+            VALID_FEE_TYPES.has(leadSubStatus)
+          )
             updateData.fee_type = leadSubStatus;
           if (event_time) updateData.event_time = event_time;
 

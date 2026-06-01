@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Read(//c/Users/Nuvora edu/Desktop/lms/LMS_Regular_FE/src/network/**)",
-      "Bash(find \"c:\\\\Users\\\\Nuvora edu\\\\Desktop\\\\lms\\\\LMS_Regular_FE\" -type f -name \"*AccessSettingsModal*\")",
-      "Read(//c/Users/Nuvora edu/Desktop/lms/LMS_Regular_FE/**)"
-    ]
-  }
-}

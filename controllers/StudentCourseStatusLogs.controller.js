@@ -6,6 +6,7 @@ import {
   Counsellor,
   sequelize,
   StudentRemark,
+  Registration,
 } from "../models/index.js";
 import { col, fn, literal, Op, QueryTypes, Sequelize } from "sequelize";
 import CourseStatusJourney from "../models/course_status_jounreny.js";
@@ -2585,5 +2586,59 @@ export const getCourseGraphReport = async (req, res) => {
   } catch (error) {
     console.error('Error in getCourseGraphReport:', error.message);
     return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const checkRegistrationFormType = async (req, res) => {
+  try {
+    const { phone, university_name, course_id } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ success: false, message: "phone is required" });
+    }
+
+    const [registration, courseInfo] = await Promise.all([
+      Registration.findOne({
+        where: { mobile: phone },
+        attributes: ["interestedCourse", "collegeForApplied", "paymentStatus"],
+        raw: true,
+      }),
+      course_id
+        ? UniversityCourse.findOne({
+            where: { course_id },
+            attributes: ["university_name"],
+            raw: true,
+          })
+        : Promise.resolve(null),
+    ]);
+
+    const resolvedUniversity = university_name || courseInfo?.university_name || null;
+
+    const collegeMatches =
+      registration?.collegeForApplied &&
+      resolvedUniversity &&
+      registration.collegeForApplied.trim().toLowerCase() ===
+        resolvedUniversity.trim().toLowerCase();
+
+    const form_type =
+      collegeMatches && registration.paymentStatus === "COMPLETED"
+        ? "paid"
+        : "web";
+
+    return res.json({
+      success: true,
+      form_type,
+      details: {
+        phone,
+        university_name: resolvedUniversity,
+        registration_college: registration?.collegeForApplied || null,
+        payment_status: registration?.paymentStatus || null,
+        interested_course: registration?.interestedCourse || null,
+        college_matched: !!collegeMatches,
+      },
+    });
+  } catch (error) {
+    console.error("checkRegistrationFormType error:", error.message);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

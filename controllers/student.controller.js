@@ -482,12 +482,12 @@ export const updateStudentStatus = async (req, res) => {
           },
           order: [["created_at", "DESC"]],
         });
-        const student = await Student.findByPk(studentId);
+        const studentDet = await Student.findByPk(studentId);
 
         const [ApplicationType, courseInfo] = await Promise.all([
           Registration.findOne({
-            where: { mobile: student.student_phone },
-            attributes: ["interestedCourse", "collegeForApplied", "paymentStatus"],
+            where: { mobile: studentDet.student_phone },
+            attributes: ["interestedCourse", "collegeForApplied", "campusLocation", "paymentStatus"],
             raw: true,
           }),
           selectedCourse
@@ -499,12 +499,24 @@ export const updateStudentStatus = async (req, res) => {
             : Promise.resolve(null),
         ]);
 
+        const normalizeUniv = (name) => {
+          if (!name) return null;
+          const n = name.trim().toLowerCase();
+          if (n.includes('lpu') || n.includes('lovely professional')) return 'LPU';
+          if (n.includes('amity')) return 'AMITY';
+          if (n.includes('chandigarh university')) return 'CHANDIGARH_UNIVERSITY';
+          if (n.includes('chandigarh group') || n.includes('cgc')) return 'CGC';
+          return n;
+        };
+
+        const courseGroup    = normalizeUniv(courseInfo?.university_name);
+        const regCollegeGroup = normalizeUniv(ApplicationType?.collegeForApplied);
+        const regCampusGroup  = normalizeUniv(ApplicationType?.campusLocation);
+
         const form_type =
-          ApplicationType?.collegeForApplied &&
-          courseInfo?.university_name &&
-          ApplicationType.collegeForApplied.trim().toLowerCase() ===
-            courseInfo.university_name.trim().toLowerCase() &&
-          ApplicationType.paymentStatus === "COMPLETED"
+          courseGroup &&
+          (regCollegeGroup === courseGroup || regCampusGroup === courseGroup) &&
+          ApplicationType?.paymentStatus === "COMPLETED"
             ? "paid"
             : "web";
 

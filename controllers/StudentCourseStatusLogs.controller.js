@@ -2589,6 +2589,16 @@ export const getCourseGraphReport = async (req, res) => {
   }
 };
 
+const normalizeUniversity = (name) => {
+  if (!name) return null;
+  const n = name.trim().toLowerCase();
+  if (n.includes('lpu') || n.includes('lovely professional')) return 'LPU';
+  if (n.includes('amity')) return 'AMITY';
+  if (n.includes('chandigarh university')) return 'CHANDIGARH_UNIVERSITY';
+  if (n.includes('chandigarh group') || n.includes('cgc')) return 'CGC';
+  return n;
+};
+
 export const checkRegistrationFormType = async (req, res) => {
   try {
     const { phone, university_name, course_id } = req.body;
@@ -2600,7 +2610,7 @@ export const checkRegistrationFormType = async (req, res) => {
     const [registration, courseInfo] = await Promise.all([
       Registration.findOne({
         where: { mobile: phone },
-        attributes: ["interestedCourse", "collegeForApplied", "paymentStatus"],
+        attributes: ["interestedCourse", "collegeForApplied", "campusLocation", "paymentStatus"],
         raw: true,
       }),
       course_id
@@ -2614,14 +2624,16 @@ export const checkRegistrationFormType = async (req, res) => {
 
     const resolvedUniversity = university_name || courseInfo?.university_name || null;
 
+    const courseGroup = normalizeUniversity(resolvedUniversity);
+    const regCollegeGroup = normalizeUniversity(registration?.collegeForApplied);
+    const regCampusGroup = normalizeUniversity(registration?.campusLocation);
+
     const collegeMatches =
-      registration?.collegeForApplied &&
-      resolvedUniversity &&
-      registration.collegeForApplied.trim().toLowerCase() ===
-        resolvedUniversity.trim().toLowerCase();
+      courseGroup &&
+      (regCollegeGroup === courseGroup || regCampusGroup === courseGroup);
 
     const form_type =
-      collegeMatches && registration.paymentStatus === "COMPLETED"
+      collegeMatches && registration?.paymentStatus === "COMPLETED"
         ? "paid"
         : "web";
 
@@ -2631,7 +2643,9 @@ export const checkRegistrationFormType = async (req, res) => {
       details: {
         phone,
         university_name: resolvedUniversity,
+        university_group: courseGroup,
         registration_college: registration?.collegeForApplied || null,
+        registration_campus: registration?.campusLocation || null,
         payment_status: registration?.paymentStatus || null,
         interested_course: registration?.interestedCourse || null,
         college_matched: !!collegeMatches,

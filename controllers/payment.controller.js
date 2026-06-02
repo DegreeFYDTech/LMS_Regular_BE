@@ -534,6 +534,7 @@ export const handleWebhook = async (req, res) => {
             }
             console.log(snapshot.collegeName, "snapshot.collegeName",snapshot, "snapshot",targetStudentId, "targetStudentId",lead, "lead");
             if (snapshot.collegeName.includes("Amity")) {
+              console.log("triggered")
               await axios.post(
                 `https://regular-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
                 {
@@ -544,6 +545,7 @@ export const handleWebhook = async (req, res) => {
               );
             }
             if (snapshot.collegeName.includes("CGC")) {
+              console.log("triggered cgc")
               await axios.post(
                 `https://cgc-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
                 {
@@ -836,14 +838,15 @@ export const getPaymentReports = async (req, res) => {
     let collegeFilters = [];
 
     if (req.originalUrl.includes("amity")) {
+      // matches: "Amity", "Amity University Jaipur", any campus
       collegeFilters = ["amity"];
     } else if (req.originalUrl.includes("cgc")) {
-      collegeFilters = ["CGC Landran"];
+      // matches: "CHANDIGARH GROUP OF COLLEGES", "chandigarh group"
+      collegeFilters = ["chandigarh group"];
     } else if (req.originalUrl.includes("cu/lpu")) {
-      collegeFilters = [
-        "chandigarh University",
-        "lovely professional university",
-      ];
+      // matches: "Chandigarh University", "Chandigarh University Lucknow", "Chandigarh University Mohali"
+      //          "Lpu", "LPU", "Lovely Professional University"
+      collegeFilters = ["chandigarh university", "lpu", "lovely professional"];
     }
 
     if (college) {

@@ -8,6 +8,110 @@ import {
   StudentRemark,
   Registration,
 } from "../models/index.js";
+
+// Normalise a university/campus name to a canonical group key
+const normalizeUniv = (name) => {
+  if (!name) return null;
+  const n = name.trim().toLowerCase();
+  if (n.includes("lpu") || n.includes("lovely professional") || n.includes("phagwara")) return "LPU";
+  if (n.includes("amity")) return "AMITY";
+  if (n.includes("chandigarh university") || n.includes("landran") === false && n === "chandigarh") return "CHANDIGARH_UNIVERSITY";
+  if (n.includes("chandigarh group") || n.includes("cgc") || n.includes("landran")) return "CGC";
+  if (n === "chandigarh") return "CHANDIGARH_UNIVERSITY";
+  return n;
+};
+
+// Fast 2-query approach — resolves paid student IDs in JS, returns literal IN list
+// Query 1: fetch completed registrations (small set)
+// Query 2: join students + their course universities filtered by those phones
+export const getFormTypeStudentCondition = async (formType) => {
+  if (!formType) return { condition: null, sqlFragment: "", ids: null };
+
+  try {
+    // ── Step 1: completed registrations → phone + normalised campus group ──────
+    const completedRegs = await Registration.findAll({
+      where: { paymentStatus: "COMPLETED" },
+      attributes: ["mobile", "campusLocation", "collegeForApplied"],
+      raw: true,
+    });
+
+    if (completedRegs.length === 0) {
+      return {
+        condition: formType === "paid" ? { [Op.in]: [] } : null,
+        sqlFragment: formType === "paid" ? "AND 1=0" : "",
+        ids: [],
+      };
+    }
+
+    // phone → Set of campus groups (a student can have multiple registrations)
+    const phoneGroupMap = new Map();
+    completedRegs.forEach(({ mobile, campusLocation, collegeForApplied }) => {
+      if (!mobile) return;
+      const group = normalizeUniv(campusLocation) || normalizeUniv(collegeForApplied);
+      if (!group) return;
+      if (!phoneGroupMap.has(mobile)) phoneGroupMap.set(mobile, new Set());
+      phoneGroupMap.get(mobile).add(group);
+    });
+
+    const phones = [...phoneGroupMap.keys()];
+    if (phones.length === 0) {
+      return {
+        condition: formType === "paid" ? { [Op.in]: [] } : null,
+        sqlFragment: formType === "paid" ? "AND 1=0" : "",
+        ids: [],
+      };
+    }
+
+    // ── Step 2: students matching those phones → ALL their course universities ─
+    const quotedPhones = phones.map((p) => `'${p.replace(/'/g, "''")}'`).join(",");
+    const rows = await sequelize.query(
+      `SELECT DISTINCT s.student_id, s.student_phone, uc.university_name
+       FROM students s
+       JOIN course_status_journeys csj ON csj.student_id = s.student_id
+       JOIN university_courses uc ON uc.course_id = csj.course_id
+       WHERE s.student_phone IN (${quotedPhones})`,
+      { type: QueryTypes.SELECT },
+    );
+
+    // ── Step 3: match campus group to university group in JS ──────────────────
+    const paidIdSet = new Set();
+    rows.forEach(({ student_id, student_phone, university_name }) => {
+      const regGroups = phoneGroupMap.get(student_phone);
+      if (!regGroups) return;
+      const courseGroup = normalizeUniv(university_name);
+      if (courseGroup && regGroups.has(courseGroup)) {
+        paidIdSet.add(student_id);
+      }
+    });
+
+    const paidIds = [...paidIdSet];
+    const quote = (id) => `'${id.replace(/'/g, "''")}'`;
+
+    if (formType === "paid") {
+      const sqlFragment = paidIds.length > 0
+        ? `AND student_id IN (${paidIds.map(quote).join(",")})`
+        : "AND 1=0";
+      return {
+        condition: paidIds.length > 0 ? { [Op.in]: paidIds } : { [Op.in]: [] },
+        sqlFragment,
+        ids: paidIds,
+      };
+    }
+
+    // unpaid
+    const sqlFragment = paidIds.length > 0
+      ? `AND student_id NOT IN (${paidIds.map(quote).join(",")})`
+      : "";
+    return {
+      condition: paidIds.length > 0 ? { [Op.notIn]: paidIds } : null,
+      sqlFragment,
+      ids: paidIds,
+    };
+  } catch (err) {
+    console.error("getFormTypeStudentCondition error:", err.message);
+    return { condition: null, sqlFragment: "", ids: null };
+  }
+};
 import { col, fn, literal, Op, QueryTypes, Sequelize } from "sequelize";
 import CourseStatusJourney from "../models/course_status_jounreny.js";
 import { convertToCSV } from "../helper/csv_helper.js";
@@ -31,7 +135,9 @@ const APPLICATION_STATUSES = [
 
 export const getCounsellorStats = async (req, res) => {
   try {
-    const { start_date, end_date, counsellor_id } = req.query;
+    const { start_date, end_date, counsellor_id, form_type } = req.query;
+
+    const { sqlFragment: formTypeSql } = await getFormTypeStudentCondition(form_type);
 
     const cteDateFilter = start_date && end_date
       ? `WHERE (first_status_date AT TIME ZONE 'Asia/Kolkata')::date BETWEEN '${start_date}' AND '${end_date}'`
@@ -69,6 +175,7 @@ export const getCounsellorStats = async (req, res) => {
             'Exam/Interview Scheduled',
             'Form Submitted – Completed'
         )
+        ${formTypeSql}
         ORDER BY student_id, course_id, created_at ASC
       ),
       -- Keep only those whose first-ever entry falls within the requested date range
@@ -656,7 +763,7 @@ export const getFormData = async (req, res) => {
 
 export const getFormToAdmissionsReport = async (req, res) => {
   try {
-    const { start_date, end_date, group_by = 'college', type, college_name, metric } = req.query;
+    const { start_date, end_date, group_by = 'college', type, college_name, metric, form_type } = req.query;
 
     if (!start_date || !end_date) {
       return res.status(400).json({
@@ -664,6 +771,8 @@ export const getFormToAdmissionsReport = async (req, res) => {
         message: "Please provide start_date and end_date parameters (YYYY-MM-DD)",
       });
     }
+
+    const { sqlFragment: formTypeSql } = await getFormTypeStudentCondition(form_type);
 
     // ── RAW DRILL-DOWN ──────────────────────────────────────────────────────────
     if (type === 'raw' && college_name && metric) {
@@ -877,12 +986,14 @@ export const getFormToAdmissionsReport = async (req, res) => {
           (created_at + interval '5 hours 30 minutes')::date AS form_date
         FROM course_status_journeys
         WHERE course_status IN (SELECT status FROM form_statuses)
+        ${formTypeSql}
         ORDER BY student_id, course_id, created_at ASC
       ),
       got_admission_ever AS (
         SELECT DISTINCT student_id, course_id
         FROM course_status_journeys
         WHERE course_status IN (SELECT status FROM admission_statuses)
+        ${formTypeSql}
       ),
       ${combinedCTE}
       SELECT
@@ -1430,7 +1541,10 @@ export const getCollegeStatusReports = async (req, res) => {
       collegeId,
       firstTimeFrom,
       firstTimeTo,
+      form_type,
     } = req.query;
+
+    const { sqlFragment: formTypeSql } = await getFormTypeStudentCondition(form_type);
 
     const whereClause = {};
     const courseWhereClause = {};
@@ -1450,6 +1564,7 @@ export const getCollegeStatusReports = async (req, res) => {
           courseWhereClause,
           firstTimeFrom,
           firstTimeTo,
+          formTypeSql,
         );
         break;
 
@@ -1462,6 +1577,7 @@ export const getCollegeStatusReports = async (req, res) => {
           courseWhereClause,
           firstTimeFrom,
           firstTimeTo,
+          formTypeSql,
         );
         break;
 
@@ -1474,6 +1590,7 @@ export const getCollegeStatusReports = async (req, res) => {
           courseWhereClause,
           firstTimeFrom,
           firstTimeTo,
+          formTypeSql,
         );
         break;
 
@@ -1485,6 +1602,7 @@ export const getCollegeStatusReports = async (req, res) => {
           courseWhereClause,
           firstTimeFrom,
           firstTimeTo,
+          formTypeSql,
         );
     }
 
@@ -1517,6 +1635,7 @@ const getCollegesPivotReport = async (
   courseWhereClause,
   firstTimeFrom,
   firstTimeTo,
+  formTypeSql = '',
 ) => {
   const isFirstTimeFilter = !!(firstTimeFrom || firstTimeTo);
   const isDateFilter = !!(startDate || endDate);
@@ -1535,19 +1654,20 @@ const getCollegesPivotReport = async (
         uc.university_name AS college
       FROM course_status_journeys csh
       INNER JOIN (
-        SELECT 
-          student_id, 
-          course_id, 
+        SELECT
+          student_id,
+          course_id,
           MIN(created_at) AS first_entry_date
         FROM course_status_journeys
+        WHERE 1=1 ${formTypeSql}
         GROUP BY student_id, course_id
-      ) first_entry ON csh.student_id = first_entry.student_id 
-                    AND csh.course_id = first_entry.course_id 
+      ) first_entry ON csh.student_id = first_entry.student_id
+                    AND csh.course_id = first_entry.course_id
                     AND csh.created_at = first_entry.first_entry_date
       INNER JOIN university_courses uc ON csh.course_id = uc.course_id
       WHERE csh.course_status != 'Walkin Marked'
     `;
-    
+
     // Add date range filter on the first entry date
     if (firstTimeFrom) {
       sql += ` AND (csh.created_at AT TIME ZONE 'Asia/Kolkata')::date >= :firstTimeFrom`;
@@ -1557,17 +1677,17 @@ const getCollegesPivotReport = async (
       sql += ` AND (csh.created_at AT TIME ZONE 'Asia/Kolkata')::date <= :firstTimeTo`;
       replacements.firstTimeTo = firstTimeTo;
     }
-    
+
     // Add course filter
     if (courseWhereClause.course_id) {
       sql += ` AND uc.course_id = :courseId`;
       replacements.courseId = courseWhereClause.course_id;
     }
-  } 
+  }
   // CASE 2: Regular Date Filter - Get latest entries within the date range
   else if (isDateFilter) {
     sql = `
-      SELECT 
+      SELECT
         csh.student_id,
         csh.course_id,
         csh.course_status,
@@ -1575,14 +1695,14 @@ const getCollegesPivotReport = async (
         uc.university_name AS college
       FROM course_status_journeys csh
       INNER JOIN (
-        SELECT 
-          csh_inner.student_id, 
-          csh_inner.course_id, 
+        SELECT
+          csh_inner.student_id,
+          csh_inner.course_id,
           MAX(csh_inner.created_at) AS latest_date
         FROM course_status_journeys csh_inner
         WHERE csh_inner.course_status != 'Walkin Marked'
     `;
-    
+
     if (startDate) {
       sql += ` AND (csh_inner.created_at AT TIME ZONE 'Asia/Kolkata')::date >= :startDate`;
       replacements.startDate = startDate;
@@ -1591,16 +1711,17 @@ const getCollegesPivotReport = async (
       sql += ` AND (csh_inner.created_at AT TIME ZONE 'Asia/Kolkata')::date <= :endDate`;
       replacements.endDate = endDate;
     }
-    
+    if (formTypeSql) sql += ` ${formTypeSql}`;
+
     sql += `
         GROUP BY csh_inner.student_id, csh_inner.course_id
-      ) latest ON csh.student_id = latest.student_id 
-               AND csh.course_id = latest.course_id 
+      ) latest ON csh.student_id = latest.student_id
+               AND csh.course_id = latest.course_id
                AND csh.created_at = latest.latest_date
       INNER JOIN university_courses uc ON csh.course_id = uc.course_id
       WHERE csh.course_status != 'Walkin Marked'
     `;
-    
+
     // Add course filter
     if (courseWhereClause.course_id) {
       sql += ` AND uc.course_id = :courseId`;
@@ -1610,7 +1731,7 @@ const getCollegesPivotReport = async (
   // CASE 3: No filters - Get latest entries overall
   else {
     sql = `
-      SELECT 
+      SELECT
         csh.student_id,
         csh.course_id,
         csh.course_status,
@@ -1618,20 +1739,21 @@ const getCollegesPivotReport = async (
         uc.university_name AS college
       FROM course_status_journeys csh
       INNER JOIN (
-        SELECT 
-          student_id, 
-          course_id, 
+        SELECT
+          student_id,
+          course_id,
           MAX(created_at) AS latest_date
         FROM course_status_journeys
         WHERE course_status != 'Walkin Marked'
+        ${formTypeSql}
         GROUP BY student_id, course_id
-      ) latest ON csh.student_id = latest.student_id 
-               AND csh.course_id = latest.course_id 
+      ) latest ON csh.student_id = latest.student_id
+               AND csh.course_id = latest.course_id
                AND csh.created_at = latest.latest_date
       INNER JOIN university_courses uc ON csh.course_id = uc.course_id
       WHERE csh.course_status != 'Walkin Marked'
     `;
-    
+
     // Add course filter
     if (courseWhereClause.course_id) {
       sql += ` AND uc.course_id = :courseId`;
@@ -1705,6 +1827,7 @@ const getCounsellorPivotReport = async (
   courseWhereClause,
   firstTimeFrom,
   firstTimeTo,
+  formTypeSql = '',
 ) => {
   const isFirstTimeFilter = !!(firstTimeFrom || firstTimeTo);
   const isDateFilter = !!(startDate || endDate);
@@ -1715,27 +1838,28 @@ const getCounsellorPivotReport = async (
   // CASE 1: First Time Filter - Get absolute first entries within the date range
   if (isFirstTimeFilter) {
     sql = `
-      SELECT 
+      SELECT
         csh.student_id,
         csh.course_id,
         csh.course_status,
         csh.created_at
       FROM course_status_journeys csh
       INNER JOIN (
-        SELECT 
-          student_id, 
-          course_id, 
+        SELECT
+          student_id,
+          course_id,
           MIN(created_at) AS first_entry_date
         FROM course_status_journeys
         WHERE course_status != 'Walkin Marked'
+        ${formTypeSql}
         GROUP BY student_id, course_id
-      ) first_entry ON csh.student_id = first_entry.student_id 
-                    AND csh.course_id = first_entry.course_id 
+      ) first_entry ON csh.student_id = first_entry.student_id
+                    AND csh.course_id = first_entry.course_id
                     AND csh.created_at = first_entry.first_entry_date
       INNER JOIN university_courses uc ON csh.course_id = uc.course_id
       WHERE csh.course_status != 'Walkin Marked'
     `;
-    
+
     // Add date range filter on the first entry date
     if (firstTimeFrom) {
       sql += ` AND (csh.created_at AT TIME ZONE 'Asia/Kolkata')::date >= :firstTimeFrom`;
@@ -1745,31 +1869,31 @@ const getCounsellorPivotReport = async (
       sql += ` AND (csh.created_at AT TIME ZONE 'Asia/Kolkata')::date <= :firstTimeTo`;
       replacements.firstTimeTo = firstTimeTo;
     }
-    
+
     // Add course filter
     if (courseWhereClause.course_id) {
       sql += ` AND uc.course_id = :courseId`;
       replacements.courseId = courseWhereClause.course_id;
     }
-  } 
+  }
   // CASE 2: Regular Date Filter - Get latest entries within the date range
   else if (isDateFilter) {
     sql = `
-      SELECT 
+      SELECT
         csh.student_id,
         csh.course_id,
         csh.course_status,
         csh.created_at
       FROM course_status_journeys csh
       INNER JOIN (
-        SELECT 
-          csh_inner.student_id, 
-          csh_inner.course_id, 
+        SELECT
+          csh_inner.student_id,
+          csh_inner.course_id,
           MAX(csh_inner.created_at) AS latest_date
         FROM course_status_journeys csh_inner
         WHERE csh_inner.course_status != 'Walkin Marked'
     `;
-    
+
     if (startDate) {
       sql += ` AND (csh_inner.created_at AT TIME ZONE 'Asia/Kolkata')::date >= :startDate`;
       replacements.startDate = startDate;
@@ -1778,16 +1902,17 @@ const getCounsellorPivotReport = async (
       sql += ` AND (csh_inner.created_at AT TIME ZONE 'Asia/Kolkata')::date <= :endDate`;
       replacements.endDate = endDate;
     }
-    
+    if (formTypeSql) sql += ` ${formTypeSql}`;
+
     sql += `
         GROUP BY csh_inner.student_id, csh_inner.course_id
-      ) latest ON csh.student_id = latest.student_id 
-               AND csh.course_id = latest.course_id 
+      ) latest ON csh.student_id = latest.student_id
+               AND csh.course_id = latest.course_id
                AND csh.created_at = latest.latest_date
       INNER JOIN university_courses uc ON csh.course_id = uc.course_id
       WHERE csh.course_status != 'Walkin Marked'
     `;
-    
+
     // Add course filter
     if (courseWhereClause.course_id) {
       sql += ` AND uc.course_id = :courseId`;
@@ -1797,27 +1922,28 @@ const getCounsellorPivotReport = async (
   // CASE 3: No filters - Get latest entries overall
   else {
     sql = `
-      SELECT 
+      SELECT
         csh.student_id,
         csh.course_id,
         csh.course_status,
         csh.created_at
       FROM course_status_journeys csh
       INNER JOIN (
-        SELECT 
-          student_id, 
-          course_id, 
+        SELECT
+          student_id,
+          course_id,
           MAX(created_at) AS latest_date
         FROM course_status_journeys
         WHERE course_status != 'Walkin Marked'
+        ${formTypeSql}
         GROUP BY student_id, course_id
-      ) latest ON csh.student_id = latest.student_id 
-               AND csh.course_id = latest.course_id 
+      ) latest ON csh.student_id = latest.student_id
+               AND csh.course_id = latest.course_id
                AND csh.created_at = latest.latest_date
       INNER JOIN university_courses uc ON csh.course_id = uc.course_id
       WHERE csh.course_status != 'Walkin Marked'
     `;
-    
+
     // Add course filter
     if (courseWhereClause.course_id) {
       sql += ` AND uc.course_id = :courseId`;
@@ -2589,15 +2715,7 @@ export const getCourseGraphReport = async (req, res) => {
   }
 };
 
-const normalizeUniversity = (name) => {
-  if (!name) return null;
-  const n = name.trim().toLowerCase();
-  if (n.includes('lpu') || n.includes('lovely professional')) return 'LPU';
-  if (n.includes('amity')) return 'AMITY';
-  if (n.includes('chandigarh university')) return 'CHANDIGARH_UNIVERSITY';
-  if (n.includes('chandigarh group') || n.includes('cgc')) return 'CGC';
-  return n;
-};
+// reuse the module-level normalizeUniv defined near the top
 
 export const checkRegistrationFormType = async (req, res) => {
   try {
@@ -2624,9 +2742,9 @@ export const checkRegistrationFormType = async (req, res) => {
 
     const resolvedUniversity = university_name || courseInfo?.university_name || null;
 
-    const courseGroup = normalizeUniversity(resolvedUniversity);
-    const regCollegeGroup = normalizeUniversity(registration?.collegeForApplied);
-    const regCampusGroup = normalizeUniversity(registration?.campusLocation);
+    const courseGroup = normalizeUniv(resolvedUniversity);
+    const regCollegeGroup = normalizeUniv(registration?.collegeForApplied);
+    const regCampusGroup = normalizeUniv(registration?.campusLocation);
 
     const collegeMatches =
       courseGroup &&

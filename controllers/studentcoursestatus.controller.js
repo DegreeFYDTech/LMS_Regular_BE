@@ -11,6 +11,7 @@ import {
 } from "../models/index.js";
 import { format, parse } from "date-fns";
 import { pushLeadToAudience } from "./meta_remarketing/metaAudienceService.js";
+import { getFormTypeStudentCondition } from "./StudentCourseStatusLogs.controller.js";
 export const updateStudentCourseStatus = async (req, res) => {
   try {
     const { courseId, studentId, status, isShortlisted } = req.body;
@@ -776,6 +777,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
       counsellor_status,
       sortBy,
       sortOrder,
+      form_type,
     } = req.query;
 
     const userRole = req.user?.role;
@@ -1007,6 +1009,15 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
       whereConds.push(
         `(c.counsellor_id IN ${wrapArrayForSQL(counsellor_array)} OR s.assigned_counsellor_id IN ${wrapArrayForSQL(counsellor_array)})`,
       );
+    }
+
+    if (form_type) {
+      const { sqlFragment } = await getFormTypeStudentCondition(form_type);
+      if (sqlFragment) {
+        // sqlFragment is "AND student_id IN/NOT IN (subquery)" — qualify with table alias
+        whereConds.push(sqlFragment.replace(/AND\s+student_id/i, 's.student_id'));
+        studentWhereConds.push(sqlFragment.replace(/AND\s+student_id/i, 's.student_id'));
+      }
     }
 
     const whereSQL = whereConds.length

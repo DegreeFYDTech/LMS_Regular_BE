@@ -1,5 +1,6 @@
 import { QueryTypes } from 'sequelize';
 import sequelize from '../config/database-config.js';
+import { getFormTypeStudentCondition } from './StudentCourseStatusLogs.controller.js';
 
 export const getActiveFormCollegeReport = async (req, res) => {
     const {
@@ -9,11 +10,14 @@ export const getActiveFormCollegeReport = async (req, res) => {
         drill_group,
         drill_category,
         group_by = 'college',
+        form_type,
     } = req.query;
 
     if (!date_from || !date_to) {
         return res.status(400).json({ message: "date_from and date_to are required" });
     }
+
+    const { sqlFragment: formTypeSql } = await getFormTypeStudentCondition(form_type);
 
     const ACTIVE_FORM_STATUSES = [
         "Exam Interview Pending",
@@ -47,12 +51,14 @@ export const getActiveFormCollegeReport = async (req, res) => {
                 SELECT student_id, course_id, course_status, assigned_l3_counsellor_id
                 FROM latest_status
                 WHERE course_status IN (:statuses)
+                ${formTypeSql}
             ),
             first_entry_in_range AS (
                 SELECT student_id, course_id,
                        MIN(created_at + interval '5 hours 30 minutes') AS entry_date
                 FROM course_status_journeys
                 WHERE course_status IN (:statuses)
+                ${formTypeSql}
                 GROUP BY student_id, course_id
                 HAVING MIN(created_at + interval '5 hours 30 minutes') >= :date_from_start ::timestamp
                    AND MIN(created_at + interval '5 hours 30 minutes') <= :date_to_end ::timestamp

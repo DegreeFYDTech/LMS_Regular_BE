@@ -53,6 +53,7 @@ Student.belongsTo(Counsellor, { foreignKey: 'assigned_counsellor_l3_id', as: 'as
 
 PricingSnapshot.hasOne(PaymentOrder, { foreignKey: 'pricingSnapshotId', as: 'paymentOrder' });
 PaymentOrder.belongsTo(PricingSnapshot, { foreignKey: 'pricingSnapshotId', as: 'snapshot' });
+Registration.belongsTo(PricingSnapshot, { foreignKey: 'pricingSnapshotId', as: 'pricingSnapshot' });
 
 // Student has many StudentRemarks
 Student.hasMany(StudentRemark, {

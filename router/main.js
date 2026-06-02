@@ -38,7 +38,7 @@ import firstRemarkTimeRoutes from './firstRemarkTime.route.js';
 
 import centralMgmtRoutes from './centralMgmt.route.js';
 
-const router = express.Router();
+const   router = express.Router();
 
 router.use('/central-mgmt', centralMgmtRoutes);
 router.use('/counsellor', counsellorRoutes);

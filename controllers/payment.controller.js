@@ -836,7 +836,7 @@ export const getPaymentReports = async (req, res) => {
   try {
     const { status, startDate, endDate, onModel, college } = req.query;
     let collegeFilters = [];
-
+console.log(req.originalUrl)
     if (req.originalUrl.includes("amity")) {
       // matches: "Amity", "Amity University Jaipur", any campus
       collegeFilters = ["amity"];

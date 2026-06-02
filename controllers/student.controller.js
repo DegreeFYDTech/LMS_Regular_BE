@@ -482,46 +482,7 @@ export const updateStudentStatus = async (req, res) => {
           },
           order: [["created_at", "DESC"]],
         });
-        const studentDet = await Student.findByPk(studentId);
-
-        const [ApplicationType, courseInfo] = await Promise.all([
-          Registration.findOne({
-            where: { mobile: studentDet.student_phone },
-            attributes: ["interestedCourse", "collegeForApplied", "campusLocation", "paymentStatus"],
-            raw: true,
-          }),
-          selectedCourse
-            ? UniversityCourse.findOne({
-                where: { course_id: selectedCourse },
-                attributes: ["university_name"],
-                raw: true,
-              })
-            : Promise.resolve(null),
-        ]);
-
-        const normalizeUniv = (name) => {
-          if (!name) return null;
-          const n = name.trim().toLowerCase();
-          if (n.includes('lpu') || n.includes('lovely professional')) return 'LPU';
-          if (n.includes('amity')) return 'AMITY';
-          if (n.includes('chandigarh university')) return 'CHANDIGARH_UNIVERSITY';
-          if (n.includes('chandigarh group') || n.includes('cgc')) return 'CGC';
-          return n;
-        };
-
-        const courseGroup    = normalizeUniv(courseInfo?.university_name);
-        const regCollegeGroup = normalizeUniv(ApplicationType?.collegeForApplied);
-        const regCampusGroup  = normalizeUniv(ApplicationType?.campusLocation);
-console.log("Course Group:", courseGroup);
-console.log("Registration College Group:", regCollegeGroup);
-console.log("Registration Campus Group:", regCampusGroup);
-        const form_type =
-          courseGroup &&
-          (regCollegeGroup === courseGroup || regCampusGroup === courseGroup) &&
-          ApplicationType?.paymentStatus === "COMPLETED"
-            ? "paid"
-            : "web";
-console.log(form_type, "determined form type");
+       
         const journeyData = {
           student_id: studentId,
           course_id: selectedCourse,

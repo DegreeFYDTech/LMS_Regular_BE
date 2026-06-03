@@ -235,7 +235,7 @@ async function processLeadChunk(chunk, accessToken, sourceName) {
 }
 
 // ─── Main Orchestrator ───
-async function syncMissingLeads() {
+export async function syncMissingLeads() {
   console.log(`\n[${new Date().toISOString()}] === Starting Hourly Lead Sync ===`);
   await databaseConnection();
   
@@ -290,8 +290,13 @@ async function syncMissingLeads() {
 }
 
 // ─── Cron Job Registration ───
-console.log('⏰ Missing Leads Cron Job registered (Runs every hour)');
-cron.schedule('0 * * * *', () => {
-  syncMissingLeads();
-});
+const currentFile = fileURLToPath(import.meta.url);
+const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(currentFile);
+
+if (isDirectRun) {
+  console.log('⏰ Missing Leads Cron Job registered (Runs every hour)');
+  cron.schedule('0 * * * *', () => {
+    syncMissingLeads();
+  });
+}
 

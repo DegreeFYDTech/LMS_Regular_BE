@@ -3,10 +3,10 @@ import { Op } from 'sequelize';
 import databaseConnection from './config/database-connection.js';
 import { Counsellor } from './models/index.js';
 import sequelize from './config/database-config.js';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
-databaseConnection();
-
-cron.schedule('0 0 * * *', async () => {
+export async function runMidnightCleanup() {
     try {
         console.log('[CRON Worker] Starting daily midnight session + status cleanup...');
 
@@ -100,9 +100,19 @@ cron.schedule('0 0 * * *', async () => {
     } catch (err) {
         console.error('[CRON Worker] Error running midnight cleanup:', err);
     }
-}, {
-    scheduled: true,
-    timezone: "Asia/Kolkata"
-});
+}
 
-console.log('Midnight Auto-Logout + Status CRON Worker initialized. Waiting for 12:00 AM IST...');
+const currentFile = fileURLToPath(import.meta.url);
+const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(currentFile);
+
+if (isDirectRun) {
+    databaseConnection();
+    cron.schedule('0 0 * * *', async () => {
+        await runMidnightCleanup();
+    }, {
+        scheduled: true,
+        timezone: "Asia/Kolkata"
+    });
+    console.log('Midnight Auto-Logout + Status CRON Worker initialized. Waiting for 12:00 AM IST...');
+}
+

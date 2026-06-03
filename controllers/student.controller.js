@@ -501,7 +501,6 @@ export const updateStudentStatus = async (req, res) => {
             latestCourse?.assigned_l3_counsellor_id ||
             assigned_l3_counsellor_id,
           notes: remark,
-          form_type,
           created_at: new Date(),
         };
 

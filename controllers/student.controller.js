@@ -482,7 +482,7 @@ export const updateStudentStatus = async (req, res) => {
           },
           order: [["created_at", "DESC"]],
         });
-       
+
         const journeyData = {
           student_id: studentId,
           course_id: selectedCourse,
@@ -708,6 +708,26 @@ export const updateStudentStatus = async (req, res) => {
         timestamp: msg.timestamp,
         is_read: msg.is_read,
       }));
+      const ONLINE_COLLEGE_MAP = {
+        "Amity University": "Amity University Online",
+        "Chandigarh University": "Chandigarh University Online",
+        "Lovely Professional University": "Lovely Professional University Online",
+      };
+
+      // Replace each regular college with its online equivalent; deduplicate
+      const lead_type_online = studentleadActivityDetails.dataValues.lead_type;
+      const raw_cll_online = studentleadActivityDetails.dataValues.preferred_college_cll || [];
+      const hasOnlineableCollege = raw_cll_online.some((c) => ONLINE_COLLEGE_MAP[c]);
+      const mappedCll = [
+        ...new Set(raw_cll_online.map((c) => ONLINE_COLLEGE_MAP[c] || c)),
+      ];
+      const preferred_college_cll =
+        lead_type_online !== "csl"
+          ? []
+          : hasOnlineableCollege
+          ? mappedCll
+          : raw_cll_online;
+
       const payload = {
         name: studentDetails.dataValues.student_name,
         email: studentDetails.dataValues.student_email,
@@ -719,8 +739,9 @@ export const updateStudentStatus = async (req, res) => {
         utm_campaign_id: studentleadActivityDetails.dataValues.utm_campaign_id,
         student_comment: studentleadActivityDetails.dataValues.student_comment,
         whatsapp_messages: formattedMessages,
+        lead_type: lead_type_online,
+        preferred_college_cll,
       };
-      console.log(payload);
       const response = await axios.post(
         "https://lms-api-test.degreefyd.com/v1/student/create",
         payload,
@@ -758,6 +779,11 @@ export const updateStudentStatus = async (req, res) => {
         timestamp: msg.timestamp,
         is_read: msg.is_read,
       }));
+      const lead_type = studentleadActivityDetails.dataValues.lead_type;
+      const raw_cll = studentleadActivityDetails.dataValues.preferred_college_cll || [];
+      const hasAmityPreference = raw_cll.some((c) => c.toLowerCase().includes("amity"));
+      const preferred_college_cll = lead_type === "csl" && hasAmityPreference ? raw_cll : [];
+
       const payload = {
         name: studentDetails.dataValues.student_name,
         email: studentDetails.dataValues.student_email,
@@ -769,6 +795,8 @@ export const updateStudentStatus = async (req, res) => {
         utm_campaign_id: studentleadActivityDetails.dataValues.utm_campaign_id,
         student_comment: studentleadActivityDetails.dataValues.student_comment,
         whatsapp_messages: formattedMessages,
+        lead_type,
+        preferred_college_cll,
       };
       console.log(payload);
       const response = await axios.post(
@@ -808,6 +836,13 @@ export const updateStudentStatus = async (req, res) => {
         timestamp: msg.timestamp,
         is_read: msg.is_read,
       }));
+      const lead_type_cgc = studentleadActivityDetails.dataValues.lead_type;
+      const raw_cll_cgc = studentleadActivityDetails.dataValues.preferred_college_cll || [];
+      const hasCGCPreference = raw_cll_cgc.some(
+        (c) => c.toLowerCase().includes("chandigarh group") || c.toLowerCase().includes("landran"),
+      );
+      const preferred_college_cll_cgc = lead_type_cgc === "csl" && hasCGCPreference ? raw_cll_cgc : [];
+
       const payload = {
         name: studentDetails.dataValues.student_name,
         email: studentDetails.dataValues.student_email,
@@ -819,6 +854,8 @@ export const updateStudentStatus = async (req, res) => {
         utm_campaign_id: studentleadActivityDetails.dataValues.utm_campaign_id,
         student_comment: studentleadActivityDetails.dataValues.student_comment,
         whatsapp_messages: formattedMessages,
+        lead_type: lead_type_cgc,
+        preferred_college_cll: preferred_college_cll_cgc,
       };
       console.log(payload);
       const response = await axios.post(
@@ -858,6 +895,16 @@ export const updateStudentStatus = async (req, res) => {
         timestamp: msg.timestamp,
         is_read: msg.is_read,
       }));
+      const lead_type_lpu = studentleadActivityDetails.dataValues.lead_type;
+      const raw_cll_lpu = studentleadActivityDetails.dataValues.preferred_college_cll || [];
+      const hasLPUCUPreference = raw_cll_lpu.some(
+        (c) =>
+          c.toLowerCase().includes("lovely professional") ||
+          c.toLowerCase().includes("lpu") ||
+          c.toLowerCase().includes("chandigarh university"),
+      );
+      const preferred_college_cll_lpu = lead_type_lpu === "csl" && hasLPUCUPreference ? raw_cll_lpu : [];
+
       const payload = {
         name: studentDetails.dataValues.student_name,
         email: studentDetails.dataValues.student_email,
@@ -869,6 +916,8 @@ export const updateStudentStatus = async (req, res) => {
         utm_campaign_id: studentleadActivityDetails.dataValues.utm_campaign_id,
         student_comment: studentleadActivityDetails.dataValues.student_comment,
         whatsapp_messages: formattedMessages,
+        lead_type: lead_type_lpu,
+        preferred_college_cll: preferred_college_cll_lpu,
       };
       console.log(payload);
       const response = await axios.post(

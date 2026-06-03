@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/Nuvora edu/Desktop/lms/regular_amity_be/controllers/**)",
+      "Read(//c/Users/Nuvora edu/Desktop/lms/regular_amity_fe/src/pages/**)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Nuvora edu\\Desktop\\lms\\regular_amity_be\\controllers"
+    ]
+  }
+}

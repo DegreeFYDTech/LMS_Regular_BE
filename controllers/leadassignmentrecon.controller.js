@@ -112,15 +112,16 @@ export const createLeadAssignmentforRecon = async (req, res) => {
     const validatedUniversityNames = validateUniversityNames(assigned_university_names);
 
     const cleanedConditions = cleanConditions(conditions);
-    
-    if (Object.keys(cleanedConditions).length === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'At least one valid condition must be provided from the allowed fields' 
+    const hasSourceUrl = Array.isArray(source_url) ? source_url.length > 0 : !!source_url;
+
+    if (Object.keys(cleanedConditions).length === 0 && !hasSourceUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one valid condition must be provided from the allowed fields'
       });
     }
-    
-    validateConditionKeys(cleanedConditions);
+
+    if (Object.keys(cleanedConditions).length > 0) validateConditionKeys(cleanedConditions);
     
     const name = await ReconAssignmentRule.generateRuleName();
     const newRule = await ReconAssignmentRule.create({
@@ -154,13 +155,14 @@ export const updateLeadAssignmentforRecon = async (req, res) => {
 
     if (conditions !== undefined) {
       const cleanedConditions = cleanConditions(conditions);
-      if (Object.keys(cleanedConditions).length === 0) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'At least one valid condition must be provided from the allowed fields' 
+      const hasSourceUrl = Array.isArray(source_url) ? source_url.length > 0 : !!source_url;
+      if (Object.keys(cleanedConditions).length === 0 && !hasSourceUrl) {
+        return res.status(400).json({
+          success: false,
+          message: 'At least one valid condition must be provided from the allowed fields'
         });
       }
-      validateConditionKeys(cleanedConditions);
+      if (Object.keys(cleanedConditions).length > 0) validateConditionKeys(cleanedConditions);
       updateData.conditions = cleanedConditions;
     }
     

@@ -52,6 +52,10 @@ const ReconAssignmentRule = sequelize.define('recon_assignment_rulesets', {
   custom_rule_name: {
     type: DataTypes.STRING,
     defaultValue: ''
+  },
+  source_url: {
+    type: DataTypes.ARRAY(DataTypes.TEXT),
+    defaultValue: []
   }
 }, {
   timestamps: false,

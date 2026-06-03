@@ -6,10 +6,11 @@ const cleanConditions = (conditions) => {
 
     const cleaned = {};
 
-    // Only process the 11 allowed priority fields
+    // Only process the 12 allowed priority fields
     const priorityFields = [
       'utmCampaign',
-      'first_source_url', 
+      'source_url',
+      'first_source_url',
       'source',
       'mode',
       'preferred_budget',
@@ -63,6 +64,7 @@ const cleanConditions = (conditions) => {
 const validateConditionKeys = (conditions) => {
   const priorityFields = [
     'utmCampaign',
+    'source_url',
     'first_source_url',
     'source',
     'mode',
@@ -104,7 +106,7 @@ const validateUniversityNames = (universityNames) => {
 
 export const createLeadAssignmentforRecon = async (req, res) => {
   try {
-    const { conditions, assigned_university_names, is_active = true, priority = 0, custom_rule_name } = req.body;
+    const { conditions, assigned_university_names, is_active = true, priority = 0, custom_rule_name, source_url } = req.body;
     
     // Validate university names
     const validatedUniversityNames = validateUniversityNames(assigned_university_names);
@@ -127,7 +129,8 @@ export const createLeadAssignmentforRecon = async (req, res) => {
       assigned_university_names: validatedUniversityNames,
       is_active,
       priority,
-      custom_rule_name
+      custom_rule_name,
+      source_url: Array.isArray(source_url) ? source_url : (source_url ? [source_url] : [])
     });
 
     res.status(201).json({
@@ -145,7 +148,7 @@ export const createLeadAssignmentforRecon = async (req, res) => {
 export const updateLeadAssignmentforRecon = async (req, res) => {
   try {
     const { id } = req.params;
-    const { conditions, round_robin_index, assigned_university_names, is_active, priority, custom_rule_name } = req.body;
+    const { conditions, round_robin_index, assigned_university_names, is_active, priority, custom_rule_name, source_url } = req.body;
     
     const updateData = {};
 
@@ -165,6 +168,7 @@ export const updateLeadAssignmentforRecon = async (req, res) => {
     if (priority !== undefined) updateData.priority = priority;
     if (round_robin_index !== undefined) updateData.round_robin_index = round_robin_index;
     if (custom_rule_name !== undefined) updateData.custom_rule_name = custom_rule_name;
+    if (source_url !== undefined) updateData.source_url = Array.isArray(source_url) ? source_url : (source_url ? [source_url] : []);
     
     // Validate and update university names if provided
     if (assigned_university_names !== undefined) {

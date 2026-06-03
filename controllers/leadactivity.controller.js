@@ -125,16 +125,7 @@ export const createLeadActivity = async (leadData, studentId) => {
           `Existing course status for student ${studentId} and courses ${courseIds}:`,
           existingStatus,
         );
-        if (!existingStatus) {
-          await CourseStatus.create({
-            course_id: courseIds[0],
-            student_id: studentId,
-            selection_type: "student_selected",
-            latest_course_status: "Shortlisted",
-            is_shortlisted: true,
-          });
-      
-        }
+       
       }
     }
 

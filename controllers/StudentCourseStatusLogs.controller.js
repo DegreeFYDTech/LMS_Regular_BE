@@ -2717,6 +2717,37 @@ export const getCourseGraphReport = async (req, res) => {
 
 // reuse the module-level normalizeUniv defined near the top
 
+// Internal API used by other BE services (e.g. CGC BE) that don't have direct DB access
+// to the registrations table. Returns phone → campus-group mappings for all COMPLETED registrations.
+export const getPaidPhones = async (req, res) => {
+  try {
+    const completedRegs = await Registration.findAll({
+      where: { paymentStatus: "COMPLETED" },
+      attributes: ["mobile", "campusLocation", "collegeForApplied"],
+      raw: true,
+    });
+
+    const phoneMap = new Map();
+    completedRegs.forEach(({ mobile, campusLocation, collegeForApplied }) => {
+      if (!mobile) return;
+      const group = normalizeUniv(campusLocation) || normalizeUniv(collegeForApplied);
+      if (!group) return;
+      if (!phoneMap.has(mobile)) phoneMap.set(mobile, new Set());
+      phoneMap.get(mobile).add(group);
+    });
+
+    const data = [...phoneMap.entries()].map(([mobile, groups]) => ({
+      mobile,
+      groups: [...groups],
+    }));
+
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error("getPaidPhones error:", err.message);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
 export const checkRegistrationFormType = async (req, res) => {
   try {
     const { phone, university_name, course_id } = req.body;

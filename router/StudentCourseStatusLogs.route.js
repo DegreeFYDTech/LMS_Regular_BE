@@ -15,6 +15,7 @@ import {
   replaceL3CounsellorForStudents,
   getFormData,
   checkRegistrationFormType,
+  getPaidPhones,
 } from "../controllers/StudentCourseStatusLogs.controller.js";
 import { sentStatustoCollege } from "../controllers/Colleges_sending_logic.js";
 
@@ -56,6 +57,7 @@ router.get("/reports", getCollegeStatusReports);
 router.get('/colleges-list', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getCollegesList);
 router.get('/graph-reports', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getCourseGraphReport);
 router.post('/check-form-type', checkRegistrationFormType);
+router.get('/paid-phones', getPaidPhones);
 router.post(
   "/:courseId",
   authorize(["l2", "l3", "Supervisor", "to", "to_l3"]),

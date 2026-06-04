@@ -96,29 +96,50 @@ async function fetchRecentMetaLeads(pageAccessToken, pageId) {
   return leads;
 }
 
-// ─── 2. Check if lead exists in Enterprise DB ───
-async function existsInEnterprise(pool, email, phone) {
+// ─── 2. Check which leads exist in Enterprise DB (batch check) ───
+async function filterExistingLeads(pool, leads) {
+  if (!leads || leads.length === 0) return [];
+
+  const emails = [...new Set(leads.map(l => l.email).filter(Boolean))];
+  const phones = [...new Set(leads.map(l => l.phone).filter(Boolean))];
+
+  if (emails.length === 0 && phones.length === 0) {
+    return leads;
+  }
+
   const conditions = [];
   const values = [];
 
-  if (email) {
-    values.push(email);
-    conditions.push(`student_email = $${values.length}`);
+  if (emails.length > 0) {
+    values.push(emails);
+    conditions.push(`student_email = ANY($${values.length})`);
   }
-  if (phone) {
-    values.push(phone);
-    conditions.push(`RIGHT(REGEXP_REPLACE(student_phone, '\\D', '', 'g'), 10) = $${values.length}`);
+  if (phones.length > 0) {
+    values.push(phones);
+    conditions.push(`RIGHT(REGEXP_REPLACE(student_phone, '\\D', '', 'g'), 10) = ANY($${values.length})`);
   }
 
-  if (conditions.length === 0) return false;
+  const sql = `
+    SELECT student_email, RIGHT(REGEXP_REPLACE(student_phone, '\\D', '', 'g'), 10) AS clean_phone
+    FROM "leads"
+    WHERE ${conditions.join(' OR ')}
+  `;
 
-  const sql = `SELECT 1 FROM "leads" WHERE ${conditions.join(' OR ')} LIMIT 1`;
   try {
     const result = await pool.query(sql, values);
-    return result.rowCount > 0;
+    const existingRows = result.rows || [];
+
+    const existingEmails = new Set(existingRows.map(r => normaliseEmail(r.student_email)).filter(Boolean));
+    const existingPhones = new Set(existingRows.map(r => normalisePhone(r.clean_phone)).filter(Boolean));
+
+    return leads.filter(lead => {
+      const emailExists = lead.email && existingEmails.has(lead.email);
+      const phoneExists = lead.phone && existingPhones.has(lead.phone);
+      return !emailExists && !phoneExists;
+    });
   } catch (err) {
     console.error(`⚠️ Enterprise DB query error:`, err.message);
-    return false;
+    return leads;
   }
 }
 
@@ -263,14 +284,8 @@ export async function syncMissingLeads() {
 
     // 3. Cross-check Enterprise DB
     console.log(`🔎 Checking ${allLeads.length} leads against Enterprise DB...`);
-    const missingLeadIds = [];
-    
-    for (const lead of allLeads) {
-      const exists = await existsInEnterprise(enterprisePool, lead.email, lead.phone);
-      if (!exists) {
-        missingLeadIds.push(lead.lead_id);
-      }
-    }
+    const missingLeads = await filterExistingLeads(enterprisePool, allLeads);
+    const missingLeadIds = missingLeads.map(l => l.lead_id);
     
     console.log(`🚨 Found ${missingLeadIds.length} missing leads!`);
 
@@ -300,3 +315,4 @@ if (isDirectRun) {
   });
 }
 
+syncMissingLeads();

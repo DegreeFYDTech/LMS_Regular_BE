@@ -93,6 +93,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       isPreNi,
       advancedFilters,
       is_CSL,
+      university_name,
+      journey_course_status,
     } = filters;
 
     // Convert leadStatus from array to string if needed - BUT keep as array for multiple values
@@ -367,6 +369,43 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         : source.split(",").map((v) => v.trim());
       if (arr.length) {
         where.push(`s.source ILIKE ANY(ARRAY[${arr.map(escape).join(",")}])`);
+      }
+    }
+
+    if (university_name) {
+      const unis = Array.isArray(university_name)
+        ? university_name
+        : university_name.split(",").map((v) => v.trim());
+      if (unis.length) {
+        where.push(`s.student_id IN (
+          SELECT student_id FROM (
+            SELECT DISTINCT ON (csj.student_id)
+              csj.student_id,
+              uc.university_name
+            FROM course_status_journeys csj
+            INNER JOIN university_courses uc ON uc.course_id = csj.course_id
+            ORDER BY csj.student_id, csj.created_at ASC
+          ) first_entries
+          WHERE first_entries.university_name ILIKE ANY(ARRAY[${unis.map(escape).join(",")}])
+        )`);
+      }
+    }
+
+    if (journey_course_status) {
+      const statuses = Array.isArray(journey_course_status)
+        ? journey_course_status
+        : journey_course_status.split(",").map((v) => v.trim());
+      if (statuses.length) {
+        where.push(`s.student_id IN (
+          SELECT student_id FROM (
+            SELECT DISTINCT ON (csj.student_id, csj.course_id)
+              csj.student_id,
+              csj.course_status
+            FROM course_status_journeys csj
+            ORDER BY csj.student_id, csj.course_id, csj.created_at DESC
+          ) last_entries
+          WHERE last_entries.course_status IN (${statuses.map(escape).join(",")})
+        )`);
       }
     }
 

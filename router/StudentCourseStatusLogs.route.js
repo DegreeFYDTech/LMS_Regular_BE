@@ -54,7 +54,7 @@ router.post(
 router.get("/reports/export", exportCollegeStatusReports);
 
 router.get("/reports", getCollegeStatusReports);
-router.get('/colleges-list', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getCollegesList);
+router.get('/colleges-list', authorize(['Supervisor', 'to', 'to_l3', 'l3', 'l2', 'Analyser']), getCollegesList);
 router.get('/graph-reports', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getCourseGraphReport);
 router.post('/check-form-type', checkRegistrationFormType);
 router.get('/paid-phones', getPaidPhones);

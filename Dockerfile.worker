@@ -1,0 +1,19 @@
+# Use the official Playwright jammy image (which contains Node.js, Playwright browsers,
+# and all required OS system libraries pre-installed)
+FROM mcr.microsoft.com/playwright:v1.60.0-jammy
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install production dependencies
+# Note: we use npm ci to ensure exact lockfile installation
+RUN npm ci --only=production
+
+# Copy application source code
+COPY . .
+
+# Run the CUCET bot worker process
+CMD ["node", "cu_bot/index.js"]

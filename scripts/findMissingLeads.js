@@ -59,7 +59,7 @@ function makePool(url) {
 
 async function fetchMetaLeads(pageAccessToken) {
   const now   = Math.floor(Date.now() / 1000);
-  const since = now - 3 * 24 * 60 * 60; // last 30 days in unix epoch
+  const since = now - 30 * 24 * 60 * 60; // last 30 days in unix epoch
   const leads = [];
 
   // 1a. Get all lead forms for the page

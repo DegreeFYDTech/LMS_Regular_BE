@@ -1,0 +1,20 @@
+# Use node 18 slim as base image
+FROM node:18-slim
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install production dependencies
+RUN npm ci --only=production
+
+# Copy application source code
+COPY . .
+
+# Expose the API port (default is 3031)
+EXPOSE 3031
+
+# Start the API server
+CMD ["node", "server.js"]

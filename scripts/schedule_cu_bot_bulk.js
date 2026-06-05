@@ -32,7 +32,8 @@ function getNextStartTimeIST() {
 async function main() {
   const args = process.argv.slice(2);
   if (args.length < 1) {
-    console.log("❌ Usage: node --experimental-vm-modules scripts/schedule_cu_bot_bulk.js <path_to_leads_json>");
+    console.log("❌ Usage: node --experimental-vm-modules scripts/schedule_cu_bot_bulk.js <path_to_leads_json> [gap_minutes] [--immediate]");
+    console.log("Example: node --experimental-vm-modules scripts/schedule_cu_bot_bulk.js leads.json 2 --immediate");
     console.log("Example JSON format: [\"STD-123\", \"STD-456\"] OR [{\"student_id\": \"STD-123\"}]");
     process.exit(1);
   }
@@ -51,13 +52,29 @@ async function main() {
     process.exit(1);
   }
 
+  // Parse optional arguments
+  let gapMinutes = GAP_MINUTES;
+  let immediate = false;
+
+  for (let idx = 1; idx < args.length; idx++) {
+    const val = args[idx];
+    if (val === '--immediate') {
+      immediate = true;
+    } else if (!isNaN(parseInt(val))) {
+      gapMinutes = parseInt(val);
+    }
+  }
+
+  // If immediate, bypass daily limits
+  const activeLeadsPerDay = immediate ? data.length : LEADS_PER_DAY;
+  const currentStartUTC = immediate ? new Date() : getNextStartTimeIST();
+
   console.log(`\n======================================================`);
   console.log(`🤖 CU BOT BULK SCHEDULER STARTED`);
   console.log(`Total Leads to Schedule: ${data.length}`);
-  console.log(`Configuration: ${LEADS_PER_DAY} leads/day | ${GAP_MINUTES} min gap | Starting at ${START_HOUR_IST}:00 AM IST`);
+  console.log(`Configuration: ${immediate ? 'Immediate (no daily limit)' : `${activeLeadsPerDay} leads/day`} | ${gapMinutes} min gap | Starting: ${immediate ? 'Now' : `at ${START_HOUR_IST}:00 AM IST`}`);
   console.log(`======================================================\n`);
 
-  let currentStartUTC = getNextStartTimeIST();
   let scheduledCount = 0;
   let dayCounter = 1;
   let leadInDayCounter = 0;
@@ -78,7 +95,7 @@ async function main() {
       continue;
     }
 
-    if (leadInDayCounter >= LEADS_PER_DAY) {
+    if (leadInDayCounter >= activeLeadsPerDay) {
       // Move to next day
       dayCounter++;
       leadInDayCounter = 0;
@@ -86,7 +103,7 @@ async function main() {
     }
 
     // Calculate exactly when this lead should run
-    const additionalDelayMs = leadInDayCounter * GAP_MINUTES * 60 * 1000;
+    const additionalDelayMs = leadInDayCounter * gapMinutes * 60 * 1000;
     const executeAtUTC = new Date(currentStartUTC.getTime() + additionalDelayMs);
     const delayMs = Math.max(0, executeAtUTC.getTime() - Date.now());
 

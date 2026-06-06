@@ -1,90 +1,148 @@
 {
-  "generated_at": "2026-05-21T07:35:38.101Z",
+  "generated_at": "2026-06-06T12:44:17.973Z",
   "description": "Meta leads fetched from Graph API — not found in Regular, Online, or Enterprise LMS",
-  "total": 3,
+  "total": 5,
   "leads": [
     {
-      "lead_id": 3191903267658554,
-      "name": "Monik Borad",
-      "phone_number": "9274277446",
-      "email": "boradmonik2@gmail.com",
-      "preferred_city": "Ho Chi Minh City",
+      "lead_id": 2868785533471428,
+      "name": "Naushad Ahmed",
+      "phone_number": "9313835549",
+      "email": "naushadahamed3418@gmail.com",
+      "preferred_city": "FARIDABAD",
       "source": "FaceBook_University_Admit",
-      "form_name": "3191903267658554",
+      "form_name": "2868785533471428",
       "mode": "Online",
-      "sourceUrl": "F_UA01_{UG All Colleges V03.1}",
-      "utm_campaign": "F_UA01_{UG All Colleges 3.1} {INT 01} {C1.3}",
-      "utm_campaign_id": "120239716183810690",
+      "sourceUrl": "Online_BCom_ACCA",
+      "utm_campaign": "Online_BCom_ACCA_Manipal_CR1",
+      "utm_campaign_id": "120243295553100018",
       "student_comment": [
         {
-          "question": "how_much_work_experience_do_you_have?",
-          "answer": "online_b.com"
+          "question": "which_program_are_you_interested_in?",
+          "answer": "online_b.com_+_acca"
         },
         {
-          "question": "what_is_your_current_status?",
-          "answer": "yes,_completed"
+          "question": "phone",
+          "answer": "+919313835549"
         },
         {
-          "question": "why_do_you_want_to_pursue_an_mba?",
-          "answer": "immediately"
-        }
-      ]
-    },
-    {
-      "lead_id": 1304598781117546,
-      "name": "Ujjwal Verma Uv",
-      "phone_number": "9708652491",
-      "email": "ujjwalverma1109@gmail.com",
-      "preferred_city": "Bangalore",
-      "source": "FaceBook_University_Admit",
-      "form_name": "1304598781117546",
-      "mode": "Online",
-      "sourceUrl": "F_UA1_All Colleges_MBA_Aryan v1.3",
-      "utm_campaign": "F_UA1_All Colleges_MBA_Aryan V1.3 (INT 01)_ 1.1",
-      "utm_campaign_id": "120240485252000690",
-      "student_comment": [
-        {
-          "question": "what_is_your_current_status?",
-          "answer": "working_professional"
-        },
-        {
-          "question": "why_do_you_want_to_pursue_an_mba?",
-          "answer": "this_month"
-        },
-        {
-          "question": "how_much_work_experience_do_you_have?",
-          "answer": "mba_in_finance"
+          "question": "when_do_you_plan_to_enroll?",
+          "answer": "within_the_next_month"
         },
         {
           "question": "inbox_url",
-          "answer": "https://business.facebook.com/latest/27549295041334185?nav_ref=thread_view_by_psid"
+          "answer": "https://business.facebook.com/latest/26827724706882649?nav_ref=thread_view_by_psid"
         }
       ]
     },
     {
-      "lead_id": 990762540125293,
-      "name": "Meenakshi pawar",
-      "phone_number": "9833192224",
-      "email": "mp906880@gmail.com",
-      "preferred_city": "Mumbai",
+      "lead_id": 1002338772510949,
+      "name": "ww3 ra 2 qq 1q Singh",
+      "phone_number": "111(,",
+      "email": "balwinde464647@gmail.comhhhiiiki9oo",
+      "preferred_city": "zdd",
       "source": "FaceBook_University_Admit",
-      "form_name": "990762540125293",
+      "form_name": "1002338772510949",
       "mode": "Online",
-      "sourceUrl": "F_UA1_All Colleges_MBA_Aryan v1.1",
-      "utm_campaign": "F_UA1_All Colleges_MBA_Aryan (INT 03)_ 1.3",
-      "utm_campaign_id": "120241197587580690",
+      "sourceUrl": "CGC_REGU_BTECH_IF_ASH_1",
+      "utm_campaign": "CGC_REGU_BTECH_ASH_1_CR1",
+      "utm_campaign_id": "120242864241710018",
       "student_comment": [
         {
+          "question": "which_course_are_you_most_interested_in?",
+          "answer": "civil_engineering"
+        },
+        {
+          "question": "when_do_you_plan_to_enroll?",
+          "answer": "not_sure,_need_counselling"
+        },
+        {
+          "question": "phone",
+          "answer": "111(,"
+        }
+      ]
+    },
+    {
+      "lead_id": 976417898449135,
+      "name": "manik",
+      "phone_number": null,
+      "email": "chakraborty@gmail.com",
+      "preferred_city": null,
+      "source": "FaceBook_University_Admit",
+      "form_name": "976417898449135",
+      "mode": "Online",
+      "sourceUrl": "Manipal_Online_UG&PG_IF",
+      "utm_campaign": "Manipal_Online_UG&PG_IF_CR2",
+      "utm_campaign_id": "120242481671080018",
+      "student_comment": [
+        {
+          "question": "which_course_are_you_most_interested_in?",
+          "answer": "mba"
+        },
+        {
+          "question": "when_do_you_plan_to_enroll?",
+          "answer": "immediately"
+        },
+        {
+          "question": "whatsapp_number",
+          "answer": "+917047350664"
+        }
+      ]
+    },
+    {
+      "lead_id": 1149249131600163,
+      "name": "m. Joseph raj",
+      "phone_number": null,
+      "email": "josephraj260295@gmail.com",
+      "preferred_city": null,
+      "source": "FaceBook_University_Admit",
+      "form_name": "1149249131600163",
+      "mode": "Online",
+      "sourceUrl": "Manipal_Online_UG&PG_IF",
+      "utm_campaign": "Manipal_Online_UG&PG_IF_CR2",
+      "utm_campaign_id": "120242481671080018",
+      "student_comment": [
+        {
+          "question": "when_do_you_plan_to_enroll?",
+          "answer": "within_the_next_month"
+        },
+        {
+          "question": "which_course_are_you_most_interested_in?",
+          "answer": "bba"
+        },
+        {
+          "question": "what’s_your_goal_right_now?",
+          "answer": "complete_my_degree"
+        },
+        {
+          "question": "whatsapp_number",
+          "answer": "+919600867991"
+        }
+      ]
+    },
+    {
+      "lead_id": 2694031050953902,
+      "name": "Suraj Rajwanshid",
+      "phone_number": "234",
+      "email": "surajrajwar1234567890@gmail.com",
+      "preferred_city": "Hazaribagh",
+      "source": "FaceBook_University_Admit",
+      "form_name": "2694031050953902",
+      "mode": "Online",
+      "sourceUrl": "ONLINE_MBA_IF_ASH",
+      "utm_campaign": "ONLINE_MBA_IF_ASH_CR1",
+      "utm_campaign_id": "120242492632950018",
+      "student_comment": [
+        {
+          "question": "choose_your_online_mba_program",
+          "answer": "operations_&_supply_chain"
+        },
+        {
           "question": "what_is_your_current_status?",
-          "answer": "graduated"
+          "answer": "graduation_completed"
         },
         {
-          "question": "how_much_work_experience_do_you_have?",
-          "answer": "mba_in_finance"
-        },
-        {
-          "question": "why_do_you_want_to_pursue_an_mba?",
-          "answer": "need_guidance"
+          "question": "phone",
+          "answer": "234"
         }
       ]
     }

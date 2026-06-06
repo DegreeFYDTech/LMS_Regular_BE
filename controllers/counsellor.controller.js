@@ -886,108 +886,218 @@ export const formatBreakDuration = (startTime, endTime) => {
   };
 };
 
+
+
 export async function getCounsellorBreakStats(param = {}, userRole = null, userId = null) {
   const parseDate = (dateString, isEndDate = false) => {
     const date = new Date(dateString);
-    if (isEndDate) {
-      date.setHours(23, 59, 59, 999);
-    } else {
-      date.setHours(0, 0, 0, 0);
-    }
+    if (isEndDate) date.setHours(23, 59, 59, 999);
+    else date.setHours(0, 0, 0, 0);
     return date;
   };
 
   let startDate, endDate;
-
   if (param.from && param.to) {
     startDate = parseDate(param.from);
     endDate = parseDate(param.to, true);
-  } else if (param.from && !param.to) {
+  } else if (param.from) {
     startDate = parseDate(param.from);
-    endDate = new Date();
-    endDate.setHours(23, 59, 59, 999);
-  } else if (!param.from && param.to) {
-    startDate = new Date();
-    startDate.setHours(0, 0, 0, 0);
+    endDate = new Date(); endDate.setHours(23, 59, 59, 999);
+  } else if (param.to) {
+    startDate = new Date(); startDate.setHours(0, 0, 0, 0);
     endDate = parseDate(param.to, true);
   } else {
-    startDate = new Date();
-    startDate.setHours(0, 0, 0, 0);
-    endDate = new Date();
-    endDate.setHours(23, 59, 59, 999);
+    startDate = new Date(); startDate.setHours(0, 0, 0, 0);
+    endDate = new Date(); endDate.setHours(23, 59, 59, 999);
   }
 
-  // Build where clause for counsellor inclusion
-  const counsellorWhere = {};
+  const page  = Math.max(1, parseInt(param.page)  || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(param.limit) || 20));
+  const offset = (page - 1) * limit;
 
-  // If user is a Team Owner (to), only show counsellors assigned to them
+  // Base filters — always active l2 counsellors for this dashboard
+  const counsellorWhere = {
+    status: 'active',
+    role:   'l2',
+  };
+
+  // Role-based access control
   if (userRole === 'to' && userId) {
     counsellorWhere.assigned_to = userId;
+    // role stays 'l2'
+  } else if (userRole === 'admission_to' && userId) {
+    counsellorWhere.assigned_to = userId;
+    counsellorWhere.role = 'enrollment_counsellor';
+  }
+  // Supervisor: no extra restriction beyond the defaults
+
+  // Search by name or email
+  const andConditions = [];
+  if (param.search && param.search.trim()) {
+    andConditions.push({
+      [Op.or]: [
+        { counsellor_name: { [Op.iLike]: `%${param.search.trim()}%` } },
+        { counsellor_email: { [Op.iLike]: `%${param.search.trim()}%` } },
+      ],
+    });
   }
 
-  const stats = await counsellorBreak.findAll({
+  // Break-status filter (on_break / not_on_break)
+  const startIso = startDate.toISOString();
+  const endIso   = endDate.toISOString();
+  if (param.breakStatus === 'on_break') {
+    andConditions.push(literal(`EXISTS (
+      SELECT 1 FROM "counsellor_break_logs" cb
+      WHERE cb.counsellor_id = "counsellors"."counsellor_id"
+        AND cb.break_end IS NULL
+        AND cb.break_start BETWEEN '${startIso}' AND '${endIso}'
+    )`));
+  } else if (param.breakStatus === 'not_on_break') {
+    andConditions.push(literal(`NOT EXISTS (
+      SELECT 1 FROM "counsellor_break_logs" cb
+      WHERE cb.counsellor_id = "counsellors"."counsellor_id"
+        AND cb.break_end IS NULL
+        AND cb.break_start BETWEEN '${startIso}' AND '${endIso}'
+    )`));
+  }
+
+  if (andConditions.length > 0) counsellorWhere[Op.and] = andConditions;
+
+  // Total count for pagination (no JOIN needed)
+  const totalCount = await Counsellor.count({ where: counsellorWhere });
+
+  // Overall on-break count across ALL matching counsellors (ignores pagination)
+  // Used for the stats cards on the frontend.
+  const totalOnBreak = await Counsellor.count({
+    where: {
+      ...counsellorWhere,
+      [Op.and]: [
+        ...(counsellorWhere[Op.and] || []),
+        literal(`EXISTS (
+          SELECT 1 FROM "counsellor_break_logs" cb_ob
+          WHERE cb_ob.counsellor_id = "counsellors"."counsellor_id"
+            AND cb_ob.break_end IS NULL
+            AND cb_ob.break_start BETWEEN '${startIso}' AND '${endIso}'
+        )`),
+      ],
+    },
+  });
+
+  // Paginated data with LEFT JOIN on break logs
+  const stats = await Counsellor.findAll({
+    subQuery: false,
     attributes: [
       'counsellor_id',
-      [fn('COUNT', col('id')), 'no_of_breaks_today'],
-      [fn('SUM', col('duration_seconds')), 'total_break_time'],
+      'counsellor_name',
+      'counsellor_email',
+      'role',
+      'assigned_to',
+      'status',
+      [fn('COUNT', col('counsellor_breaks.id')), 'no_of_breaks_today'],
+      [fn('SUM', col('counsellor_breaks.duration_seconds')), 'total_break_time'],
       [
-        // Currently on break within this date range
         literal(`(
           SELECT CASE WHEN EXISTS (
-            SELECT 1
-            FROM "counsellor_break_logs" cb2
-            WHERE cb2.counsellor_id = "counsellorBreak".counsellor_id
+            SELECT 1 FROM "counsellor_break_logs" cb2
+            WHERE cb2.counsellor_id = "counsellors"."counsellor_id"
               AND cb2.break_end IS NULL
-              AND cb2.break_start BETWEEN '${startDate.toISOString()}' AND '${endDate.toISOString()}'
+              AND cb2.break_start BETWEEN '${startIso}' AND '${endIso}'
           ) THEN TRUE ELSE FALSE END
         )`),
-        'currently_on_break'
+        'currently_on_break',
       ],
       [
         literal(`(
           SELECT row_to_json(cb_last)
           FROM "counsellor_break_logs" cb_last
-          WHERE cb_last.counsellor_id = "counsellorBreak".counsellor_id
-            AND cb_last.break_start BETWEEN '${startDate.toISOString()}' AND '${endDate.toISOString()}'
+          WHERE cb_last.counsellor_id = "counsellors"."counsellor_id"
+            AND cb_last.break_start BETWEEN '${startIso}' AND '${endIso}'
           ORDER BY cb_last.break_start DESC
           LIMIT 1
         )`),
-        'last_break'
-      ]
+        'last_break',
+      ],
+      [
+        literal(`(
+          SELECT COUNT(*) FROM "counsellor_break_logs" cb_meal
+          WHERE cb_meal.counsellor_id = "counsellors"."counsellor_id"
+            AND LOWER(cb_meal.break_type) = 'meal'
+            AND cb_meal.break_start BETWEEN '${startIso}' AND '${endIso}'
+        )`),
+        'meal_breaks',
+      ],
+      [
+        literal(`(
+          SELECT COALESCE(SUM(cb_meal_t.duration_seconds), 0) FROM "counsellor_break_logs" cb_meal_t
+          WHERE cb_meal_t.counsellor_id = "counsellors"."counsellor_id"
+            AND LOWER(cb_meal_t.break_type) = 'meal'
+            AND cb_meal_t.break_start BETWEEN '${startIso}' AND '${endIso}'
+        )`),
+        'meal_break_time',
+      ],
+      [
+        literal(`(
+          SELECT COUNT(*) FROM "counsellor_break_logs" cb_lunch
+          WHERE cb_lunch.counsellor_id = "counsellors"."counsellor_id"
+            AND LOWER(cb_lunch.break_type) = 'lunch'
+            AND cb_lunch.break_start BETWEEN '${startIso}' AND '${endIso}'
+        )`),
+        'lunch_breaks',
+      ],
+      [
+        literal(`(
+          SELECT COALESCE(SUM(cb_lunch_t.duration_seconds), 0) FROM "counsellor_break_logs" cb_lunch_t
+          WHERE cb_lunch_t.counsellor_id = "counsellors"."counsellor_id"
+            AND LOWER(cb_lunch_t.break_type) = 'lunch'
+            AND cb_lunch_t.break_start BETWEEN '${startIso}' AND '${endIso}'
+        )`),
+        'lunch_break_time',
+      ],
     ],
-    where: {
-      break_start: {
-        [Op.between]: [startDate, endDate],
-      },
-    },
+    where: counsellorWhere,
     include: [
       {
-        model: Counsellor,
-        as: 'counsellor_details',
-        attributes: ['counsellor_name', 'counsellor_email', 'counsellor_id', 'role', 'assigned_to'],
-        where: counsellorWhere, // Apply the filter here
-        required: true,
-      }
+        model: counsellorBreak,
+        as: 'counsellor_breaks',
+        attributes: [],
+        required: false,
+        where: { break_start: { [Op.between]: [startDate, endDate] } },
+      },
     ],
     group: [
-      '"counsellorBreak".counsellor_id',
-      'counsellor_details.counsellor_id',
-      'counsellor_details.counsellor_name',
-      'counsellor_details.counsellor_email',
-      'counsellor_details.role',
-      'counsellor_details.assigned_to'
+      '"counsellors"."counsellor_id"',
+      '"counsellors"."counsellor_name"',
+      '"counsellors"."counsellor_email"',
+      '"counsellors"."role"',
+      '"counsellors"."assigned_to"',
+      '"counsellors"."status"',
     ],
-    order: [['counsellor_details', 'counsellor_name', 'ASC']],
+    order: [['counsellor_name', 'ASC']],
+    limit,
+    offset,
   });
+
+  const totalPages = Math.ceil(totalCount / limit);
 
   return {
     data: stats,
+    overallStats: {
+      total:         totalCount,
+      onBreak:       totalOnBreak,
+      notOnBreak:    totalCount - totalOnBreak,
+    },
+    pagination: {
+      page,
+      limit,
+      totalCount,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    },
     dateRange: {
       from: startDate.toISOString().split('T')[0],
-      to: endDate.toISOString().split('T')[0]
+      to:   endDate.toISOString().split('T')[0],
     },
-    totalRecords: stats.length,
-    filteredByTeamOwner: userRole === 'to' && userId ? true : false
   };
 }
 
@@ -1007,11 +1117,17 @@ export async function getCounsellor_break_stats(req, res) {
         id: user.id,
         role: user.role,
         name: user.name
-      },
-      ...(user.role === 'to' && {
-        note: 'Showing break stats for counsellors assigned to this Team Owner'
-      })
+      }
     };
+
+    // Add role-specific notes
+    if (user.role === 'to') {
+      response.note = 'Showing break stats for L2/L3 counsellors assigned to this Team Owner';
+    } else if (user.role === 'admission_to') {
+      response.note = 'Showing break stats for enrollment counsellors assigned to this Admission Team Owner';
+    } else if (user.role === 'Supervisor') {
+      response.note = 'Showing break stats for all counsellors';
+    }
 
     res.status(200).send(response);
   } catch (e) {
@@ -1027,6 +1143,32 @@ export async function getCounsellor_break_stats(req, res) {
     });
   }
 }
+
+export const getCounsellorBreakDetails = async (req, res) => {
+  const { counsellor_id } = req.params;
+  const { from, to } = req.query;
+  try {
+    const startDate = from
+      ? new Date(from + 'T00:00:00')
+      : new Date(new Date().setHours(0, 0, 0, 0));
+    const endDate = to
+      ? new Date(to + 'T23:59:59')
+      : new Date(new Date().setHours(23, 59, 59, 999));
+
+    const breaks = await counsellorBreak.findAll({
+      where: {
+        counsellor_id,
+        break_start: { [Op.between]: [startDate, endDate] },
+      },
+      order: [['break_start', 'ASC']],
+      raw: true,
+    });
+
+    return res.json({ success: true, data: breaks });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 export const changeSupervisor = async (req, res) => {
   const { counsellor_id, supervisor_id } = req.body;

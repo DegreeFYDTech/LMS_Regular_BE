@@ -1343,21 +1343,22 @@ export const getStudentById = async (req, res) => {
     }));
 
     const allL3Journeys = await sequelize.query(
-      `SELECT 
-          status_history_id, 
-          student_id, 
-          course_id, 
-          counsellor_id, 
-          course_status, 
-          deposit_amount, 
-          currency, 
-          exam_interview_date, 
-          last_admission_date, 
-          notes, 
+      `SELECT
+          status_history_id,
+          student_id,
+          course_id,
+          counsellor_id,
+          course_status,
+          deposit_amount,
+          fee_type,
+          currency,
+          exam_interview_date,
+          last_admission_date,
+          notes,
           assigned_l3_counsellor_id,
           created_at
-       FROM course_status_journeys 
-       WHERE student_id = :studentId 
+       FROM course_status_journeys
+       WHERE student_id = :studentId
        ORDER BY created_at DESC`,
       {
         replacements: { studentId: id },
@@ -1393,6 +1394,8 @@ export const getStudentById = async (req, res) => {
       studentData.course_id = latestJourney?.course_id || null;
       studentData.course_count = result?.length || 0;
       studentData.course_sub_status = latestJourney?.course_status || null;
+      studentData.deposit_amount = latestJourney?.deposit_amount || 0;
+      studentData.fee_type = latestJourney?.fee_type || null;
     } else if (counsellorRole === "l3" || counsellorRole === "to_l3") {
       const latestJourney = await CourseStatusJourney.findOne({
         where: {
@@ -1414,6 +1417,8 @@ export const getStudentById = async (req, res) => {
       studentData.course_id = latestJourney?.course_id || null;
       studentData.course_count = result?.length || 0;
       studentData.course_sub_status = latestJourney?.course_status || null;
+      studentData.deposit_amount = latestJourney?.deposit_amount || 0;
+      studentData.fee_type = latestJourney?.fee_type || null;
 
       if (counsellorRole === "l3") {
         if (latestJourney?.course_status == "Walkin Marked") {
@@ -1436,6 +1441,18 @@ export const getStudentById = async (req, res) => {
         } else {
           studentData.current_student_status = latestJourney?.course_status;
         }
+      }
+    }
+
+    // For supervisors (and any role not handled above), pull deposit_amount + fee_type
+    // from the latest Admission journey across all counsellors
+    if (studentData.deposit_amount === undefined || studentData.deposit_amount === null) {
+      const latestAdmissionJourney = allL3Journeys.find(
+        (j) => j.course_status === "Admission",
+      );
+      if (latestAdmissionJourney) {
+        studentData.deposit_amount = latestAdmissionJourney.deposit_amount || 0;
+        studentData.fee_type = latestAdmissionJourney.fee_type || null;
       }
     }
 

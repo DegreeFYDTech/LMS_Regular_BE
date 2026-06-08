@@ -230,6 +230,47 @@ export const updateStudentStatus = async (req, res) => {
         message: "Student transferred to CGC successfully",
       });
     }
+
+    // Validate credentials and stage for atomic save with journey creation
+    let credData = null;
+    let credSaved = false;
+    if (
+      leadStatus === "Application" &&
+      selectedCourse &&
+      (formID || couponCode || userName || password)
+    ) {
+      const collegeName = courseDetails?.dataValues?.university_name || "";
+      const college = collegeName.toLowerCase();
+
+      if (college.includes("lovely") && userName) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(userName)) {
+          return res.status(400).json({
+            success: false,
+            message: "For Lovely Professional University, userName must be a valid email address",
+          });
+        }
+      }
+      if (college.includes("chandigarh") && userName) {
+        if (!/^\d{10}$/.test(userName)) {
+          return res.status(400).json({
+            success: false,
+            message: "For Chandigarh University, userName must be a valid 10-digit phone number",
+          });
+        }
+      }
+
+      credData = {
+        form_id: formID || null,
+        coupon_code: couponCode || null,
+        user_name: userName || null,
+        password: password || null,
+        student_id: studentId,
+        course_id: selectedCourse,
+        counsellor_id: counsellorId,
+      };
+    }
+
     const statusPriority = {
       "Pre Application": 1,
       "Initial Counselling Completed": 2,
@@ -522,21 +563,34 @@ export const updateStudentStatus = async (req, res) => {
           isFirstApplicationEntry = existingAppCount === 0;
         }
 
-        await CourseStatusJourney.create(journeyData);
+        await sequelize.transaction(async (t) => {
+          // Save credentials atomically with journey creation so neither exists without the other
+          if (credData) {
+            const existingCred = await StudentCollegeCred.findOne({
+              where: { student_id: studentId, course_id: selectedCourse },
+              transaction: t,
+            });
+            if (!existingCred) {
+              await StudentCollegeCred.create(credData, { transaction: t });
+              credSaved = true;
+            }
+          }
 
-        // Update the latest status in CourseStatus table
-        await CourseStatus.update(
-          {
-            latest_course_status:
-              effectiveCourseStatus === "Application"
-                ? leadSubStatus
-                : effectiveCourseStatus,
-            created_by: counsellorId,
-            // Also update event_time in CourseStatus if needed
-            ...(event_time && { event_time: event_time }),
-          },
-          { where: { course_id: selectedCourse, student_id: studentId } },
-        );
+          await CourseStatusJourney.create(journeyData, { transaction: t });
+
+          // Update the latest status in CourseStatus table
+          await CourseStatus.update(
+            {
+              latest_course_status:
+                effectiveCourseStatus === "Application"
+                  ? leadSubStatus
+                  : effectiveCourseStatus,
+              created_by: counsellorId,
+              ...(event_time && { event_time: event_time }),
+            },
+            { where: { course_id: selectedCourse, student_id: studentId }, transaction: t },
+          );
+        });
 
         // Trigger email on first form/application entry for this course
         if (isFirstApplicationEntry) {
@@ -592,6 +646,17 @@ export const updateStudentStatus = async (req, res) => {
         }
       }
     }
+    // Fallback: save creds if they weren't saved inside the journey transaction
+    // (covers same-status updates where no new journey entry was created)
+    if (credData && !credSaved) {
+      const existingCred = await StudentCollegeCred.findOne({
+        where: { student_id: studentId, course_id: selectedCourse },
+      });
+      if (!existingCred) {
+        await StudentCollegeCred.create(credData);
+      }
+    }
+
     if (
       !student.assigned_counsellor_id &&
       (leadStatus === "Initial Counselling Completed" ||
@@ -1278,21 +1343,22 @@ export const getStudentById = async (req, res) => {
     }));
 
     const allL3Journeys = await sequelize.query(
-      `SELECT 
-          status_history_id, 
-          student_id, 
-          course_id, 
-          counsellor_id, 
-          course_status, 
-          deposit_amount, 
-          currency, 
-          exam_interview_date, 
-          last_admission_date, 
-          notes, 
+      `SELECT
+          status_history_id,
+          student_id,
+          course_id,
+          counsellor_id,
+          course_status,
+          deposit_amount,
+          fee_type,
+          currency,
+          exam_interview_date,
+          last_admission_date,
+          notes,
           assigned_l3_counsellor_id,
           created_at
-       FROM course_status_journeys 
-       WHERE student_id = :studentId 
+       FROM course_status_journeys
+       WHERE student_id = :studentId
        ORDER BY created_at DESC`,
       {
         replacements: { studentId: id },
@@ -1328,6 +1394,8 @@ export const getStudentById = async (req, res) => {
       studentData.course_id = latestJourney?.course_id || null;
       studentData.course_count = result?.length || 0;
       studentData.course_sub_status = latestJourney?.course_status || null;
+      studentData.deposit_amount = latestJourney?.deposit_amount || 0;
+      studentData.fee_type = latestJourney?.fee_type || null;
     } else if (counsellorRole === "l3" || counsellorRole === "to_l3") {
       const latestJourney = await CourseStatusJourney.findOne({
         where: {
@@ -1349,6 +1417,8 @@ export const getStudentById = async (req, res) => {
       studentData.course_id = latestJourney?.course_id || null;
       studentData.course_count = result?.length || 0;
       studentData.course_sub_status = latestJourney?.course_status || null;
+      studentData.deposit_amount = latestJourney?.deposit_amount || 0;
+      studentData.fee_type = latestJourney?.fee_type || null;
 
       if (counsellorRole === "l3") {
         if (latestJourney?.course_status == "Walkin Marked") {
@@ -1371,6 +1441,18 @@ export const getStudentById = async (req, res) => {
         } else {
           studentData.current_student_status = latestJourney?.course_status;
         }
+      }
+    }
+
+    // For supervisors (and any role not handled above), pull deposit_amount + fee_type
+    // from the latest Admission journey across all counsellors
+    if (studentData.deposit_amount === undefined || studentData.deposit_amount === null) {
+      const latestAdmissionJourney = allL3Journeys.find(
+        (j) => j.course_status === "Admission",
+      );
+      if (latestAdmissionJourney) {
+        studentData.deposit_amount = latestAdmissionJourney.deposit_amount || 0;
+        studentData.fee_type = latestAdmissionJourney.fee_type || null;
       }
     }
 

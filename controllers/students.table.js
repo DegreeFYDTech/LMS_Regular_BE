@@ -933,6 +933,8 @@ export const mapFiltersForGetStudentsHelper = (
       params?.lead_reactive && (params?.lead_reactive == "true" ? true : false),
     isReassignedYet: params?.isReassignedYet || params?.is_reassigned_yet,
     is_CSL: params?.is_CSL,
+    university_name: params?.university_name,
+    journey_course_status: params?.journey_course_status,
     advancedFilters: params?.advancedFilters,
     // Add analyser-specific filters for SQL function
     ...(isAnalyser && {

@@ -97,7 +97,7 @@ async function fetchRecentMetaLeads(pageAccessToken, pageId) {
 }
 
 // ─── 2. Check which leads exist in Enterprise DB (batch check) ───
-async function filterExistingLeads(pool, leads) {
+async function filterExistingLeads(pool, leads, pageAccessToken, sourceName) {
   if (!leads || leads.length === 0) return [];
 
   const emails = [...new Set(leads.map(l => l.email).filter(Boolean))];
@@ -120,7 +120,7 @@ async function filterExistingLeads(pool, leads) {
   }
 
   const sql = `
-    SELECT student_email, RIGHT(REGEXP_REPLACE(student_phone, '\\D', '', 'g'), 10) AS clean_phone
+    SELECT primary_student_id, student_email, RIGHT(REGEXP_REPLACE(student_phone, '\\D', '', 'g'), 10) AS clean_phone
     FROM "leads"
     WHERE ${conditions.join(' OR ')}
   `;
@@ -129,14 +129,67 @@ async function filterExistingLeads(pool, leads) {
     const result = await pool.query(sql, values);
     const existingRows = result.rows || [];
 
-    const existingEmails = new Set(existingRows.map(r => normaliseEmail(r.student_email)).filter(Boolean));
-    const existingPhones = new Set(existingRows.map(r => normalisePhone(r.clean_phone)).filter(Boolean));
-
-    return leads.filter(lead => {
-      const emailExists = lead.email && existingEmails.has(lead.email);
-      const phoneExists = lead.phone && existingPhones.has(lead.phone);
-      return !emailExists && !phoneExists;
+    const existingByEmail = new Map();
+    const existingByPhone = new Map();
+    existingRows.forEach(r => {
+      if (r.student_email) existingByEmail.set(normaliseEmail(r.student_email), r.primary_student_id);
+      if (r.clean_phone) existingByPhone.set(normalisePhone(r.clean_phone), r.primary_student_id);
     });
+
+    const finalMissingLeads = [];
+
+    for (const lead of leads) {
+      let primary_student_id = null;
+      if (lead.email && existingByEmail.has(lead.email)) {
+        primary_student_id = existingByEmail.get(lead.email);
+      } else if (lead.phone && existingByPhone.has(lead.phone)) {
+        primary_student_id = existingByPhone.get(lead.phone);
+      }
+
+      if (!primary_student_id) {
+        // Completely new lead
+        finalMissingLeads.push(lead);
+      } else {
+        // Existing lead, check latest activity
+        try {
+          const metaDetails = await fetchLeadDataWithCampaign(lead.lead_id, pageAccessToken);
+          if (!metaDetails) {
+            console.log(`⚠️ Could not fetch Meta campaign details for existing lead ${lead.lead_id}, skipping check.`);
+            continue;
+          }
+
+          const utm_campaign = metaDetails.lead?.ad_name || '';
+
+          const activitySql = `
+            SELECT source, utm_campaign
+            FROM "lead_activities"
+            WHERE lead_id = $1
+            ORDER BY created_at DESC
+            LIMIT 1
+          `;
+          const activityResult = await pool.query(activitySql, [primary_student_id]);
+          const latestActivity = activityResult.rows?.[0];
+
+          if (latestActivity) {
+            const sourceMatches = latestActivity.source === sourceName;
+            const campaignMatches = latestActivity.utm_campaign === utm_campaign;
+
+            if (sourceMatches && campaignMatches) {
+              console.log(`ℹ️ Lead ${lead.lead_id} (exists as ${primary_student_id}) already has an activity with source "${sourceName}" and utm_campaign "${utm_campaign}". Skipping.`);
+              continue;
+            }
+          }
+
+          console.log(`🚨 Lead ${lead.lead_id} (exists as ${primary_student_id}) has new activity: Source="${sourceName}" (prev: "${latestActivity?.source}"), UTM="${utm_campaign}" (prev: "${latestActivity?.utm_campaign}"). Adding to sync queue.`);
+          finalMissingLeads.push(lead);
+
+        } catch (err) {
+          console.error(`⚠️ Error checking activity for lead ${lead.lead_id}:`, err.message);
+        }
+      }
+    }
+
+    return finalMissingLeads;
   } catch (err) {
     console.error(`⚠️ Enterprise DB query error:`, err.message);
     return leads;
@@ -284,7 +337,7 @@ export async function syncMissingLeads() {
 
     // 3. Cross-check Enterprise DB
     console.log(`🔎 Checking ${allLeads.length} leads against Enterprise DB...`);
-    const missingLeads = await filterExistingLeads(enterprisePool, allLeads);
+    const missingLeads = await filterExistingLeads(enterprisePool, allLeads, pageAccessToken, account.sourceName);
     const missingLeadIds = missingLeads.map(l => l.lead_id);
     
     console.log(`🚨 Found ${missingLeadIds.length} missing leads!`);

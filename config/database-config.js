@@ -14,10 +14,7 @@ const sequelize = new Sequelize(process.env.SUPABASE_URL, {
 
   dialectOptions: isProd
     ? {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false,
-      },
+      
     }
     : {},
 

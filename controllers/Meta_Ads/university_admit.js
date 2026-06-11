@@ -397,4 +397,4 @@ async function processLeads() {
 
   await writeFile(outPath, JSON.stringify(output, null, 2), 'utf-8');
 }
-processLeads();
+// processLeads();

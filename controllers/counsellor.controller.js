@@ -1079,8 +1079,31 @@ export async function getCounsellorBreakStats(param = {}, userRole = null, userI
 
   const totalPages = Math.ceil(totalCount / limit);
 
+  // Fetch all individual break intervals for the paginated counsellors in one query
+  const counsellorIds = stats.map((s) => s.counsellor_id);
+  let breaksMap = {};
+  if (counsellorIds.length > 0) {
+    const allBreaks = await counsellorBreak.findAll({
+      where: {
+        counsellor_id: { [Op.in]: counsellorIds },
+        break_start: { [Op.between]: [startDate, endDate] },
+      },
+      order: [['break_start', 'ASC']],
+      raw: true,
+    });
+    allBreaks.forEach((b) => {
+      if (!breaksMap[b.counsellor_id]) breaksMap[b.counsellor_id] = [];
+      breaksMap[b.counsellor_id].push(b);
+    });
+  }
+
+  const dataWithBreaks = stats.map((s) => ({
+    ...s.toJSON(),
+    breaks: breaksMap[s.counsellor_id] || [],
+  }));
+
   return {
-    data: stats,
+    data: dataWithBreaks,
     overallStats: {
       total:         totalCount,
       onBreak:       totalOnBreak,

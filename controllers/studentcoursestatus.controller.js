@@ -778,6 +778,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
       sortBy,
       sortOrder,
       form_type,
+      lead_type,
     } = req.query;
 
     const userRole = req.user?.role;
@@ -1020,6 +1021,10 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
       }
     }
 
+    if (lead_type) {
+      whereConds.push(`last_la.lead_type = '${lead_type.replace(/'/g, "''")}'`);
+    }
+
     const whereSQL = whereConds.length
       ? `WHERE ${whereConds.join(" AND ")}`
       : "";
@@ -1171,6 +1176,14 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
       ORDER BY sla.student_id, sla.created_at ASC, sla.id ASC
     `;
 
+    const lastLaCTE = `
+      SELECT DISTINCT ON (sla.student_id)
+        sla.student_id,
+        sla.lead_type
+      FROM student_lead_activities sla
+      ORDER BY sla.student_id, sla.created_at DESC, sla.id DESC
+    `;
+
     const lastRemarkCTE = `
       SELECT DISTINCT ON (sr.student_id) 
         sr.student_id,
@@ -1244,6 +1257,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     // Start building the main query with CTEs
     let mainQuery = `
       WITH first_la AS (${firstLaCTE}),
+           last_la AS (${lastLaCTE}),
            last_remark AS (${lastRemarkCTE}),
            connected_remarks_count AS (${connectedRemarksCountCTE}),
            student_remark_count AS (${studentRemarkCountCTE}),
@@ -1452,6 +1466,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
       FROM students s
       LEFT JOIN last_remark lr ON s.student_id = lr.student_id
       LEFT JOIN first_la ON s.student_id = first_la.student_id
+      LEFT JOIN last_la ON s.student_id = last_la.student_id
       LEFT JOIN connected_remarks_count crc ON s.student_id = crc.student_id
       LEFT JOIN student_remark_count src ON s.student_id = src.student_id
       LEFT JOIN pre_ni_students pns ON s.student_id = pns.student_id
@@ -2304,6 +2319,7 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
       sortBy,
       sortOrder,
       showDetailedColumns,
+      lead_type,
     } = req.query;
 
     const userRole = req.user?.role;
@@ -2553,6 +2569,10 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
       );
     }
 
+    if (lead_type) {
+      whereConds.push(`last_la.lead_type = '${lead_type.replace(/'/g, "''")}'`);
+    }
+
     const whereSQL = whereConds.length
       ? `WHERE ${whereConds.join(" AND ")}`
       : "";
@@ -2643,6 +2663,14 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
           : ""
       }
       ORDER BY sla.student_id, sla.created_at ASC, sla.id ASC
+    `;
+
+    const lastLaCTE = `
+      SELECT DISTINCT ON (sla.student_id)
+        sla.student_id,
+        sla.lead_type
+      FROM student_lead_activities sla
+      ORDER BY sla.student_id, sla.created_at DESC, sla.id DESC
     `;
 
     const lastRemarkCTE = `
@@ -2781,6 +2809,7 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
     // MAIN QUERY - UPDATED WITH PreNI
     const mainQuery = `
       WITH first_la AS (${firstLaCTE}),
+           last_la AS (${lastLaCTE}),
            last_remark AS (${lastRemarkCTE}),
            connected_remarks_count AS (${connectedRemarksCountCTE}),
            student_remark_count AS (${studentRemarkCountCTE}),
@@ -2887,6 +2916,7 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
       FROM students s
       LEFT JOIN last_remark lr ON s.student_id = lr.student_id
       LEFT JOIN first_la ON s.student_id = first_la.student_id
+      LEFT JOIN last_la ON s.student_id = last_la.student_id
       LEFT JOIN connected_remarks_count crc ON s.student_id = crc.student_id
       LEFT JOIN student_remark_count src ON s.student_id = src.student_id
       LEFT JOIN pre_ni_students pns ON s.student_id = pns.student_id

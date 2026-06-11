@@ -673,7 +673,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       if (firstIccDate_start || firstIccDate_end) {
         where.push(
           dateRangeSQL(
-            "ficc.first_icc_date",
+            "s.first_icc_date",
             firstIccDate_start,
             firstIccDate_end,
           ),
@@ -958,14 +958,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         WHERE c.role = 'l3' AND sr.student_id IN (SELECT student_id FROM filtered_students)
         GROUP BY sr.student_id
       ),
-      first_icc_remark AS (
-        SELECT DISTINCT ON (sr.student_id)
-          sr.student_id,
-          sr.created_at as first_icc_date
-        FROM student_remarks sr
-        WHERE sr.lead_sub_status ILIKE 'Initial Counseling Completed' AND sr.student_id IN (SELECT student_id FROM filtered_students)
-        ORDER BY sr.student_id, sr.created_at ASC
-      ),
       connected_calls_count AS (
         SELECT 
           sr.student_id,
@@ -981,47 +973,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         FROM student_remarks sr
         WHERE sr.lead_status ILIKE 'Admission' AND sr.student_id IN (SELECT student_id FROM filtered_students)
         ORDER BY sr.student_id, sr.created_at ASC
-      ),
-      has_icc_or_admission AS (
-        SELECT DISTINCT
-          sr.student_id
-        FROM student_remarks sr
-        WHERE (sr.lead_sub_status ILIKE 'Initial Counseling Completed'
-           OR sr.lead_status ILIKE 'Admission Application Enrolled')
-           AND sr.student_id IN (SELECT student_id FROM filtered_students)
-      ),
-      pre_ni_students AS (
-        WITH eligible_students AS (
-          SELECT student_id
-          FROM student_remarks sr
-          WHERE NOT EXISTS (
-            SELECT 1 
-            FROM student_remarks ex 
-            WHERE ex.student_id = sr.student_id
-              AND (
-                ex.lead_sub_status = 'Initial Counseling Completed'
-                OR ex.lead_status IN ('Application', 'Admission')
-              )
-          ) AND sr.student_id IN (SELECT student_id FROM filtered_students)
-          GROUP BY student_id
-          HAVING (
-            (COUNT(*) = 1 AND BOOL_AND(lead_status = 'NotInterested'))
-            OR
-            (
-              COUNT(*) > 1
-              AND MAX(created_at) FILTER (
-                WHERE lead_status = 'NotInterested'
-              ) = MAX(created_at)
-              AND NOT BOOL_OR(
-                lead_status IN ('Admission', 'Application')
-                OR lead_sub_status = 'Initial Counseling Completed'
-              )
-            )
-            OR
-            (COUNT(*) > 1 AND BOOL_AND(lead_status = 'NotInterested'))
-          )
-        )
-        SELECT student_id FROM eligible_students
       )`
       : "";
 
@@ -1272,16 +1223,17 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       s.remarks_l3,
       s.number_of_unread_messages,
       frl2.first_call_date_l2,
-      frl3.first_call_date_l3,
-      ficc.first_icc_date,
+      s.first_icc_date,
       COALESCE(ccc.total_connected_calls, 0) as total_connected_calls,
       adm.admission_date,
       far.first_form_filled_date as calculated_form_filled_date,
-      CASE 
-        WHEN hia.student_id IS NOT NULL THEN 'No'
-        WHEN pns.student_id IS NOT NULL THEN 'Yes'
-        ELSE 'Unknown'
+      CASE
+        WHEN s.first_icc_date IS NULL
+          AND s.current_student_status = 'NotInterested'
+          AND NOT EXISTS (SELECT 1 FROM course_status_journeys csj WHERE csj.student_id = s.student_id)
+        THEN 'Yes' ELSE 'No'
       END as is_pre_ni,
+      s.current_student_status as student_current_status,
     `
       : "";
 
@@ -1349,12 +1301,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         isDownload
           ? `
       LEFT JOIN first_remark_l2 frl2 ON s.student_id = frl2.student_id
-      LEFT JOIN first_remark_l3 frl3 ON s.student_id = frl3.student_id
-      LEFT JOIN first_icc_remark ficc ON s.student_id = ficc.student_id
       LEFT JOIN connected_calls_count ccc ON s.student_id = ccc.student_id
       LEFT JOIN admission_remark adm ON s.student_id = adm.student_id
-      LEFT JOIN has_icc_or_admission hia ON s.student_id = hia.student_id
-      LEFT JOIN pre_ni_students pns ON s.student_id = pns.student_id
       LEFT JOIN first_application_remark far ON s.student_id = far.student_id
       `
           : ""
@@ -1422,19 +1370,15 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         isDownload
           ? `
       LEFT JOIN first_remark_l2 frl2 ON s.student_id = frl2.student_id
-      LEFT JOIN first_remark_l3 frl3 ON s.student_id = frl3.student_id
-      LEFT JOIN first_icc_remark ficc ON s.student_id = ficc.student_id
       LEFT JOIN connected_calls_count ccc ON s.student_id = ccc.student_id
       LEFT JOIN admission_remark adm ON s.student_id = adm.student_id
-      LEFT JOIN has_icc_or_admission hia ON s.student_id = hia.student_id
-      LEFT JOIN pre_ni_students pns ON s.student_id = pns.student_id
       LEFT JOIN first_application_remark far ON s.student_id = far.student_id
       `
           : ""
       }
       ${whereSQL}
-      GROUP BY 
-        s.student_id, 
+      GROUP BY
+        s.student_id,
         c1.counsellor_id, c1.counsellor_name, c1.counsellor_email, c1.role,
         lr.remark_id, s.current_student_status, s.current_student_ni_sub_status, lr.calling_status,
         lr.sub_calling_status, lr.remarks, lr.callback_date, lr.callback_time,
@@ -1447,13 +1391,9 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           isDownload
             ? `,
         frl2.first_call_date_l2,
-        frl3.first_call_date_l3,
-        ficc.first_icc_date,
         ccc.total_connected_calls,
         adm.admission_date,
-        far.first_form_filled_date,
-        hia.student_id,
-        pns.student_id
+        far.first_form_filled_date
         `
             : ""
         }
@@ -1657,12 +1597,12 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
               remarks_l3: item.remarks_l3,
               number_of_unread_messages: item.number_of_unread_messages,
               first_call_date_l2: item.first_call_date_l2,
-              first_call_date_l3: item.first_call_date_l3,
               first_icc_date: item.first_icc_date,
               total_connected_calls: item.total_connected_calls || 0,
               admission_date: item.admission_date,
               is_pre_ni: item.is_pre_ni === "Yes",
               pre_ni_status: item.is_pre_ni,
+              current_student_status: item.student_current_status || item.lead_status,
             });
           }
 
@@ -1768,12 +1708,12 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
               remarks_l3: item.remarks_l3,
               number_of_unread_messages: item.number_of_unread_messages,
               first_call_date_l2: item.first_call_date_l2,
-              first_call_date_l3: item.first_call_date_l3,
               first_icc_date: item.first_icc_date,
               total_connected_calls: item.total_connected_calls || 0,
               admission_date: item.admission_date,
               is_pre_ni: item.is_pre_ni === "Yes",
               pre_ni_status: item.is_pre_ni,
+              current_student_status: item.student_current_status || item.lead_status,
             });
           }
 

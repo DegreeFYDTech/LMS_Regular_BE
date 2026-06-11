@@ -34,6 +34,10 @@ const Student = sequelize.define(
     preferred_city: DataTypes.ARRAY(DataTypes.TEXT),
     preferred_state: DataTypes.ARRAY(DataTypes.TEXT),
     preferred_university: DataTypes.ARRAY(DataTypes.TEXT),
+    student_alt_numbers: {
+      type: DataTypes.ARRAY(DataTypes.TEXT),
+      defaultValue: [],
+    },
     source: DataTypes.STRING,
     first_source_url: DataTypes.TEXT,
     student_secondary_email: DataTypes.STRING,

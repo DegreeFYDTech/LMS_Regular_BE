@@ -14,6 +14,7 @@ import { DATE, Op } from "sequelize";
 import { saveMessageToChat } from "../controllers/watsaapChat.controller.js";
 import axios from "axios";
 import { createLeadActivity } from "../controllers/leadactivity.controller.js";
+import { normalizePhoneNumber, processAltNumbers } from "../utils/validators.js";
 
 export const assignLeadHelper = async (leadData) => {
   try {
@@ -869,18 +870,22 @@ export const processStudentLead = async (leadData) => {
 
   const { assignedCounsellor } = assignmentResult;
 
+  const incomingPhone = normalizePhoneNumber(
+    leadData.phoneNumber || leadData.phone_number || leadData.mobile || ""
+  );
+
+  const orConditions = [];
+  if (leadData.email) {
+    orConditions.push({ student_email: leadData.email });
+  }
+  if (incomingPhone) {
+    orConditions.push({ student_phone: incomingPhone });
+    orConditions.push({ student_alt_numbers: { [Op.contains]: [incomingPhone] } });
+  }
+
   const existingStudent = await Student.findOne({
     where: {
-      [Op.or]: [
-        { student_email: leadData.email },
-        {
-          student_phone:
-            leadData.phoneNumber ||
-            leadData.phone_number ||
-            leadData.mobile ||
-            "",
-        },
-      ],
+      [Op.or]: orConditions,
     },
     include: [
       {
@@ -909,6 +914,33 @@ export const processStudentLead = async (leadData) => {
       { is_reactivity: true },
       { where: { student_id: existingStudent.student_id }, returning: true },
     );
+
+    if (incomingPhone) {
+      const currentPrimary = existingStudent.student_phone;
+      const currentAlts = existingStudent.student_alt_numbers || [];
+      if (incomingPhone !== currentPrimary && !currentAlts.includes(incomingPhone)) {
+        const updatedAlts = Array.from(new Set([...currentAlts, incomingPhone]));
+        await Student.update(
+          { student_alt_numbers: updatedAlts },
+          { where: { student_id: existingStudent.student_id } }
+        );
+        existingStudent.student_alt_numbers = updatedAlts;
+      }
+    }
+
+    if (leadData.student_alt_numbers || leadData.studentAltNumbers) {
+      const inputAlts = leadData.student_alt_numbers || leadData.studentAltNumbers;
+      const processedAlts = processAltNumbers(inputAlts, existingStudent.student_phone);
+      const currentAlts = existingStudent.student_alt_numbers || [];
+      const mergedAlts = Array.from(new Set([...currentAlts, ...processedAlts]));
+      if (JSON.stringify(currentAlts) !== JSON.stringify(mergedAlts)) {
+        await Student.update(
+          { student_alt_numbers: mergedAlts },
+          { where: { student_id: existingStudent.student_id } }
+        );
+        existingStudent.student_alt_numbers = mergedAlts;
+      }
+    }
   } else {
     const toArray = (val) => {
       if (!val) return [];
@@ -958,6 +990,16 @@ export const processStudentLead = async (leadData) => {
       objective: mappedLeadData.objective,
       is_transfered: mappedLeadData.is_transfered || false,
     };
+
+    let initialAltNumbers = [];
+    if (leadData.student_alt_numbers || leadData.studentAltNumbers) {
+      initialAltNumbers = processAltNumbers(
+        leadData.student_alt_numbers || leadData.studentAltNumbers,
+        mappedLeadData.phoneNumber
+      );
+    }
+    newStudentData.student_alt_numbers = initialAltNumbers;
+    newStudentData.student_phone = normalizePhoneNumber(mappedLeadData.phoneNumber) || mappedLeadData.phoneNumber;
 
     student = await Student.create(newStudentData);
     studentStatus = "created";

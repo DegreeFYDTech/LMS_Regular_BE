@@ -19,6 +19,7 @@ import {
 import { internalAssignL3 } from "./leadassignmentl3.controller.js";
 import { processStudentLead } from "../helper/leadAssignmentService.js";
 import { createRemark } from "./remark.controller.js";
+import { normalizePhoneNumber, processAltNumbers } from "../utils/validators.js";
 import { Op, QueryTypes } from "sequelize";
 import pMap from "p-map";
 import axios from "axios";
@@ -1103,7 +1104,9 @@ export const findByContact = async (req, res) => {
     }
 
     if (student_phone) {
-      whereCondition[Op.or].push({ student_phone: student_phone });
+      const normalizedPhone = normalizePhoneNumber(student_phone) || student_phone;
+      whereCondition[Op.or].push({ student_phone: normalizedPhone });
+      whereCondition[Op.or].push({ student_alt_numbers: { [Op.contains]: [normalizedPhone] } });
     }
 
     const students = await Student.findAll({
@@ -1876,6 +1879,22 @@ export const updateStudentDetails = async (req, res) => {
     if ("work_experience" in payload)
       updateData.work_experience = payload.work_experience;
     if ("objective" in payload) updateData.objective = payload.objective;
+
+    if ("student_alt_numbers" in payload) {
+      updateData.student_alt_numbers = processAltNumbers(payload.student_alt_numbers, student.student_phone);
+    }
+    
+    const incomingPhone = payload.phone_number || payload.phoneNumber || payload.student_phone || payload.mobile;
+    if (incomingPhone) {
+      const normalizedIncoming = normalizePhoneNumber(incomingPhone);
+      if (normalizedIncoming) {
+        const currentPrimary = student.student_phone;
+        const currentAlts = updateData.student_alt_numbers || student.student_alt_numbers || [];
+        if (normalizedIncoming !== currentPrimary && !currentAlts.includes(normalizedIncoming)) {
+          updateData.student_alt_numbers = Array.from(new Set([...currentAlts, normalizedIncoming]));
+        }
+      }
+    }
 
     // Only set is_edited and edited_by if this is an email edit for restricted sources
     if (oneTimeEditSources.includes(student.source) && isEmailEdit) {

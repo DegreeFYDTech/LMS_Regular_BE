@@ -238,3 +238,5 @@ export {
   StudentQuestionResponse,
   CuBotSending
 };
+
+Student.sync({ alter: true }).catch((e) => console.error('sync Student error', e));

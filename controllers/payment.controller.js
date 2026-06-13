@@ -544,17 +544,7 @@ export const handleWebhook = async (req, res) => {
                 },
               );
             }
-            if (snapshot.collegeName.includes("CGC")) {
-              console.log("triggered cgc")
-              await axios.post(
-                `https://cgc-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
-                {
-                  phoneToSearch: lead?.dataValues?.mobile,
-                  snapshot,
-                  paymentId: paymentEntity.id,
-                },
-              );
-            }
+         
             if (targetStudentId) {
               await StudentRemark.create(
                 {

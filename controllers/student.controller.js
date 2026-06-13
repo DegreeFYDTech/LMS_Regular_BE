@@ -207,30 +207,7 @@ export const updateStudentStatus = async (req, res) => {
         message: "Student transferred to Amity successfully",
       });
     }
-    if (
-      courseDetails?.dataValues?.university_name?.includes(
-        "Chandigarh Group of Colleges",
-      ) &&
-      leadStatus == "Application"
-    ) {
-      const TransferResponse = await axios.post(
-        "https://regular-cgc-api.degreefyd.com/v1/student/check-and-transfer",
-        {
-          studentDetails: student.dataValues,
-          studentcreds: { formID, couponCode, userName, password },
-          regularCounsellorName: req.user.counsellor_name,
-          studentleadActivityDetails:
-            studentleadActivityDetails?.dataValues || null,
-          courseId: selectedCourse,
-          leadStatus,
-          leadSubStatus,
-        },
-      );
-      return res.status(200).json({
-        success: true,
-        message: "Student transferred to CGC successfully",
-      });
-    }
+
 
     // Validate credentials and stage for atomic save with journey creation
     let credData = null;

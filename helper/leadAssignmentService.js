@@ -886,7 +886,7 @@ export const processStudentLead = async (leadData) => {
       {
         model: StudentLeadActivity,
         as: "lead_activities",
-        attributes: ["created_at"],
+        attributes: ["created_at", "source_url"],
         order: [["created_at", "DESC"]],
         limit: 1,
       },
@@ -905,10 +905,18 @@ export const processStudentLead = async (leadData) => {
   if (existingStudent) {
     student = existingStudent;
     studentStatus = "already_exists";
-    const [updated] = await Student.update(
-      { is_reactivity: true },
-      { where: { student_id: existingStudent.student_id }, returning: true },
-    );
+    const lastActivityUrl = existingStudent.lead_activities?.[0]?.source_url || "";
+    const incomingUrl = mappedLeadData.first_source_url || "";
+    const isNewSource = incomingUrl && lastActivityUrl
+      ? incomingUrl.trim().toLowerCase() !== lastActivityUrl.trim().toLowerCase()
+      : false;
+
+    if (isNewSource) {
+      await Student.update(
+        { is_reactivity: true },
+        { where: { student_id: existingStudent.student_id } },
+      );
+    }
   } else {
     const toArray = (val) => {
       if (!val) return [];

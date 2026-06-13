@@ -628,23 +628,27 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       const todayStart = todayStr + " 00:00:00";
       const todayEnd = todayStr + " 23:59:59";
 
+      const l2StatusFilter = data === "l2"
+        ? ` AND s.current_student_status IN ('Pre Application','Initial Counselling Completed')`
+        : "";
+
       switch (callback.toLowerCase()) {
         case "today":
           where.push(
-            `lr.callback_date >= '${todayStart}'::timestamp AND lr.callback_date <= '${todayEnd}'::timestamp AND s.current_student_status IN ('Admission','Application','Pre Application','Initial Counselling Completed','Enrolled')`,
+            `lr.callback_date >= '${todayStart}'::timestamp AND lr.callback_date <= '${todayEnd}'::timestamp${l2StatusFilter}`,
           );
           break;
         case "overdue":
           where.push(
-            `lr.callback_date < '${todayStart}'::timestamp AND lr.callback_date IS NOT NULL`,
+            `lr.callback_date < '${todayStart}'::timestamp AND lr.callback_date IS NOT NULL${l2StatusFilter}`,
           );
           break;
         case "all":
-          where.push("lr.callback_date IS NOT NULL");
+          where.push(`lr.callback_date IS NOT NULL${l2StatusFilter}`);
           break;
         case "combined":
           where.push(
-            `lr.callback_date <= '${todayEnd}'::timestamp AND lr.callback_date IS NOT NULL`,
+            `lr.callback_date <= '${todayEnd}'::timestamp AND lr.callback_date IS NOT NULL${l2StatusFilter}`,
           );
           break;
       }
@@ -1603,6 +1607,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
               is_pre_ni: item.is_pre_ni === "Yes",
               pre_ni_status: item.is_pre_ni,
               current_student_status: item.student_current_status || item.lead_status,
+              current_student_ni_sub_status: item.lead_sub_status,
             });
           }
 
@@ -1714,6 +1719,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
               is_pre_ni: item.is_pre_ni === "Yes",
               pre_ni_status: item.is_pre_ni,
               current_student_status: item.student_current_status || item.lead_status,
+              current_student_ni_sub_status: item.lead_sub_status,
             });
           }
 

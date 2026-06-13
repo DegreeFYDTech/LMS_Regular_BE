@@ -42,6 +42,15 @@ export const exportStudentsCSV = async (req, res) => {
       }
     };
 
+    const formatDateRaw = (d) => {
+      if (!d) return '';
+      try {
+        return format(new Date(d), 'dd-MMM-yyyy');
+      } catch {
+        return d.toString();
+      }
+    };
+
     const maskStudentName = (name) => {
       if (!name || typeof name !== 'string') return '***';
       const trimmedName = name.trim();
@@ -73,8 +82,8 @@ export const exportStudentsCSV = async (req, res) => {
         objective: s?.objective || '',
         counsellor_name_l2: counsellorNameL2,
         counsellor_name_l3: counsellorNameL3,
-        lead_status: s?.current_student_status || latestRemark?.lead_status || '',
-        lead_sub_status: latestRemark?.lead_sub_status || '',
+        lead_status: s?.current_student_status || '',
+        lead_sub_status: s?.current_student_ni_sub_status || '',
         mode: s?.mode || '',
         source: s?.source || leadActivities?.source || '',
         source_url: leadActivities?.source_url || '',
@@ -93,9 +102,9 @@ export const exportStudentsCSV = async (req, res) => {
         current_state: s?.student_current_state || '',
         preferred_budget: s?.preferred_budget || 0,
         created_at: formatDate(s?.created_at),
-        next_call_date: formatDate(latestRemark?.callback_date),
+        next_call_date: formatDateRaw(latestRemark?.callback_date),
         last_call_date: formatDate(latestRemark?.created_at),
-        first_callback_l2: formatDate(s?.first_callback_l2),
+        first_callback_l2: formatDateRaw(s?.first_callback_l2),
         first_form_filled_date: formatDate(s?.first_form_filled_date),
         next_call_time: latestRemark?.callback_time || '',
         remark: latestRemark?.remarks || '',
@@ -104,7 +113,7 @@ export const exportStudentsCSV = async (req, res) => {
         is_reactivity: typeof s?.is_reactivity === 'boolean' ? (s.is_reactivity ? 'Yes' : 'No') : '',
         number_of_unread_messages: s?.number_of_unread_messages || 0,
         first_call_date_l2: formatDate(s?.first_call_date_l2),
-        first_icc_date: formatDate(s?.first_icc_date),
+        first_icc_date: formatDateRaw(s?.first_icc_date),
         total_connected_calls: s?.total_connected_calls || 0,
         admission_date: formatDate(s?.admission_date),
         is_pre_ni: typeof s?.is_pre_ni === 'boolean' ? (s.is_pre_ni ? 'Yes' : 'No') : '',

@@ -20,6 +20,10 @@ export function convertToCSV(data, fields, fieldNames) {
     return flattened;
   });
 
-  const parser = new Parser({ fields, fieldNames });
+  const fieldDefs = fields.map((f) => ({
+    value: f,
+    label: (fieldNames && fieldNames[f]) || f,
+  }));
+  const parser = new Parser({ fields: fieldDefs });
   return parser.parse(flatData);
 }

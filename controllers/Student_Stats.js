@@ -24,6 +24,38 @@ export const getOptimizedOverallStatsFromHelper = async ({
       ? `AND lr.counsellor_id = ${escape(selectedagent)}`
       : "";
 
+    const now = new Date();
+    const todayStr = now.toISOString().split("T")[0];
+    const todayStartStr = todayStr + " 00:00:00";
+    const todayEndStr = todayStr + " 23:59:59";
+
+    let callbackJoin = "";
+    if (callback) {
+      let callbackDateCond = "";
+      switch (callback.toLowerCase()) {
+        case "today":
+          callbackDateCond = `lr_cb.callback_date >= '${todayStartStr}'::timestamp AND lr_cb.callback_date <= '${todayEndStr}'::timestamp`;
+          break;
+        case "overdue":
+          callbackDateCond = `lr_cb.callback_date < '${todayStartStr}'::timestamp AND lr_cb.callback_date IS NOT NULL`;
+          break;
+        case "all":
+          callbackDateCond = `lr_cb.callback_date IS NOT NULL`;
+          break;
+        case "combined":
+          callbackDateCond = `lr_cb.callback_date <= '${todayEndStr}'::timestamp AND lr_cb.callback_date IS NOT NULL`;
+          break;
+      }
+      if (callbackDateCond) {
+        callbackJoin = `
+        INNER JOIN (
+          SELECT DISTINCT ON (sr.student_id) sr.student_id, sr.callback_date
+          FROM student_remarks sr
+          ORDER BY sr.student_id, sr.created_at DESC
+        ) lr_cb ON lr_cb.student_id = s.student_id AND ${callbackDateCond}`;
+      }
+    }
+
     const query = `
       WITH base_students AS (
         SELECT DISTINCT s.student_id,
@@ -38,6 +70,7 @@ export const getOptimizedOverallStatsFromHelper = async ({
                               s.is_reassigned_yet
 
         FROM students s
+        ${callbackJoin}
         ${
           utmWhere !== "1=1"
             ? `
@@ -110,7 +143,7 @@ export const getOptimizedOverallStatsFromHelper = async ({
         WHERE lr.student_id IS NOT NULL
           AND lr.callback_date >=current_date 
           AND lr.callback_date < current_date+1
-          AND bs.current_student_status in ('Admission','Application','Pre Application','Initial Counselling Completed','Enrolled')
+          AND bs.current_student_status in (${role === "l2" ? `'Pre Application','Initial Counselling Completed'` : `'Admission','Application','Pre Application','Initial Counselling Completed','Enrolled'`})
         ${todaycallbacks}
       ),
       

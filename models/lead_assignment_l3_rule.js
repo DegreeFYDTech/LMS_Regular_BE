@@ -56,6 +56,10 @@ const L3AssignmentRuleset = sequelize.define('l3_assignment_rulesets', {
   custom_rule_name: {
     type: DataTypes.STRING,
     defaultValue: ''
+  },
+  l2_counsellor_ids: {
+    type: DataTypes.ARRAY(DataTypes.TEXT),
+    defaultValue: []
   }
 }, {
   timestamps: false,

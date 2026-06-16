@@ -174,13 +174,25 @@ export const assignedtoL3byruleSet = async (req, res) => {
         sourceMatch,
       });
 
+      const studentL2Id = studentDetails?.assigned_counsellor_id || null;
+      const l2Match =
+        !ruleset.l2_counsellor_ids?.length ||
+        (studentL2Id && ruleset.l2_counsellor_ids.includes(studentL2Id));
+
+      console.log(`L2 counsellor match check:`, {
+        studentL2Id,
+        rulesetL2Ids: ruleset.l2_counsellor_ids,
+        l2Match,
+      });
+
       console.log(`Ruleset evaluation result:`, {
         universityMatch,
         sourceMatch,
-        finalResult: universityMatch && sourceMatch,
+        l2Match,
+        finalResult: universityMatch && sourceMatch && l2Match,
       });
 
-      return universityMatch && sourceMatch;
+      return universityMatch && sourceMatch && l2Match;
     });
 
     console.log(
@@ -617,6 +629,7 @@ export const createRuleSet = async (req, res) => {
       is_active,
       priority,
       custom_rule_name,
+      l2_counsellor_ids,
     } = req.body;
 
     // Normalize inputs
@@ -646,6 +659,8 @@ export const createRuleSet = async (req, res) => {
       level: processArrayField(finalCourse?.level),
       courseName: processArrayField(finalCourse?.courseName),
     };
+
+    const processedL2CounsellorIds = processArrayField(l2_counsellor_ids);
 
     // Validate required fields
     if (
@@ -677,6 +692,7 @@ export const createRuleSet = async (req, res) => {
       course_conditions: processedCourseConditions,
       source: processedSource,
       assigned_counsellor_ids: processedAssignedCounsellors,
+      l2_counsellor_ids: processedL2CounsellorIds,
       is_active: finalIsActive,
       priority: priority || 0,
       round_robin_index: 0,
@@ -761,6 +777,10 @@ export const updateRuleSet = async (req, res) => {
 
     if (updateData.source) {
       updateData.source = processArrayField(updateData.source);
+    }
+
+    if (updateData.l2_counsellor_ids !== undefined) {
+      updateData.l2_counsellor_ids = processArrayField(updateData.l2_counsellor_ids);
     }
 
     if (updateData.is_active !== undefined) {

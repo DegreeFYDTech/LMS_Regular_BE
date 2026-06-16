@@ -221,6 +221,109 @@ export const getLeadStatusApiReport = async (req, res) => {
     });
   }
 };
+
+// Drill-down: returns the individual students behind one cell of the API Disposition
+// Pivot (Lead Intelligence "api" sub-tab). Re-runs the same join as getLeadStatusApiReport,
+// filtered to one counsellor/supervisor (+ optionally one college) and one status bucket.
+export const getLeadStatusApiReportDrillDown = async (req, res) => {
+  try {
+    const { from, to, counsellor, supervisor, college_name, bucket } = req.query;
+
+    if (!bucket || (!counsellor && !supervisor)) {
+      return res.status(400).json({
+        success: false,
+        message: "bucket and (counsellor or supervisor) are required",
+      });
+    }
+
+    let whereConditions = [];
+    const replacements = {};
+
+    if (from && to) {
+      whereConditions.push("sc.created_at BETWEEN :fromDate AND :toDate");
+      replacements.fromDate = from;
+      replacements.toDate = to + " 23:59:59";
+    } else if (from) {
+      whereConditions.push("sc.created_at >= :fromDate");
+      replacements.fromDate = from;
+    } else if (to) {
+      whereConditions.push("sc.created_at <= :toDate");
+      replacements.toDate = to + " 23:59:59";
+    }
+
+    if (counsellor) {
+      whereConditions.push("c.counsellor_name = :counsellor");
+      replacements.counsellor = counsellor;
+    } else if (supervisor) {
+      if (supervisor === "No Supervisor") {
+        whereConditions.push("sup.counsellor_name IS NULL");
+      } else {
+        whereConditions.push("sup.counsellor_name = :supervisor");
+        replacements.supervisor = supervisor;
+      }
+    }
+
+    if (college_name) {
+      whereConditions.push("sc.college_name = :collegeName");
+      replacements.collegeName = college_name;
+    }
+
+    if (bucket === "dnp") {
+      whereConditions.push("LOWER(sc.api_sent_status) = 'do not proceed'");
+    } else if (bucket === "tf") {
+      whereConditions.push(
+        "LOWER(sc.api_sent_status) = 'failed due to technical issues'",
+      );
+    } else if (bucket === "p") {
+      whereConditions.push("LOWER(sc.api_sent_status) = 'proceed'");
+    } else if (bucket === "total") {
+      whereConditions.push(
+        "LOWER(sc.api_sent_status) IN ('do not proceed', 'failed due to technical issues', 'proceed')",
+      );
+    } else {
+      return res.status(400).json({ success: false, message: "Invalid bucket" });
+    }
+
+    const whereClause = whereConditions.length
+      ? `WHERE ${whereConditions.join(" AND ")}`
+      : "";
+
+    const results = await sequelize.query(
+      `
+      SELECT
+        sc.student_id,
+        sc.college_name,
+        sc.api_sent_status,
+        sc.created_at,
+        s.student_name,
+        s.student_phone,
+        s.student_email,
+        s.source,
+        s.current_student_status,
+        c.counsellor_name
+      FROM student_college_api_sent_status sc
+      JOIN students s ON sc.student_id = s.student_id
+      JOIN counsellors c ON c.counsellor_id = s.assigned_counsellor_id
+      LEFT JOIN counsellors sup ON sup.counsellor_id = c.assigned_to
+      ${whereClause}
+      ORDER BY sc.created_at DESC
+      `,
+      {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      },
+    );
+
+    res.json({ success: true, data: results });
+  } catch (error) {
+    console.error("Error in getLeadStatusApiReportDrillDown:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 export const getCollegeStatus = async (req, res) => {
   try {
     const { courseId, studentId } = req.params;
@@ -1053,14 +1156,23 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
 
       supervisorSelect = `
         MAX(
-          CASE 
-            WHEN assigned_counsellor.assigned_to IS NOT NULL AND assigned_counsellor.assigned_to != '' 
+          CASE
+            WHEN assigned_counsellor.assigned_to IS NOT NULL AND assigned_counsellor.assigned_to != ''
               THEN (SELECT counsellor_name FROM counsellors WHERE counsellor_id = assigned_counsellor.assigned_to)
-            WHEN c.assigned_to IS NOT NULL AND c.assigned_to != '' 
+            WHEN c.assigned_to IS NOT NULL AND c.assigned_to != ''
               THEN (SELECT counsellor_name FROM counsellors WHERE counsellor_id = c.assigned_to)
             ELSE 'No Supervisor'
           END
-        ) AS supervisor_name
+        ) AS supervisor_name,
+        MAX(
+          CASE
+            WHEN assigned_counsellor.assigned_to IS NOT NULL AND assigned_counsellor.assigned_to != ''
+              THEN assigned_counsellor.assigned_to
+            WHEN c.assigned_to IS NOT NULL AND c.assigned_to != ''
+              THEN c.assigned_to
+            ELSE NULL
+          END
+        ) AS supervisor_id
       `;
 
       groupByClause = `
@@ -1576,6 +1688,9 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
         FROM counsellors c1
         WHERE 1=1
       `;
+      // c1.assigned_to (selected above) doubles as the supervisor's counsellor_id —
+      // propagated through as supervisor_id so the FE/drilldown can match by ID
+      // instead of round-tripping through the display name (fragile to whitespace/case).
 
       if (counsellor_status) {
         allCounsellorsQuery += ` AND c1.status = '${counsellor_status}'`;
@@ -1646,11 +1761,18 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
               counsellor.supervisor_name ||
               existingRow.supervisor_name ||
               "No Supervisor",
+            // Same fallback priority as supervisor_name above — if the counsellor's
+            // own assigned_to didn't resolve, fall back to the aggregate's own
+            // assigned_counsellor/c-derived id (existingRow.supervisor_id) so the two
+            // never disagree about which supervisor this row belongs to.
+            supervisor_id:
+              counsellor.assigned_to || existingRow.supervisor_id || null,
           });
         } else {
           mergedRows.push({
             group_by: counsellorName,
             supervisor_name: counsellor.supervisor_name || "No Supervisor",
+            supervisor_id: counsellor.assigned_to || null,
             counsellor_id: counsellorId,
             counsellor_status: counsellor.status || "active",
             lead_count: 0,
@@ -1731,6 +1853,8 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
       return {
         group_by: row.group_by,
         supervisor_name: row.supervisor_name || "No Supervisor",
+        supervisor_id: row.supervisor_id || null,
+        counsellor_id: row.counsellor_id || null,
         counsellor_status: row.counsellor_status || "active",
         lead_count,
         total_leads: lead_count,
@@ -2014,6 +2138,448 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
     res.status(200).json(response);
   } catch (error) {
     console.error("Error in getThreeRecordsOfFormFilled:", error);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+};
+
+// TEMPORARY diagnostic endpoint — runs the exact identity-resolution query through the
+// SAME sequelize connection the live server uses, to rule out a DB-mismatch between
+// manual SQL checks and what the running server actually queries. Remove after debugging.
+export const debugCounsellorAttribution = async (req, res) => {
+  try {
+    const { counsellor_id } = req.query;
+    if (!counsellor_id) {
+      return res.status(400).json({ success: false, message: "counsellor_id is required" });
+    }
+
+    const directChecks = await sequelize.query(
+      `
+      SELECT
+        (SELECT COUNT(*) FROM students WHERE assigned_counsellor_id = :counsellorId) AS assigned_counsellor_id_matches,
+        (SELECT COUNT(*) FROM student_remarks WHERE counsellor_id = :counsellorId) AS student_remarks_matches,
+        (SELECT counsellor_name FROM counsellors WHERE counsellor_id = :counsellorId) AS counsellor_name,
+        current_database() AS db_name
+      `,
+      { replacements: { counsellorId: counsellor_id }, type: sequelize.QueryTypes.SELECT },
+    );
+
+    const coalesceCheck = await sequelize.query(
+      `
+      SELECT COUNT(DISTINCT s.student_id) AS lead_count
+      FROM students s
+      LEFT JOIN (
+        SELECT DISTINCT ON (sr.student_id) sr.student_id, sr.counsellor_id
+        FROM student_remarks sr
+        ORDER BY sr.student_id, sr.created_at DESC, sr.remark_id DESC
+      ) lr ON s.student_id = lr.student_id
+      LEFT JOIN counsellors c ON lr.counsellor_id = c.counsellor_id
+      LEFT JOIN counsellors assigned_counsellor ON s.assigned_counsellor_id = assigned_counsellor.counsellor_id
+      WHERE COALESCE(assigned_counsellor.counsellor_id, c.counsellor_id) = :counsellorId
+      `,
+      { replacements: { counsellorId: counsellor_id }, type: sequelize.QueryTypes.SELECT },
+    );
+
+    res.json({
+      success: true,
+      counsellor_id,
+      direct_checks: directChecks[0],
+      coalesce_lead_count: coalesceCheck[0].lead_count,
+    });
+  } catch (error) {
+    console.error("Error in debugCounsellorAttribution:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// Drill-down: returns the individual students behind one cell of the Lead Intelligence
+// "agent" pivot table (Leads/Attempted/Connected/ICC/Forms/Still ACTIVE/Adm./PreNI/etc.).
+// Rebuilds the same CTEs, filters and per-bucket CASE WHEN conditions used in
+// getThreeRecordsOfFormFilled so the drilled-down list always matches the displayed count.
+export const getThreeRecordsOfFormFilledDrillDown = async (req, res) => {
+  try {
+    const {
+      type = "agent",
+      source,
+      source_url,
+      utm_campaign,
+      created_at_start,
+      created_at_end,
+      counsellor_id,
+      counsellor_status,
+      form_type,
+      lead_type,
+      drill_counsellor_id,
+      drill_supervisor_id,
+      drill_supervisor_name,
+      drill_group,
+      bucket,
+    } = req.query;
+
+    if (!bucket || (!drill_counsellor_id && !drill_supervisor_id && !drill_supervisor_name && !drill_group)) {
+      return res.status(400).json({
+        success: false,
+        message: "bucket and (drill_counsellor_id, drill_supervisor_name or drill_group) are required",
+      });
+    }
+
+    const userRole = req.user?.role;
+    const userId = req.user?.id;
+    const isAnalyser = userRole === "Analyser";
+
+    let analyserFilters = {};
+    if (isAnalyser && userId) {
+      try {
+        const analyser = await Analyser.findByPk(userId, {
+          attributes: ["sources", "campaigns", "student_creation_date", "source_urls"],
+        });
+        if (analyser) {
+          analyserFilters = {
+            sources: analyser.sources || [],
+            campaigns: analyser.campaigns || [],
+            student_creation_date: analyser.student_creation_date || "",
+            source_urls: analyser.source_urls || [],
+          };
+        }
+      } catch (error) {
+        console.error("Error fetching analyser data:", error);
+      }
+    }
+
+    const utm_array = utm_campaign && utm_campaign.split(",");
+    const counsellor_array = counsellor_id && counsellor_id.split(",");
+    const source_array = source && source.split(",");
+    const source_url_array = source_url && source_url.split(",");
+
+    const dateRangeSQL = (col, start, end) => {
+      if (start && end) {
+        const startUTC = new Date(`${start}T00:00:00+05:30`).toISOString();
+        const endUTC = new Date(`${end}T23:59:59+05:30`).toISOString();
+        return `${col} >= '${startUTC}' AND ${col} <= '${endUTC}'`;
+      }
+      if (start) {
+        const startUTC = new Date(`${start}T00:00:00+05:30`).toISOString();
+        return `${col} >= '${startUTC}'`;
+      }
+      if (end) {
+        const endUTC = new Date(`${end}T23:59:59+05:30`).toISOString();
+        return `${col} <= '${endUTC}'`;
+      }
+      return "";
+    };
+
+    const applyAnalyserDateFilter = () => {
+      if (!isAnalyser || !analyserFilters.student_creation_date) return "";
+      const now = new Date();
+      const todayIST = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+      const todayISTDate = todayIST.toISOString().split("T")[0];
+      const istDateToUTCStart = (istDateString) => {
+        const [year, month, day] = istDateString.split("-");
+        return `${year}-${month}-${day} 18:30:00+00`;
+      };
+      const istDateToUTCEnd = (istDateString) => {
+        const [year, month, day] = istDateString.split("-");
+        const date = new Date(Date.UTC(year, month - 1, parseInt(day) + 1));
+        const nextDay = date.toISOString().split("T")[0];
+        return `${nextDay} 18:30:00+00`;
+      };
+      switch (analyserFilters.student_creation_date) {
+        case "today": {
+          return `s.created_at >= '${istDateToUTCStart(todayISTDate)}' AND s.created_at < '${istDateToUTCEnd(todayISTDate)}'`;
+        }
+        case "yesterday": {
+          const yesterday = new Date(todayIST);
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayISTDate = yesterday.toISOString().split("T")[0];
+          return `s.created_at >= '${istDateToUTCStart(yesterdayISTDate)}' AND s.created_at < '${istDateToUTCEnd(yesterdayISTDate)}'`;
+        }
+        case "last_7_days": {
+          const sevenDaysAgo = new Date(todayIST);
+          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+          const sevenDaysAgoISTDate = sevenDaysAgo.toISOString().split("T")[0];
+          return `s.created_at >= '${istDateToUTCStart(sevenDaysAgoISTDate)}' AND s.created_at < '${istDateToUTCEnd(todayISTDate)}'`;
+        }
+        case "last_30_days": {
+          const thirtyDaysAgo = new Date(todayIST);
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          const thirtyDaysAgoISTDate = thirtyDaysAgo.toISOString().split("T")[0];
+          return `s.created_at >= '${istDateToUTCStart(thirtyDaysAgoISTDate)}' AND s.created_at < '${istDateToUTCEnd(todayISTDate)}'`;
+        }
+        case "this_month": {
+          const firstDayOfMonth = new Date(todayIST.getFullYear(), todayIST.getMonth(), 1);
+          const firstDayISTDate = firstDayOfMonth.toISOString().split("T")[0];
+          return `s.created_at >= '${istDateToUTCStart(firstDayISTDate)}' AND s.created_at < '${istDateToUTCEnd(todayISTDate)}'`;
+        }
+        case "last_month": {
+          const firstDayOfLastMonth = new Date(todayIST.getFullYear(), todayIST.getMonth() - 1, 1);
+          const lastDayOfLastMonth = new Date(todayIST.getFullYear(), todayIST.getMonth(), 0);
+          const firstDayISTDate = firstDayOfLastMonth.toISOString().split("T")[0];
+          const lastDayISTDate = lastDayOfLastMonth.toISOString().split("T")[0];
+          return `s.created_at >= '${istDateToUTCStart(firstDayISTDate)}' AND s.created_at < '${istDateToUTCEnd(lastDayISTDate)}'`;
+        }
+        default:
+          return "";
+      }
+    };
+
+    let whereConds = [];
+
+    if (isAnalyser) {
+      const validSources = (analyserFilters.sources || []).filter((s) => s && s !== "Any");
+      if (validSources.length > 0) {
+        const sourceLowerList = validSources.map((v) => v.trim().toLowerCase().replace(/'/g, "''"));
+        whereConds.push(`LOWER(s.source) IN ('${sourceLowerList.join("','")}')`);
+      }
+      const validCampaigns = (analyserFilters.campaigns || []).filter((c) => c && c !== "Any");
+      if (validCampaigns.length > 0) {
+        whereConds.push(`first_la.utm_campaign IN ('${validCampaigns.map((v) => v.trim().replace(/'/g, "''")).join("','")}')`);
+      }
+      const validSourceUrls = (analyserFilters.source_urls || []).filter((u) => u && u !== "Any");
+      if (validSourceUrls.length > 0) {
+        whereConds.push(`(s.first_source_url IN ('${validSourceUrls.map((v) => v.trim().replace(/'/g, "''")).join("','")}') OR s.first_source_url IS NULL)`);
+      }
+      const analyserDateFilter = applyAnalyserDateFilter();
+      if (analyserDateFilter) whereConds.push(analyserDateFilter);
+    } else if (source) {
+      whereConds.push(`s.source IN ('${source_array.map((v) => v.trim().replace(/'/g, "''")).join("','")}')`);
+    }
+
+    if (source_url && !isAnalyser) {
+      whereConds.push(`s.first_source_url IN ('${source_url_array.map((v) => v.trim().replace(/'/g, "''")).join("','")}')`);
+    }
+
+    if ((created_at_start || created_at_end) && !(isAnalyser && analyserFilters.student_creation_date)) {
+      whereConds.push(dateRangeSQL("s.created_at", created_at_start, created_at_end));
+    }
+
+    const wrapArrayForSQL = (arr) => `('${arr.map((v) => v.trim().replace(/'/g, "''")).join("','")}')`;
+
+    if (utm_campaign && !(isAnalyser && analyserFilters.campaigns && analyserFilters.campaigns.length > 0)) {
+      whereConds.push(`first_la.utm_campaign IN ${wrapArrayForSQL(utm_array)}`);
+    }
+
+    if (counsellor_id) {
+      whereConds.push(`(c.counsellor_id IN ${wrapArrayForSQL(counsellor_array)} OR s.assigned_counsellor_id IN ${wrapArrayForSQL(counsellor_array)})`);
+    }
+
+    if (form_type) {
+      const { sqlFragment } = await getFormTypeStudentCondition(form_type);
+      if (sqlFragment) {
+        whereConds.push(sqlFragment.replace(/AND\s+student_id/i, "s.student_id"));
+      }
+    }
+
+    if (lead_type) {
+      whereConds.push(`last_la.lead_type = '${lead_type.replace(/'/g, "''")}'`);
+    }
+
+    const buildCTECondition = (tableAlias) => {
+      if (!isAnalyser || !analyserFilters.sources || analyserFilters.sources.length === 0) return "";
+      return `INNER JOIN students s_fb ON ${tableAlias}.student_id = s_fb.student_id AND s_fb.source IN ('${analyserFilters.sources.map((v) => v.trim().replace(/'/g, "''")).join("','")}')`;
+    };
+
+    const firstAdmissionCTE = `
+      SELECT DISTINCT student_id FROM course_status_journeys
+      WHERE course_status IN ('Registration Done', 'Partially Paid', 'Admission', 'Registration done', 'Walkin marked')
+    `;
+    const firstFormfilledCTE = `
+      SELECT DISTINCT student_id FROM course_status_journeys
+      WHERE course_status IN (
+        'Form Submitted – Portal Pending', 'Form Filled_Partner website', 'Offer Letter/Results Pending',
+        'Application', 'Form Submitted – Completed', 'Walkin Completed', 'Form Filled_Degreefyd',
+        'Exam Interview Pending', 'Offer Letter/Results Released', 'Registration Done', 'Partially Paid',
+        'Admission', 'Registration done', 'Walkin marked'
+      )
+    `;
+    const firstEnrolledCTE = `SELECT DISTINCT student_id FROM student_remarks WHERE lead_status = 'Enrolled'`;
+    const firstNotInterestedCTE = `SELECT DISTINCT student_id FROM student_remarks WHERE lead_status = 'NotInterested'`;
+    const firstPreApplicationCTE = `SELECT DISTINCT student_id FROM student_remarks WHERE lead_status = 'Pre Application'`;
+
+    const firstLaCTE = `
+      SELECT DISTINCT ON (sla.student_id) sla.student_id, sla.utm_campaign, sla.created_at
+      FROM student_lead_activities sla
+      ${buildCTECondition("sla")}
+      ${
+        analyserFilters.campaigns && analyserFilters.campaigns.length > 0
+          ? `WHERE (sla.utm_campaign IN ('${analyserFilters.campaigns.map((v) => v.trim().replace(/'/g, "''")).join("','")}') OR sla.utm_campaign IS NULL)`
+          : ""
+      }
+      ORDER BY sla.student_id, sla.created_at ASC, sla.id ASC
+    `;
+    const lastLaCTE = `
+      SELECT DISTINCT ON (sla.student_id) sla.student_id, sla.lead_type
+      FROM student_lead_activities sla
+      ORDER BY sla.student_id, sla.created_at DESC, sla.id DESC
+    `;
+    const lastRemarkCTE = `
+      SELECT DISTINCT ON (sr.student_id) sr.student_id, sr.counsellor_id, sr.lead_status, sr.remark_id
+      FROM student_remarks sr
+      ${buildCTECondition("sr")}
+      ORDER BY sr.student_id, sr.created_at DESC, sr.remark_id DESC
+    `;
+    const connectedRemarksCountCTE = `
+      SELECT sr.student_id, COUNT(*) as connected_remarks_count
+      FROM student_remarks sr
+      ${buildCTECondition("sr")}
+      WHERE LOWER(TRIM(sr.calling_status)) = 'connected'
+      GROUP BY sr.student_id
+    `;
+    const studentRemarkCountCTE = `
+      SELECT sr.student_id, COUNT(*) as total_remarks_count
+      FROM student_remarks sr
+      ${buildCTECondition("sr")}
+      GROUP BY sr.student_id
+    `;
+    const preNICTE = `
+      SELECT s.student_id FROM students s
+      WHERE s."first_icc_date" IS NULL
+        AND s.current_student_status = 'NotInterested'
+        AND NOT EXISTS (SELECT 1 FROM course_status_journeys csj WHERE csj.student_id = s.student_id)
+    `;
+
+    let groupByField;
+    let counsellorJoin = `LEFT JOIN counsellors assigned_counsellor ON s.assigned_counsellor_id = assigned_counsellor.counsellor_id`;
+    let counsellorStatusCondition = "";
+
+    if (type === "agent") {
+      groupByField = `
+        CASE
+          WHEN assigned_counsellor.counsellor_name IS NOT NULL AND assigned_counsellor.counsellor_name != ''
+            THEN assigned_counsellor.counsellor_name
+          WHEN c.counsellor_name IS NOT NULL AND c.counsellor_name != ''
+            THEN c.counsellor_name
+          ELSE 'Unassigned'
+        END
+      `;
+      if (counsellor_status) {
+        counsellorStatusCondition = `AND (assigned_counsellor.status = '${counsellor_status}' OR c.status = '${counsellor_status}')`;
+      }
+    } else if (type === "source") {
+      groupByField = `COALESCE(NULLIF(s.source, ''), 'NA')`;
+    } else if (type === "campaign") {
+      groupByField = `COALESCE(NULLIF(first_la.utm_campaign, ''), 'NA')`;
+    } else if (type === "created_at") {
+      groupByField = `DATE(s.created_at AT TIME ZONE 'Asia/Kolkata')`;
+    } else if (type === "source_url") {
+      groupByField = `
+        CASE
+          WHEN s.first_source_url IS NULL OR TRIM(s.first_source_url) = '' THEN 'NA'
+          ELSE TRIM(SPLIT_PART(s.first_source_url, '?', 1))
+        END
+      `;
+    }
+
+    if (drill_counsellor_id) {
+      whereConds.push(`COALESCE(assigned_counsellor.counsellor_id, c.counsellor_id) = '${drill_counsellor_id.replace(/'/g, "''")}'`);
+    } else if (drill_supervisor_id || drill_supervisor_name) {
+      // Resolve the supervisor's "team" as an explicit list of counsellor_ids first
+      // (mirrors getThreeRecordsOfFormFilled's allCounsellorsQuery lookup), then filter
+      // the main query by that list — avoids correlated-subquery NULL/scope pitfalls.
+      // Prefer matching by supervisor_id (exact) over supervisor_name (fragile to
+      // whitespace/case drift between the displayed name and the stored value).
+      let teamQuery;
+      if (drill_supervisor_id) {
+        teamQuery = `SELECT counsellor_id FROM counsellors WHERE assigned_to = '${drill_supervisor_id.replace(/'/g, "''")}'`;
+      } else if (drill_supervisor_name === "No Supervisor") {
+        teamQuery = `SELECT counsellor_id FROM counsellors WHERE assigned_to IS NULL OR assigned_to = ''`;
+      } else {
+        teamQuery = `
+          SELECT c1.counsellor_id
+          FROM counsellors c1
+          INNER JOIN counsellors c2 ON c1.assigned_to = c2.counsellor_id
+          WHERE c2.counsellor_name = '${drill_supervisor_name.replace(/'/g, "''")}'
+        `;
+      }
+      const teamRows = await sequelize.query(teamQuery, { type: sequelize.QueryTypes.SELECT });
+      const teamIds = teamRows.map((r) => r.counsellor_id);
+
+      if (teamIds.length === 0) {
+        return res.json({ success: true, data: [] });
+      }
+      const teamIdList = teamIds.map((id) => `'${id.replace(/'/g, "''")}'`).join(",");
+      whereConds.push(`COALESCE(assigned_counsellor.counsellor_id, c.counsellor_id) IN (${teamIdList})`);
+    } else if (drill_group) {
+      if (drill_group === "Unassigned") {
+        whereConds.push(`(${groupByField}) = 'Unassigned'`);
+      } else {
+        whereConds.push(`(${groupByField}) = '${drill_group.replace(/'/g, "''")}'`);
+      }
+    }
+
+    const BUCKET_CONDITIONS = {
+      lead_count: "1=1",
+      attempted: "src.total_remarks_count > 0",
+      connectedAnytime: `EXISTS (
+        SELECT 1 FROM student_remarks sr2
+        ${buildCTECondition("sr2")}
+        WHERE sr2.student_id = s.student_id AND LOWER(TRIM(sr2.calling_status)) = 'connected'
+      )`,
+      icc: `s."first_icc_date" IS NOT NULL`,
+      formFilled: "ffs.student_id IS NOT NULL",
+      need_active: "s.current_student_status IN ('Pre Application', 'Initial Counselling Completed')",
+      admission: "fas.student_id IS NOT NULL",
+      enrolled: "fes.student_id IS NOT NULL",
+      ni: "fnis.student_id IS NOT NULL",
+      preNI: "pns.student_id IS NOT NULL",
+      freshCount: "(src.total_remarks_count IS NULL OR src.total_remarks_count = 0)",
+      active_cases: "(src.total_remarks_count IS NULL OR src.total_remarks_count = 0) OR fps.student_id IS NOT NULL",
+      under_3_remarks: "(src.total_remarks_count IS NULL OR src.total_remarks_count = 0) OR (fps.student_id IS NOT NULL AND (crc.connected_remarks_count IS NULL OR crc.connected_remarks_count < 4))",
+      remarks_4_7: "fps.student_id IS NOT NULL AND crc.connected_remarks_count BETWEEN 4 AND 7",
+      remarks_8_10: "fps.student_id IS NOT NULL AND crc.connected_remarks_count BETWEEN 8 AND 10",
+      remarks_gt_10: "fps.student_id IS NOT NULL AND crc.connected_remarks_count > 10",
+    };
+
+    const bucketCondition = BUCKET_CONDITIONS[bucket];
+    if (!bucketCondition) {
+      return res.status(400).json({ success: false, message: "Invalid bucket" });
+    }
+    whereConds.push(bucketCondition);
+
+    const whereSQL = whereConds.length ? `WHERE ${whereConds.join(" AND ")} ${counsellorStatusCondition}` : counsellorStatusCondition ? `WHERE 1=1 ${counsellorStatusCondition}` : "";
+
+    const query = `
+      WITH first_la AS (${firstLaCTE}),
+           last_la AS (${lastLaCTE}),
+           last_remark AS (${lastRemarkCTE}),
+           connected_remarks_count AS (${connectedRemarksCountCTE}),
+           student_remark_count AS (${studentRemarkCountCTE}),
+           pre_ni_students AS (${preNICTE}),
+           first_admission_students AS (${firstAdmissionCTE}),
+           first_formfilled_students AS (${firstFormfilledCTE}),
+           first_enrolled_students AS (${firstEnrolledCTE}),
+           first_not_interested_students AS (${firstNotInterestedCTE}),
+           first_pre_application_students AS (${firstPreApplicationCTE})
+      SELECT DISTINCT
+        s.student_id,
+        s.student_name,
+        s.student_phone,
+        s.student_email,
+        s.source,
+        s.current_student_status,
+        s.created_at,
+        COALESCE(assigned_counsellor.counsellor_name, c.counsellor_name, 'Unassigned') as counsellor_name
+      FROM students s
+      LEFT JOIN last_remark lr ON s.student_id = lr.student_id
+      LEFT JOIN first_la ON s.student_id = first_la.student_id
+      LEFT JOIN last_la ON s.student_id = last_la.student_id
+      LEFT JOIN connected_remarks_count crc ON s.student_id = crc.student_id
+      LEFT JOIN student_remark_count src ON s.student_id = src.student_id
+      LEFT JOIN pre_ni_students pns ON s.student_id = pns.student_id
+      LEFT JOIN first_admission_students fas ON s.student_id = fas.student_id
+      LEFT JOIN first_formfilled_students ffs ON s.student_id = ffs.student_id
+      LEFT JOIN first_enrolled_students fes ON s.student_id = fes.student_id
+      LEFT JOIN first_not_interested_students fnis ON s.student_id = fnis.student_id
+      LEFT JOIN first_pre_application_students fps ON s.student_id = fps.student_id
+      LEFT JOIN counsellors c ON lr.counsellor_id = c.counsellor_id
+      ${counsellorJoin}
+      ${whereSQL}
+      ORDER BY s.created_at DESC
+    `;
+
+    const results = await sequelize.query(query, { type: sequelize.QueryTypes.SELECT });
+
+    res.json({ success: true, data: results });
+  } catch (error) {
+    console.error("Error in getThreeRecordsOfFormFilledDrillDown:", error);
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 };
@@ -4023,6 +4589,99 @@ export const getTrackReport = async (req, res) => {
   }
 };
 
+// Drill-down: returns the individual students/remarks behind one cell (time_interval x
+// bucket) of getTrackReport's summary table. Each bucket re-runs the matching subquery
+// from getTrackReport with the same time-frame CASE and date filters, so counts always match.
+export const getTrackReportDrillDown = async (req, res) => {
+  try {
+    const startDate =
+      req.query.start_date || new Date().toISOString().substring(0, 10);
+    const endDate = req.query.end_date || startDate;
+    const { time_interval, bucket } = req.query;
+
+    if (!time_interval || !bucket) {
+      return res.status(400).json({
+        success: false,
+        message: "time_interval and bucket are required",
+      });
+    }
+
+    const timeFrameCase = (col) => `
+      CASE
+        WHEN EXTRACT(HOUR FROM (${col} AT TIME ZONE 'Asia/Kolkata')) < 11 THEN 'Till 11 AM'
+        WHEN EXTRACT(HOUR FROM (${col} AT TIME ZONE 'Asia/Kolkata')) = 11 THEN '11:00 - 12:00'
+        WHEN EXTRACT(HOUR FROM (${col} AT TIME ZONE 'Asia/Kolkata')) = 12 THEN '12:00 - 13:00'
+        WHEN EXTRACT(HOUR FROM (${col} AT TIME ZONE 'Asia/Kolkata')) = 13 THEN '13:00 - 14:00'
+        WHEN EXTRACT(HOUR FROM (${col} AT TIME ZONE 'Asia/Kolkata')) = 14 THEN '14:00 - 15:00'
+        WHEN EXTRACT(HOUR FROM (${col} AT TIME ZONE 'Asia/Kolkata')) = 15 THEN '15:00 - 16:00'
+        WHEN EXTRACT(HOUR FROM (${col} AT TIME ZONE 'Asia/Kolkata')) = 16 THEN '16:00 - 17:00'
+        WHEN EXTRACT(HOUR FROM (${col} AT TIME ZONE 'Asia/Kolkata')) = 17 THEN '17:00 - 18:00'
+        WHEN EXTRACT(HOUR FROM (${col} AT TIME ZONE 'Asia/Kolkata')) = 18 THEN '18:00 - 19:00'
+        ELSE 'After 7 PM'
+      END
+    `;
+
+    const replacements = { startDate, endDate, timeInterval: time_interval };
+    let query;
+
+    if (bucket === "new_leads") {
+      query = `
+        SELECT s.student_id, s.student_name, s.student_phone, s.student_email,
+               s.source, s.current_student_status, s.created_at
+        FROM students s
+        WHERE (s.created_at AT TIME ZONE 'Asia/Kolkata')
+              BETWEEN (:startDate)::date AND ((:endDate)::date + INTERVAL '1 day')
+          AND (${timeFrameCase("s.created_at")}) = :timeInterval
+        ORDER BY s.created_at DESC
+      `;
+    } else if (bucket === "new_counselling") {
+      query = `
+        WITH first_icc AS (
+          SELECT r.student_id, MIN(r.created_at) AS first_created_at
+          FROM student_remarks r
+          WHERE LOWER(r.lead_sub_status) = LOWER('Initial Counseling Completed')
+          GROUP BY r.student_id
+        )
+        SELECT s.student_id, s.student_name, s.student_phone, s.student_email,
+               s.source, s.current_student_status, fi.first_created_at AS created_at
+        FROM first_icc fi
+        INNER JOIN students s ON s.student_id = fi.student_id
+        WHERE (fi.first_created_at AT TIME ZONE 'Asia/Kolkata')
+              BETWEEN (:startDate)::date AND ((:endDate)::date + INTERVAL '1 day')
+          AND (${timeFrameCase("fi.first_created_at")}) = :timeInterval
+        ORDER BY fi.first_created_at DESC
+      `;
+    } else if (bucket === "connected_calls") {
+      query = `
+        SELECT sr.remark_id, sr.student_id, s.student_name, s.student_phone, s.student_email,
+               s.source, s.current_student_status, sr.created_at
+        FROM student_remarks sr
+        INNER JOIN students s ON s.student_id = sr.student_id
+        WHERE LOWER(sr.calling_status) = LOWER('connected')
+          AND (sr.created_at AT TIME ZONE 'Asia/Kolkata')
+              BETWEEN (:startDate)::date AND ((:endDate)::date + INTERVAL '1 day')
+          AND (${timeFrameCase("sr.created_at")}) = :timeInterval
+        ORDER BY sr.created_at DESC
+      `;
+    } else {
+      return res.status(400).json({ success: false, message: "Invalid bucket" });
+    }
+
+    const results = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    res.json({ success: true, data: results });
+  } catch (error) {
+    console.error("Track Report Drill-Down Error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || error.toString(),
+    });
+  }
+};
+
 export const getTrackerReport2 = async (req, res) => {
   try {
     const { date_start, date_end, groupBy = "slot" } = req.query;
@@ -4517,6 +5176,265 @@ export const getTrackerReport2 = async (req, res) => {
     res.json(response);
   } catch (err) {
     console.error("Error in getTrackerReport2:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// Drill-down: returns the individual students behind one cell of the Unique Student
+// Tracker summary table. Re-runs the same per-student Set-membership logic as
+// getTrackerReport2 (rather than re-deriving counts via SQL) so the drilled-down list
+// always matches the displayed count exactly.
+export const getTrackerReport2DrillDown = async (req, res) => {
+  try {
+    const {
+      date_start,
+      date_end,
+      groupBy = "slot",
+      drill_group,
+      drill_bucket,
+      drill_by,
+    } = req.query;
+    const userRole = req.user?.role;
+
+    if (!date_start || !date_end) {
+      return res.status(400).json({
+        success: false,
+        message: "date_start and date_end are required",
+      });
+    }
+    if (!drill_group || !drill_bucket) {
+      return res.status(400).json({
+        success: false,
+        message: "drill_group and drill_bucket are required",
+      });
+    }
+
+    const startDate = new Date(date_start + "T00:00:00+05:30");
+    const endDate = new Date(date_end + "T23:59:59+05:30");
+
+    const counsellors = await Counsellor.findAll({
+      attributes: ["counsellor_id", "counsellor_name", "assigned_to"],
+      raw: true,
+    });
+
+    const counsellorMap = {};
+    const counsellorSupervisorMap = {};
+    counsellors.forEach((c) => {
+      counsellorMap[c.counsellor_id] = c.counsellor_name;
+      let supervisorName = "No Supervisor";
+      if (c.assigned_to) {
+        const supervisor = counsellors.find(
+          (sup) => sup.counsellor_id === c.assigned_to,
+        );
+        if (supervisor) supervisorName = supervisor.counsellor_name;
+      }
+      counsellorSupervisorMap[c.counsellor_id] = supervisorName;
+    });
+
+    let facebookStudentIds = [];
+    const isAnalyser = userRole === "Analyser";
+    if (isAnalyser) {
+      const facebookStudents = await Student.findAll({
+        where: { source: "FaceBook" },
+        attributes: ["student_id"],
+        raw: true,
+      });
+      facebookStudentIds = facebookStudents.map((s) => s.student_id);
+      if (facebookStudentIds.length === 0) {
+        return res.json({ success: true, data: [] });
+      }
+    }
+
+    const remarkWhereConditions = {
+      created_at: { [Op.between]: [startDate, endDate] },
+    };
+    if (isAnalyser) {
+      remarkWhereConditions.student_id = { [Op.in]: facebookStudentIds };
+    }
+
+    const remarks = await StudentRemark.findAll({
+      where: remarkWhereConditions,
+      attributes: [
+        "remark_id",
+        "student_id",
+        "counsellor_id",
+        "calling_status",
+        "created_at",
+      ],
+      order: [
+        ["student_id", "ASC"],
+        ["created_at", "ASC"],
+      ],
+      raw: true,
+    });
+
+    let firstConnectedQuery, firstICCQuery, firstNIQuery;
+    if (isAnalyser) {
+      firstConnectedQuery = `
+        SELECT DISTINCT ON (sr.student_id) sr.student_id, sr.created_at as first_connected_at
+        FROM student_remarks sr INNER JOIN students s ON sr.student_id = s.student_id
+        WHERE LOWER(TRIM(sr.calling_status)) = 'connected' AND s.source = 'FaceBook'
+        ORDER BY sr.student_id, sr.created_at ASC`;
+      firstICCQuery = `SELECT student_id, "first_icc_date" as first_icc_at FROM students WHERE "first_icc_date" IS NOT NULL AND source = 'FaceBook'`;
+      firstNIQuery = `
+        SELECT DISTINCT ON (sr.student_id) sr.student_id, sr.created_at as first_ni_at
+        FROM student_remarks sr INNER JOIN students s ON sr.student_id = s.student_id
+        WHERE s.current_student_status = 'NotInterested' AND s.source = 'FaceBook'
+        ORDER BY sr.student_id, sr.created_at ASC`;
+    } else {
+      firstConnectedQuery = `
+        SELECT DISTINCT ON (student_id) student_id, created_at as first_connected_at
+        FROM student_remarks WHERE LOWER(TRIM(calling_status)) = 'connected'
+        ORDER BY student_id, created_at ASC`;
+      firstICCQuery = `SELECT student_id, "first_icc_date" as first_icc_at FROM students WHERE "first_icc_date" IS NOT NULL`;
+      firstNIQuery = `
+        SELECT DISTINCT ON (sr.student_id) sr.student_id, sr.created_at as first_ni_at
+        FROM student_remarks sr INNER JOIN students s ON sr.student_id = s.student_id
+        WHERE s.current_student_status = 'NotInterested'
+        ORDER BY sr.student_id, sr.created_at ASC`;
+    }
+
+    const [firstConnected, firstICC, firstNI, studentsForStatus] =
+      await Promise.all([
+        sequelize.query(firstConnectedQuery, {
+          type: sequelize.QueryTypes.SELECT,
+        }),
+        sequelize.query(firstICCQuery, { type: sequelize.QueryTypes.SELECT }),
+        sequelize.query(firstNIQuery, { type: sequelize.QueryTypes.SELECT }),
+        Student.findAll({
+          attributes: ["student_id", "current_student_status"],
+          raw: true,
+        }),
+      ]);
+
+    const studentStatusMap = {};
+    studentsForStatus.forEach((s) => {
+      studentStatusMap[s.student_id] = s.current_student_status;
+    });
+
+    const firstConnectedMap = {};
+    firstConnected.forEach((r) => {
+      firstConnectedMap[r.student_id] = new Date(
+        r.first_connected_at,
+      ).getTime();
+    });
+
+    const firstICCMap = {};
+    firstICC.forEach((r) => {
+      firstICCMap[r.student_id] = new Date(r.first_icc_at).getTime();
+    });
+
+    const firstNIMap = {};
+    firstNI.forEach((r) => {
+      firstNIMap[r.student_id] = new Date(r.first_ni_at).getTime();
+    });
+
+    const getGroupKey = (remark) => {
+      if (groupBy === "counsellor") {
+        const counsellorId = remark.counsellor_id || "Unassigned";
+        if (counsellorId === "Unassigned") {
+          return {
+            groupKey: "Unassigned",
+            supervisorName: "No Supervisor",
+          };
+        }
+        const counsellorName = counsellorMap[counsellorId] || counsellorId;
+        const supervisorName =
+          counsellorSupervisorMap[counsellorId] || "No Supervisor";
+        return { groupKey: counsellorName, supervisorName };
+      } else {
+        const d = new Date(remark.created_at);
+        const istDate = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+        const hour = istDate.getUTCHours();
+        if (hour >= 9 && hour < 24) {
+          const nextHour =
+            hour === 23 ? "00" : (hour + 1).toString().padStart(2, "0");
+          const slotKey = `${hour.toString().padStart(2, "0")}:00-${nextHour}:00`;
+          return { groupKey: slotKey, supervisorName: null };
+        }
+        return null;
+      }
+    };
+
+    const matchedStudentIds = new Set();
+
+    remarks.forEach((remark) => {
+      const groupInfo = getGroupKey(remark);
+      if (!groupInfo) return;
+      const { groupKey, supervisorName } = groupInfo;
+
+      const isTargetGroup =
+        drill_by === "supervisor"
+          ? (supervisorName || "No Supervisor") === drill_group
+          : groupKey === drill_group;
+      if (!isTargetGroup) return;
+
+      const remarkTime = new Date(remark.created_at).getTime();
+
+      if (drill_bucket === "totalUniqueRemarks") {
+        matchedStudentIds.add(remark.student_id);
+      } else if (drill_bucket === "firstTimeConnected") {
+        if (
+          remark.calling_status &&
+          remark.calling_status.toLowerCase().trim() === "connected"
+        ) {
+          const firstConnTime = firstConnectedMap[remark.student_id];
+          if (firstConnTime && remarkTime === firstConnTime) {
+            matchedStudentIds.add(remark.student_id);
+          }
+        }
+      } else if (drill_bucket === "firstTimeICC") {
+        const firstICCTime = firstICCMap[remark.student_id];
+        if (firstICCTime) {
+          const iccDate = new Date(firstICCTime);
+          if (iccDate >= startDate && iccDate <= endDate) {
+            matchedStudentIds.add(remark.student_id);
+          }
+        }
+      } else if (drill_bucket === "firstTimeNI") {
+        const currentStatus = studentStatusMap[remark.student_id];
+        if (currentStatus === "NotInterested") {
+          const firstNITime = firstNIMap[remark.student_id];
+          if (firstNITime && remarkTime === firstNITime) {
+            matchedStudentIds.add(remark.student_id);
+          }
+        }
+      }
+    });
+
+    if (matchedStudentIds.size === 0) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const students = await Student.findAll({
+      where: { student_id: { [Op.in]: Array.from(matchedStudentIds) } },
+      attributes: [
+        "student_id",
+        "student_name",
+        "student_phone",
+        "student_email",
+        "source",
+        "current_student_status",
+        "assigned_counsellor_id",
+        "created_at",
+      ],
+      raw: true,
+    });
+
+    const data = students.map((s) => ({
+      student_id: s.student_id,
+      student_name: s.student_name,
+      phone: s.student_phone,
+      email: s.student_email,
+      source: s.source,
+      current_student_status: s.current_student_status,
+      counsellor_name: counsellorMap[s.assigned_counsellor_id] || "Unassigned",
+      created_at: s.created_at,
+    }));
+
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error("Error in getTrackerReport2DrillDown:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 };
@@ -5631,6 +6549,144 @@ END as attempt_category
       error: err.message,
       stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
     });
+  }
+};
+
+// Drill-down: returns the individual students behind one cell of the Lead Attempt
+// summary table (a single group_name x bucket combination), reusing the exact same
+// grouping/bucket definitions as getLeadAttemptTimeReport so counts always match.
+export const getLeadAttemptTimeReportDrillDown = async (req, res) => {
+  try {
+    const {
+      date_start,
+      date_end,
+      source,
+      group_by = "counsellor",
+      drill_group,
+      drill_bucket,
+      drill_by,
+    } = req.query;
+    const userRole = req.user?.role;
+    const isAnalyser = userRole === "Analyser";
+
+    const getISTDate = (dateString, time) => {
+      const date = new Date(`${dateString}T${time}+05:30`);
+      return date.toISOString();
+    };
+
+    let whereConditions = [];
+    let queryParams = {};
+
+    if (isAnalyser) {
+      whereConditions.push(`s.source = 'FaceBook'`);
+    } else if (source) {
+      whereConditions.push(`s.source = $source`);
+      queryParams.source = source;
+    }
+
+    if (date_start) {
+      whereConditions.push(`s.created_at >= $date_start`);
+      queryParams.date_start = getISTDate(date_start, "00:00:00");
+    }
+    if (date_end) {
+      whereConditions.push(`s.created_at <= $date_end`);
+      queryParams.date_end = getISTDate(date_end, "23:59:59");
+    }
+
+    let groupByName;
+    if (group_by === "hour") {
+      groupByName = `
+        CASE
+          WHEN EXTRACT(HOUR FROM s.created_at AT TIME ZONE 'Asia/Kolkata') < 9 THEN 'Till 9 AM'
+          WHEN EXTRACT(HOUR FROM s.created_at AT TIME ZONE 'Asia/Kolkata') = 9 THEN '9:00 - 10:00'
+          WHEN EXTRACT(HOUR FROM s.created_at AT TIME ZONE 'Asia/Kolkata') = 10 THEN '10:00 - 11:00'
+          WHEN EXTRACT(HOUR FROM s.created_at AT TIME ZONE 'Asia/Kolkata') = 11 THEN '11:00 - 12:00'
+          WHEN EXTRACT(HOUR FROM s.created_at AT TIME ZONE 'Asia/Kolkata') = 12 THEN '12:00 - 13:00'
+          WHEN EXTRACT(HOUR FROM s.created_at AT TIME ZONE 'Asia/Kolkata') = 13 THEN '13:00 - 14:00'
+          WHEN EXTRACT(HOUR FROM s.created_at AT TIME ZONE 'Asia/Kolkata') = 14 THEN '14:00 - 15:00'
+          WHEN EXTRACT(HOUR FROM s.created_at AT TIME ZONE 'Asia/Kolkata') = 15 THEN '15:00 - 16:00'
+          WHEN EXTRACT(HOUR FROM s.created_at AT TIME ZONE 'Asia/Kolkata') = 16 THEN '16:00 - 17:00'
+          WHEN EXTRACT(HOUR FROM s.created_at AT TIME ZONE 'Asia/Kolkata') = 17 THEN '17:00 - 18:00'
+          WHEN EXTRACT(HOUR FROM s.created_at AT TIME ZONE 'Asia/Kolkata') = 18 THEN '18:00 - 19:00'
+          WHEN EXTRACT(HOUR FROM s.created_at AT TIME ZONE 'Asia/Kolkata') = 19 THEN '19:00 - 20:00'
+          WHEN EXTRACT(HOUR FROM s.created_at AT TIME ZONE 'Asia/Kolkata') = 20 THEN '20:00 - 21:00'
+          ELSE 'After 9 PM'
+        END
+      `;
+    } else {
+      groupByName = `COALESCE(c.counsellor_name, 'Unassigned')`;
+    }
+
+    const groupMatchField =
+      group_by === "hour"
+        ? groupByName
+        : drill_by === "supervisor"
+          ? `COALESCE(sup.counsellor_name, 'No Supervisor')`
+          : groupByName;
+
+    if (drill_group) {
+      whereConditions.push(`(${groupMatchField}) = $drill_group`);
+      queryParams.drill_group = drill_group;
+    }
+
+    if (drill_bucket === "attempted") {
+      whereConditions.push(`sfr.student_id IS NOT NULL`);
+    } else if (drill_bucket === "within15") {
+      whereConditions.push(
+        `sfr.student_id IS NOT NULL AND EXTRACT(EPOCH FROM (sfr.first_remark_time - s.created_at))/60 <= 15`,
+      );
+    } else if (drill_bucket === "min1530") {
+      whereConditions.push(
+        `sfr.student_id IS NOT NULL AND EXTRACT(EPOCH FROM (sfr.first_remark_time - s.created_at))/60 BETWEEN 16 AND 30`,
+      );
+    } else if (drill_bucket === "gt30") {
+      whereConditions.push(
+        `sfr.student_id IS NOT NULL AND EXTRACT(EPOCH FROM (sfr.first_remark_time - s.created_at))/60 > 30`,
+      );
+    }
+    // drill_bucket === "leadsAssigned" (or omitted) -> no extra filter, every lead in the group
+
+    const whereClause =
+      whereConditions.length > 0
+        ? `WHERE ${whereConditions.join(" AND ")}`
+        : "";
+
+    const query = `
+      WITH student_first_remark AS (
+        SELECT sr.student_id, MIN(sr.created_at) as first_remark_time
+        FROM student_remarks sr
+        ${isAnalyser ? `INNER JOIN students s2 ON sr.student_id = s2.student_id AND s2.source = 'FaceBook'` : ""}
+        GROUP BY sr.student_id
+      )
+      SELECT
+        s.student_id,
+        s.student_name,
+        s.student_phone,
+        s.student_email,
+        s.source,
+        s.created_at as lead_created_time,
+        COALESCE(c.counsellor_name, 'Unassigned') as counsellor_name,
+        COALESCE(sup.counsellor_name, 'No Supervisor') as supervisor_name,
+        sfr.first_remark_time,
+        ROUND((EXTRACT(EPOCH FROM (sfr.first_remark_time - s.created_at))/60)::numeric, 1) as attempt_minutes,
+        s.current_student_status
+      FROM students s
+      LEFT JOIN student_first_remark sfr ON s.student_id = sfr.student_id
+      LEFT JOIN counsellors c ON s.assigned_counsellor_id = c.counsellor_id
+      LEFT JOIN counsellors sup ON c.assigned_to = sup.counsellor_id
+      ${whereClause}
+      ORDER BY s.created_at DESC
+    `;
+
+    const results = await sequelize.query(query, {
+      type: sequelize.QueryTypes.SELECT,
+      bind: queryParams,
+    });
+
+    res.json({ success: true, data: results });
+  } catch (err) {
+    console.error("Error in getLeadAttemptTimeReportDrillDown:", err);
+    res.status(500).json({ success: false, error: err.message });
   }
 };
 

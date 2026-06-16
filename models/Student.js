@@ -27,6 +27,7 @@ const Student = sequelize.define(
     objective: DataTypes.STRING,
     mode: { type: DataTypes.STRING, defaultValue: "Regular" },
     preferred_stream: DataTypes.ARRAY(DataTypes.TEXT),
+    preferred_course: DataTypes.ARRAY(DataTypes.TEXT),
     preferred_budget: { type: DataTypes.STRING, defaultValue: "" },
     preferred_degree: DataTypes.ARRAY(DataTypes.TEXT),
     preferred_level: DataTypes.ARRAY(DataTypes.TEXT),

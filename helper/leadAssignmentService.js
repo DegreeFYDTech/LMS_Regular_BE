@@ -7,14 +7,19 @@ import {
   Message,
   Chat,
   sequelize,
-  StudentQuestionResponse,UniversityCourse,CourseStatus
+  StudentQuestionResponse,
+  UniversityCourse,
+  CourseStatus,
 } from "../models/index.js";
 import { createLeadLog } from "../controllers/Lead_logs.controller.js";
 import { DATE, Op } from "sequelize";
 import { saveMessageToChat } from "../controllers/watsaapChat.controller.js";
 import axios from "axios";
 import { createLeadActivity } from "../controllers/leadactivity.controller.js";
-import { normalizePhoneNumber, processAltNumbers } from "../utils/validators.js";
+import {
+  normalizePhoneNumber,
+  processAltNumbers,
+} from "../utils/validators.js";
 
 export const assignLeadHelper = async (leadData) => {
   try {
@@ -127,21 +132,21 @@ export const assignLeadHelper = async (leadData) => {
       }
 
       if (field === "student_question") {
-        if (!Array.isArray(value)) return false; 
-        
-        return ruleConditions.every(ruleQ => {
-          const leadAnsObj = value.find(v => v.question === ruleQ.question);
+        if (!Array.isArray(value)) return false;
+
+        return ruleConditions.every((ruleQ) => {
+          const leadAnsObj = value.find((v) => v.question === ruleQ.question);
           if (!leadAnsObj || !leadAnsObj.answer) return false;
-          
-          const leadAnswers = Array.isArray(leadAnsObj.answer) 
-            ? leadAnsObj.answer.map(a => String(a).trim()) 
+
+          const leadAnswers = Array.isArray(leadAnsObj.answer)
+            ? leadAnsObj.answer.map((a) => String(a).trim())
             : [String(leadAnsObj.answer || "").trim()];
-            
-          const acceptedAnswers = Array.isArray(ruleQ.answer) 
-            ? ruleQ.answer.map(a => String(a).trim()) 
+
+          const acceptedAnswers = Array.isArray(ruleQ.answer)
+            ? ruleQ.answer.map((a) => String(a).trim())
             : [String(ruleQ.answer || "").trim()];
 
-          return leadAnswers.some(ans => acceptedAnswers.includes(ans));
+          return leadAnswers.some((ans) => acceptedAnswers.includes(ans));
         });
       }
 
@@ -217,7 +222,10 @@ export const assignLeadHelper = async (leadData) => {
         }
 
         totalConditions++;
-        const value = field === "student_question" ? leadData.student_comment : leadData[field];
+        const value =
+          field === "student_question"
+            ? leadData.student_comment
+            : leadData[field];
 
         // Check if field exists in lead data
         if (value === undefined || value === null || value === "") {
@@ -797,6 +805,7 @@ export const processStudentLead = async (leadData) => {
       leadData.Specialization ||
       leadData.SPECIALIZATION ||
       "",
+    preferred_course: leadData.preferred_course || [],
     primary_db_id: leadData.primary_db_id || null,
     mode: leadData.mode || leadData.Mode || leadData.MODE || "",
 
@@ -871,7 +880,7 @@ export const processStudentLead = async (leadData) => {
   const { assignedCounsellor } = assignmentResult;
 
   const incomingPhone = normalizePhoneNumber(
-    leadData.phoneNumber || leadData.phone_number || leadData.mobile || ""
+    leadData.phoneNumber || leadData.phone_number || leadData.mobile || "",
   );
 
   const orConditions = [];
@@ -880,7 +889,9 @@ export const processStudentLead = async (leadData) => {
   }
   if (incomingPhone) {
     orConditions.push({ student_phone: incomingPhone });
-    orConditions.push({ student_alt_numbers: { [Op.contains]: [incomingPhone] } });
+    orConditions.push({
+      student_alt_numbers: { [Op.contains]: [incomingPhone] },
+    });
   }
 
   const existingStudent = await Student.findOne({
@@ -910,11 +921,14 @@ export const processStudentLead = async (leadData) => {
   if (existingStudent) {
     student = existingStudent;
     studentStatus = "already_exists";
-    const lastActivityUrl = existingStudent.lead_activities?.[0]?.source_url || "";
+    const lastActivityUrl =
+      existingStudent.lead_activities?.[0]?.source_url || "";
     const incomingUrl = mappedLeadData.first_source_url || "";
-    const isNewSource = incomingUrl && lastActivityUrl
-      ? incomingUrl.trim().toLowerCase() !== lastActivityUrl.trim().toLowerCase()
-      : false;
+    const isNewSource =
+      incomingUrl && lastActivityUrl
+        ? incomingUrl.trim().toLowerCase() !==
+          lastActivityUrl.trim().toLowerCase()
+        : false;
 
     if (isNewSource) {
       await Student.update(
@@ -945,6 +959,7 @@ export const processStudentLead = async (leadData) => {
       assigned_counsellor_id: assignedCounsellor?.counsellor_id || null,
       mode: mappedLeadData.mode || "Regular",
       preferred_stream: toArray(mappedLeadData.stream),
+      preferred_course: toArray(mappedLeadData.preferred_course),
       preferred_budget: String(mappedLeadData.preferred_budget || ""),
       preferred_degree: toArray(mappedLeadData.degree),
       preferred_level: toArray(mappedLeadData.level),
@@ -976,11 +991,13 @@ export const processStudentLead = async (leadData) => {
     if (leadData.student_alt_numbers || leadData.studentAltNumbers) {
       initialAltNumbers = processAltNumbers(
         leadData.student_alt_numbers || leadData.studentAltNumbers,
-        mappedLeadData.phoneNumber
+        mappedLeadData.phoneNumber,
       );
     }
     newStudentData.student_alt_numbers = initialAltNumbers;
-    newStudentData.student_phone = normalizePhoneNumber(mappedLeadData.phoneNumber) || mappedLeadData.phoneNumber;
+    newStudentData.student_phone =
+      normalizePhoneNumber(mappedLeadData.phoneNumber) ||
+      mappedLeadData.phoneNumber;
 
     student = await Student.create(newStudentData);
     studentStatus = "created";
@@ -1034,9 +1051,11 @@ export const processStudentLead = async (leadData) => {
           answer: c.answer,
         }));
 
-        if (responseEntries.length > 0) {
+      if (responseEntries.length > 0) {
         await StudentQuestionResponse.bulkCreate(responseEntries);
-        const questionsList = responseEntries.filter((entry) => entry.question === 'shortlisted_colleges');
+        const questionsList = responseEntries.filter(
+          (entry) => entry.question === "shortlisted_colleges",
+        );
         if (questionsList.length > 0) {
           const shortlistedColleges = questionsList[0].answer || [];
           if (shortlistedColleges.length > 0) {
@@ -1044,16 +1063,22 @@ export const processStudentLead = async (leadData) => {
               try {
                 let course = await UniversityCourse.findOne({
                   where: {
-                    university_name: sequelize.where(sequelize.fn('LOWER', sequelize.col('university_name')), collegeName.toLowerCase()),
-                    course_name: { [Op.iLike]: '%MBA%' }
-                  }
+                    university_name: sequelize.where(
+                      sequelize.fn("LOWER", sequelize.col("university_name")),
+                      collegeName.toLowerCase(),
+                    ),
+                    course_name: { [Op.iLike]: "%MBA%" },
+                  },
                 });
 
                 if (!course) {
                   course = await UniversityCourse.findOne({
                     where: {
-                      university_name: sequelize.where(sequelize.fn('LOWER', sequelize.col('university_name')), collegeName.toLowerCase())
-                    }
+                      university_name: sequelize.where(
+                        sequelize.fn("LOWER", sequelize.col("university_name")),
+                        collegeName.toLowerCase(),
+                      ),
+                    },
                   });
                 }
 
@@ -1061,12 +1086,15 @@ export const processStudentLead = async (leadData) => {
                   await CourseStatus.create({
                     course_id: course.course_id,
                     student_id: student.student_id,
-                    latest_course_status: 'Shortlisted',
+                    latest_course_status: "Shortlisted",
                     is_shortlisted: true,
                   });
                 }
               } catch (err) {
-                console.error(`Error processing shortlisted college "${collegeName}":`, err.message);
+                console.error(
+                  `Error processing shortlisted college "${collegeName}":`,
+                  err.message,
+                );
               }
             }
           }

@@ -287,6 +287,87 @@ export const getConnectedCallsAnalysis = async (req, res) => {
   }
 };
 
+// Drill-down: returns the individual remarks behind one cell of the Remarks Analysis
+// table (Total Remarks / Connected Calls / a single hourly slot), filtered to one
+// counsellor or one supervisor, reusing the same date + Facebook filters as
+// getConnectedCallsAnalysis so counts always match.
+export const getConnectedCallsDrillDown = async (req, res) => {
+  try {
+    const { from, to, counsellor_id, supervisor_name, bucket, hour } = req.query;
+    const userRole = req.user?.role;
+    const isAnalyser = userRole === 'Analyser';
+
+    if (!bucket || (!counsellor_id && !supervisor_name)) {
+      return res.status(400).json({
+        success: false,
+        message: 'bucket and (counsellor_id or supervisor_name) are required',
+      });
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const fromDate = from || today;
+    const toDateRaw = to || today;
+    const toDateEnd = new Date(new Date(toDateRaw).setHours(23, 59, 59, 999)).toISOString();
+
+    let whereConditions = ['sr.created_at BETWEEN :fromDate AND :toDateEnd'];
+    const replacements = { fromDate, toDateEnd };
+
+    if (isAnalyser) {
+      whereConditions.push(`s.source = 'FaceBook'`);
+    }
+
+    if (counsellor_id) {
+      whereConditions.push('sr.counsellor_id = :counsellorId');
+      replacements.counsellorId = counsellor_id;
+    } else if (supervisor_name) {
+      if (supervisor_name === 'No Supervisor') {
+        whereConditions.push('sup.counsellor_name IS NULL');
+      } else {
+        whereConditions.push('sup.counsellor_name = :supervisorName');
+        replacements.supervisorName = supervisor_name;
+      }
+    }
+
+    if (bucket === 'totalConnectedCalls' || bucket === 'slot') {
+      whereConditions.push(`sr.calling_status = 'Connected'`);
+    }
+
+    if (bucket === 'slot') {
+      if (hour === undefined || hour === null || hour === '') {
+        return res.status(400).json({ success: false, message: 'hour is required for bucket=slot' });
+      }
+      whereConditions.push(`DATE_PART('hour', timezone('Asia/Kolkata', sr.created_at)) = :hour`);
+      replacements.hour = parseInt(hour, 10);
+    }
+
+    const whereClause = whereConditions.join(' AND ');
+
+    const [rows] = await sequelize.query(
+      `
+      SELECT
+        sr.remark_id, sr.student_id, sr.calling_status, sr.created_at,
+        s.student_name, s.student_phone, s.student_email, s.source, s.current_student_status,
+        c.counsellor_name
+      FROM student_remarks sr
+      JOIN counsellors c ON c.counsellor_id = sr.counsellor_id
+      LEFT JOIN counsellors sup ON c.assigned_to = sup.counsellor_id
+      JOIN students s ON s.student_id = sr.student_id
+      WHERE ${whereClause}
+      ORDER BY sr.created_at DESC
+      `,
+      { replacements },
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Error in getConnectedCallsDrillDown:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+    });
+  }
+};
+
 
 
 
@@ -728,6 +809,110 @@ export const getAnalysisReportSQL = async (req, res) => {
   } catch (error) {
     console.error('Error generating SQL analysis report:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+// Drill-down: returns the individual remarks behind one cell of the Remarks Analysis
+// "Total"/hourly-slot table fed by getAnalysisReportSQL. Unlike connected-calls,
+// these buckets count ALL remarks (no calling_status filter) and respect the
+// mode/source/campaign filters from the summary view.
+export const getAnalysisReportDrillDown = async (req, res) => {
+  try {
+    const {
+      from, to, mode, source, campaign,
+      counsellor_id, supervisor_name, bucket, hour,
+    } = req.query;
+    const userRole = req.user?.role;
+    const isAnalyser = userRole?.toLowerCase() === 'analyser';
+
+    if (!bucket || (!counsellor_id && !supervisor_name)) {
+      return res.status(400).json({
+        success: false,
+        message: 'bucket and (counsellor_id or supervisor_name) are required',
+      });
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const fromDate = from || today;
+    const toDateRaw = to || today;
+    const toDateEnd = new Date(new Date(toDateRaw).setHours(23, 59, 59, 999)).toISOString();
+
+    let actualSource = source;
+    let actualCampaign = campaign;
+    if (isAnalyser) {
+      if (source && !source.toLowerCase().includes('facebook') && !source.toLowerCase().includes('fb')) {
+        actualSource = 'FaceBook';
+      } else if (!source) {
+        actualSource = 'FaceBook';
+      }
+    }
+    const needsLeadActivityJoin = !!(actualSource || actualCampaign);
+
+    let whereConditions = ['sr.created_at BETWEEN :fromDate AND :toDateEnd'];
+    const replacements = { fromDate, toDateEnd, actualSource, actualCampaign };
+
+    if (mode) {
+      whereConditions.push('c.counsellor_preferred_mode = :mode');
+      replacements.mode = mode;
+    }
+
+    if (counsellor_id) {
+      whereConditions.push('sr.counsellor_id = :counsellorId');
+      replacements.counsellorId = counsellor_id;
+    } else if (supervisor_name) {
+      if (supervisor_name === 'No Supervisor') {
+        whereConditions.push('sup.counsellor_name IS NULL');
+      } else {
+        whereConditions.push('sup.counsellor_name = :supervisorName');
+        replacements.supervisorName = supervisor_name;
+      }
+    }
+
+    if (bucket === 'slot') {
+      if (hour === undefined || hour === null || hour === '') {
+        return res.status(400).json({ success: false, message: 'hour is required for bucket=slot' });
+      }
+      whereConditions.push(`DATE_PART('hour', timezone('Asia/Kolkata', sr.created_at)) = :hour`);
+      replacements.hour = parseInt(hour, 10);
+    } else if (bucket !== 'totalRemarks') {
+      return res.status(400).json({ success: false, message: 'Invalid bucket' });
+    }
+
+    let query = `
+      SELECT
+        sr.remark_id, sr.student_id, sr.calling_status, sr.created_at,
+        s.student_name, s.student_phone, s.student_email, s.source, s.current_student_status,
+        c.counsellor_name
+      FROM student_remarks sr
+      JOIN counsellors c ON c.counsellor_id = sr.counsellor_id
+      LEFT JOIN counsellors sup ON c.assigned_to = sup.counsellor_id
+      JOIN students s ON s.student_id = sr.student_id
+    `;
+
+    if (needsLeadActivityJoin) {
+      query += `
+      JOIN (
+        SELECT DISTINCT ON (student_id) student_id
+        FROM student_lead_activities
+        WHERE 1=1
+          ${actualSource ? `AND source ILIKE '%' || :actualSource || '%'` : ''}
+          ${actualCampaign ? `AND utm_campaign = :actualCampaign` : ''}
+        ORDER BY student_id, created_at ASC
+      ) la ON la.student_id = sr.student_id
+      `;
+    }
+
+    query += ` WHERE ${whereConditions.join(' AND ')} ORDER BY sr.created_at DESC`;
+
+    const [rows] = await sequelize.query(query, { replacements });
+
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Error in getAnalysisReportDrillDown:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+    });
   }
 };
 

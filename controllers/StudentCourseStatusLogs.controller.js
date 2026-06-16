@@ -310,6 +310,163 @@ export const getCounsellorStats = async (req, res) => {
   }
 };
 
+// Drill-down: returns the individual student-course rows behind one cell of the
+// Counsellor Stats summary table. Re-runs the exact same CTE chain as getCounsellorStats
+// for a single counsellor, filtered to one bucket, so counts always match.
+export const getCounsellorStatsDrillDown = async (req, res) => {
+  try {
+    const { start_date, end_date, counsellor_id, form_type, bucket } = req.query;
+
+    if (!counsellor_id || !bucket) {
+      return res.status(400).json({
+        success: false,
+        message: "counsellor_id and bucket are required",
+      });
+    }
+
+    const { sqlFragment: formTypeSql } = await getFormTypeStudentCondition(form_type);
+
+    const cteDateFilter = start_date && end_date
+      ? `WHERE (first_status_date AT TIME ZONE 'Asia/Kolkata')::date BETWEEN '${start_date}' AND '${end_date}'`
+      : "";
+
+    const ACTIVE_STATUSES = `(
+            'Exam Interview Pending',
+            'Ready For Admission',
+            'Offer Letter/Results Pending',
+            'Form Filled_Partner website',
+            'Form Submitted – Portal Pending',
+            'Offer Letter/Results Released',
+            'Application Fee Paid',
+            'Walkin Completed',
+            'Form Submitted – Offline',
+            'Form Filled_Degreefyd',
+            'Exam/Interview Scheduled',
+            'Form Submitted – Completed'
+        )`;
+
+    let bucketFilter;
+    switch (bucket) {
+      case "total_forms":
+        bucketFilter = "1=1";
+        break;
+      case "active_forms":
+        bucketFilter = `b.latest_status IN ${ACTIVE_STATUSES}`;
+        break;
+      case "not_initiated_count":
+        bucketFilter = "b.first_remark_date IS NULL";
+        break;
+      case "called_within_3_days":
+        bucketFilter = "b.first_remark_date IS NOT NULL AND b.days_to_first_action BETWEEN 0 AND 3";
+        break;
+      case "called_4_to_6_days":
+        bucketFilter = "b.first_remark_date IS NOT NULL AND b.days_to_first_action BETWEEN 4 AND 6";
+        break;
+      case "called_7_plus_days":
+        bucketFilter = "b.first_remark_date IS NOT NULL AND b.days_to_first_action >= 7";
+        break;
+      default:
+        return res.status(400).json({ success: false, message: "Invalid bucket" });
+    }
+
+    const counsellorWhereSql =
+      !counsellor_id || counsellor_id === "Unassigned"
+        ? "fs.assigned_l3_counsellor_id IS NULL"
+        : "fs.assigned_l3_counsellor_id = :counsellorId";
+
+    const rows = await sequelize.query(
+      `
+      WITH
+      first_status_ever AS (
+        SELECT DISTINCT ON (student_id, course_id)
+            student_id,
+            course_id,
+            course_status,
+            created_at AS first_status_date,
+            counsellor_id AS status_created_by,
+            assigned_l3_counsellor_id
+        FROM course_status_journeys
+        WHERE course_status IN ${ACTIVE_STATUSES}
+        ${formTypeSql}
+        ORDER BY student_id, course_id, created_at ASC
+      ),
+      first_status AS (
+        SELECT * FROM first_status_ever
+        ${cteDateFilter}
+      ),
+      first_remark_by_l3 AS (
+        SELECT DISTINCT ON (fs.student_id, fs.course_id)
+            fs.student_id,
+            fs.course_id,
+            sr.created_at AS first_remark_date
+        FROM first_status fs
+        LEFT JOIN student_remarks sr
+            ON sr.student_id = fs.student_id
+            AND sr.counsellor_id = fs.assigned_l3_counsellor_id
+        ORDER BY fs.student_id, fs.course_id, sr.created_at ASC
+      ),
+      latest_status AS (
+        SELECT DISTINCT ON (student_id, course_id)
+            student_id,
+            course_id,
+            course_status AS latest_status
+        FROM course_status_journeys
+        ORDER BY student_id, course_id, created_at DESC
+      ),
+      base AS (
+        SELECT
+            fs.student_id,
+            fs.course_id,
+            fs.first_status_date,
+            fs.assigned_l3_counsellor_id,
+            fr.first_remark_date,
+            ls.latest_status,
+            CASE
+                WHEN fr.first_remark_date IS NOT NULL
+                THEN GREATEST(0, EXTRACT(DAY FROM (fr.first_remark_date - fs.first_status_date)))
+                ELSE NULL
+            END AS days_to_first_action
+        FROM first_status fs
+        LEFT JOIN first_remark_by_l3 fr ON fs.student_id = fr.student_id AND fs.course_id = fr.course_id
+        LEFT JOIN latest_status ls ON fs.student_id = ls.student_id AND fs.course_id = ls.course_id
+        WHERE ${counsellorWhereSql}
+      )
+      SELECT
+        b.student_id,
+        b.course_id,
+        b.first_status_date,
+        b.first_remark_date,
+        b.latest_status,
+        b.days_to_first_action,
+        s.student_name,
+        s.student_phone,
+        s.student_email,
+        s.source,
+        uc.university_name,
+        uc.course_name
+      FROM base b
+      INNER JOIN students s ON s.student_id = b.student_id
+      LEFT JOIN university_courses uc ON uc.course_id = b.course_id
+      WHERE ${bucketFilter}
+      ORDER BY b.first_status_date DESC
+      `,
+      {
+        replacements: { counsellorId: counsellor_id },
+        type: sequelize.QueryTypes.SELECT,
+      },
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error("Error in getCounsellorStatsDrillDown:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch drill-down data",
+      error: error.message,
+    });
+  }
+};
+
 export const getFormData = async (req, res) => {
   try {
     const {
@@ -1628,6 +1785,71 @@ export const getCollegeStatusReports = async (req, res) => {
   }
 };
 
+// Drill-down: given a list of student_ids (the ones bundled into a pivot cell via
+// getCollegesPivotReport/getCounsellorPivotReport's `drilldown` map), return display details.
+export const getCollegeStatusDrillDownStudents = async (req, res) => {
+  try {
+    const { ids } = req.query;
+    if (!ids) {
+      return res.status(400).json({ success: false, message: "ids is required" });
+    }
+    const studentIds = [...new Set(ids.split(",").map((id) => id.trim()).filter(Boolean))];
+    if (studentIds.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const students = await Student.findAll({
+      where: { student_id: { [Op.in]: studentIds } },
+      attributes: [
+        "student_id",
+        "student_name",
+        "student_phone",
+        "student_email",
+        "source",
+        "current_student_status",
+        "assigned_counsellor_id",
+        "assigned_counsellor_l3_id",
+        "created_at",
+      ],
+      raw: true,
+    });
+
+    const counsellorIds = [
+      ...new Set(
+        students.flatMap((s) => [s.assigned_counsellor_id, s.assigned_counsellor_l3_id].filter(Boolean)),
+      ),
+    ];
+    const counsellorNameMap = {};
+    if (counsellorIds.length > 0) {
+      const counsellors = await Counsellor.findAll({
+        where: { counsellor_id: { [Op.in]: counsellorIds } },
+        attributes: ["counsellor_id", "counsellor_name"],
+        raw: true,
+      });
+      counsellors.forEach((c) => {
+        counsellorNameMap[c.counsellor_id] = c.counsellor_name;
+      });
+    }
+
+    const data = students.map((s) => ({
+      student_id: s.student_id,
+      student_name: s.student_name,
+      phone: s.student_phone,
+      email: s.student_email,
+      source: s.source,
+      current_student_status: s.current_student_status,
+      counsellor_name_l2: counsellorNameMap[s.assigned_counsellor_id] || "Unassigned",
+      counsellor_name_l3: counsellorNameMap[s.assigned_counsellor_l3_id] || "Unassigned",
+      created_at: s.created_at,
+    }));
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error("Error in getCollegeStatusDrillDownStudents:", error);
+    res.status(500).json({ success: false, message: "Error fetching drill-down students" });
+  }
+};
+
 const getCollegesPivotReport = async (
   whereClause,
   startDate,
@@ -1784,9 +2006,10 @@ const getCollegesPivotReport = async (
   // Aggregate by college
   const collegeMap = new Map();
   const statusTotals = {};
+  const drilldown = {}; // { [college]: { [status]: [student_id, ...] } }
 
   records.forEach((record) => {
-    const { college, course_status: status } = record;
+    const { college, course_status: status, student_id } = record;
 
     if (!collegeMap.has(college)) {
       collegeMap.set(college, { college, total: 0, statuses: {} });
@@ -1796,6 +2019,10 @@ const getCollegesPivotReport = async (
     data.statuses[status] = (data.statuses[status] || 0) + 1;
     data.total++;
     statusTotals[status] = (statusTotals[status] || 0) + 1;
+
+    if (!drilldown[college]) drilldown[college] = {};
+    if (!drilldown[college][status]) drilldown[college][status] = [];
+    drilldown[college][status].push(student_id);
   });
 
   const allStatuses = Object.keys(statusTotals);
@@ -1816,6 +2043,7 @@ const getCollegesPivotReport = async (
     columns: ["college", ...allStatuses, "total"],
     statuses: allStatuses,
     totals: { statusTotals, grandTotal },
+    drilldown,
   };
 };
 
@@ -2009,6 +2237,7 @@ const getCounsellorPivotReport = async (
   // Aggregate by counsellor
   const counsellorMap = new Map();
   const statusTotals = {};
+  const drilldownByCounsellorId = {}; // { [counsellorId]: { [status]: [student_id, ...] } }
 
   records.forEach((record) => {
     let counsellorId;
@@ -2030,6 +2259,10 @@ const getCounsellorPivotReport = async (
     data.statuses[status] = (data.statuses[status] || 0) + 1;
     data.total++;
     statusTotals[status] = (statusTotals[status] || 0) + 1;
+
+    if (!drilldownByCounsellorId[counsellorId]) drilldownByCounsellorId[counsellorId] = {};
+    if (!drilldownByCounsellorId[counsellorId][status]) drilldownByCounsellorId[counsellorId][status] = [];
+    drilldownByCounsellorId[counsellorId][status].push(record.student_id);
   });
 
   // Get counsellor names
@@ -2051,14 +2284,13 @@ const getCounsellorPivotReport = async (
 
   const allStatuses = Object.keys(statusTotals);
 
-  const rows = Array.from(counsellorMap.values()).map((item) => {
-    const counsellorName =
-      item.counsellorId === "unassigned"
-        ? "Unassigned"
-        : counsellorNameMap[item.counsellorId] ||
-          `Unknown (${item.counsellorId})`;
+  const getCounsellorName = (counsellorId) =>
+    counsellorId === "unassigned"
+      ? "Unassigned"
+      : counsellorNameMap[counsellorId] || `Unknown (${counsellorId})`;
 
-    const row = { counsellor: counsellorName, total: item.total };
+  const rows = Array.from(counsellorMap.values()).map((item) => {
+    const row = { counsellor: getCounsellorName(item.counsellorId), total: item.total };
     allStatuses.forEach((s) => {
       row[s] = item.statuses[s] || 0;
     });
@@ -2073,6 +2305,12 @@ const getCounsellorPivotReport = async (
 
   const grandTotal = rows.reduce((sum, row) => sum + row.total, 0);
 
+  // Re-key drilldown by counsellor NAME (matches row.counsellor) instead of internal id
+  const drilldown = {};
+  Object.entries(drilldownByCounsellorId).forEach(([counsellorId, statusMap]) => {
+    drilldown[getCounsellorName(counsellorId)] = statusMap;
+  });
+
   return {
     view: `${level}-pivot`,
     rows,
@@ -2080,6 +2318,7 @@ const getCounsellorPivotReport = async (
     statuses: allStatuses,
     level,
     totals: { statusTotals, grandTotal },
+    drilldown,
   };
 };
 // export const getCollegesList = async (req, res) => {

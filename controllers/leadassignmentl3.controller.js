@@ -141,6 +141,12 @@ export const assignedtoL3byruleSet = async (req, res) => {
       stream,
     });
 
+    // All condition fields (University, Source, L2 Counsellor, Course Name, Degree,
+    // Specialization, Stream, Level) are AND'd together. Within a single field's array,
+    // any one matching value is enough (OR). A field left empty on the ruleset acts as
+    // a wildcard - it does not block the match.
+    const studentL2Id = studentDetails?.assigned_counsellor_id || null;
+
     const filteredRulesets = allRulesets.filter((ruleset) => {
       console.log(
         `\n--- Evaluating ruleset: "${ruleset.name}" (ID: ${ruleset.l3_assignment_rulesets_id}) ---`,
@@ -154,45 +160,78 @@ export const assignedtoL3byruleSet = async (req, res) => {
           if (!uni) return false;
           const normalizedUni = uni.toLowerCase().trim();
           const normalizedCollege = collegeName.toLowerCase().trim();
-          const match =
+          return (
             normalizedUni === normalizedCollege ||
             normalizedUni.includes(normalizedCollege) ||
-            normalizedCollege.includes(normalizedUni);
-
-          console.log(
-            `University comparison: "${normalizedUni}" vs "${normalizedCollege}" -> ${match}`,
+            normalizedCollege.includes(normalizedUni)
           );
-          return match;
         });
 
       const sourceMatch =
         !source || !ruleset.source?.length || ruleset.source.includes(source);
 
-      console.log(`Source match check:`, {
-        sourceProvided: source,
-        rulesetSources: ruleset.source,
-        sourceMatch,
-      });
-
-      const studentL2Id = studentDetails?.assigned_counsellor_id || null;
       const l2Match =
         !ruleset.l2_counsellor_ids?.length ||
         (studentL2Id && ruleset.l2_counsellor_ids.includes(studentL2Id));
 
-      console.log(`L2 counsellor match check:`, {
-        studentL2Id,
-        rulesetL2Ids: ruleset.l2_counsellor_ids,
-        l2Match,
-      });
+      const courseNameMatch =
+        !ruleset.course_conditions?.courseName?.length ||
+        (!!Course &&
+          ruleset.course_conditions.courseName.some(
+            (courseName) =>
+              courseName.toLowerCase().includes(Course.toLowerCase()) ||
+              Course.toLowerCase().includes(courseName.toLowerCase()),
+          ));
+
+      const degreeMatch =
+        !ruleset.course_conditions?.degree?.length ||
+        (!!Degree && ruleset.course_conditions.degree.includes(Degree));
+
+      const specializationMatch =
+        !ruleset.course_conditions?.specialization?.length ||
+        (!!Specialization &&
+          ruleset.course_conditions.specialization.some(
+            (spec) =>
+              spec.toLowerCase().includes(Specialization.toLowerCase()) ||
+              Specialization.toLowerCase().includes(spec.toLowerCase()),
+          ));
+
+      const streamMatch =
+        !ruleset.course_conditions?.stream?.length ||
+        (!!stream &&
+          ruleset.course_conditions.stream.some(
+            (s) =>
+              s.toLowerCase().includes(stream.toLowerCase()) ||
+              stream.toLowerCase().includes(s.toLowerCase()),
+          ));
+
+      const levelMatch =
+        !ruleset.course_conditions?.level?.length ||
+        (!!level && ruleset.course_conditions.level.includes(level));
+
+      const finalResult =
+        universityMatch &&
+        sourceMatch &&
+        l2Match &&
+        courseNameMatch &&
+        degreeMatch &&
+        specializationMatch &&
+        streamMatch &&
+        levelMatch;
 
       console.log(`Ruleset evaluation result:`, {
         universityMatch,
         sourceMatch,
         l2Match,
-        finalResult: universityMatch && sourceMatch && l2Match,
+        courseNameMatch,
+        degreeMatch,
+        specializationMatch,
+        streamMatch,
+        levelMatch,
+        finalResult,
       });
 
-      return universityMatch && sourceMatch && l2Match;
+      return finalResult;
     });
 
     console.log(
@@ -252,150 +291,24 @@ export const assignedtoL3byruleSet = async (req, res) => {
         assigned_l3_counsellor_id: fallbackAgentId,
         counsellor_name_l3: fallbackAgentName,
         assignment_method: "dummy_fallback",
-        reason: "No ruleset found matching collegeName and source criteria",
+        reason: "No ruleset found matching all conditions (university, source, L2 counsellor, and course criteria)",
       });
     }
 
-    const hierarchyChecks = [
-  {
-    name: "courseName",
-    check: (ruleset) => {
-      if (!Course || !ruleset.course_conditions?.courseName?.length)
-        return false;
-      return ruleset.course_conditions.courseName.some(
-        (courseName) =>
-          courseName.toLowerCase().includes(Course.toLowerCase()) ||
-          Course.toLowerCase().includes(courseName.toLowerCase()),
-      );
-    },
-  },
-  {
-    name: "degree",
-    check: (ruleset) => {
-      if (!Degree) return false;
-      
-      // If degree array is empty, it means "accepts any degree"
-      if (!ruleset.course_conditions?.degree || ruleset.course_conditions.degree.length === 0) {
-        console.log(`   📌 Ruleset "${ruleset.name}" has empty degree array - accepting ANY degree (including ${Degree})`);
-        return true;
-      }
-      
-      // Otherwise check if degree is in the list
-      return ruleset.course_conditions.degree.includes(Degree);
-    },
-  },
-  {
-    name: "specialization",
-    check: (ruleset) => {
-      if (!Specialization) return false;
-      
-      // If specialization array is empty, accept any specialization
-      if (!ruleset.course_conditions?.specialization || ruleset.course_conditions.specialization.length === 0) {
-        console.log(`   📌 Ruleset "${ruleset.name}" has empty specialization array - accepting ANY specialization`);
-        return true;
-      }
-      
-      return ruleset.course_conditions.specialization.some(
-        (spec) =>
-          spec.toLowerCase().includes(Specialization.toLowerCase()) ||
-          Specialization.toLowerCase().includes(spec.toLowerCase()),
-      );
-    },
-  },
-  {
-    name: "stream",
-    check: (ruleset) => {
-      if (!stream) return false;
-      
-      // If stream array is empty, accept any stream
-      if (!ruleset.course_conditions?.stream || ruleset.course_conditions.stream.length === 0) {
-        console.log(`   📌 Ruleset "${ruleset.name}" has empty stream array - accepting ANY stream`);
-        return true;
-      }
-      
-      return ruleset.course_conditions.stream.some(
-        (s) =>
-          s.toLowerCase().includes(stream.toLowerCase()) ||
-          stream.toLowerCase().includes(s.toLowerCase()),
-      );
-    },
-  },
-  {
-    name: "level",
-    check: (ruleset) => {
-      if (!level) return false;
-      
-      // If level array is empty, accept any level
-      if (!ruleset.course_conditions?.level || ruleset.course_conditions.level.length === 0) {
-        console.log(`   📌 Ruleset "${ruleset.name}" has empty level array - accepting ANY level`);
-        return true;
-      }
-      
-      return ruleset.course_conditions.level.includes(level);
-    },
-  },
-];
+    console.log(
+      `\n=== Selecting by priority among ${filteredRulesets.length} fully-matching ruleset(s) ===`,
+    );
 
-    console.log("\n=== Starting hierarchy-based matching ===");
-    console.log("Hierarchy order: courseName → degree → specialization → stream → level");
+    filteredRulesets.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    const selectedRuleset = filteredRulesets[0];
 
-    let selectedRuleset = null;
-    let matchedAt = null;
-    let currentFilteredRulesets = [...filteredRulesets];
-
-    // Check each hierarchy level in order
-    for (const hierarchyLevel of hierarchyChecks) {
-      console.log(`\n🔍 Checking hierarchy level: ${hierarchyLevel.name}`);
-      console.log(`   Current pool size: ${currentFilteredRulesets.length} rulesets`);
-
-      const matchingRulesets = currentFilteredRulesets.filter((ruleset) =>
-        hierarchyLevel.check(ruleset),
-      );
-
-      console.log(`   Rulesets matching ${hierarchyLevel.name}: ${matchingRulesets.length}`);
-
-      if (matchingRulesets.length > 0) {
-        // FOUND MATCHES AT THIS LEVEL - STOP HERE!
-        console.log(`   ✅ Found ${matchingRulesets.length} ruleset(s) matching at ${hierarchyLevel.name} level`);
-        
-        // Sort by priority to pick the best one
-        matchingRulesets.sort((a, b) => (b.priority || 0) - (a.priority || 0));
-        selectedRuleset = matchingRulesets[0];
-        matchedAt = hierarchyLevel.name;
-        
-        console.log(`   🎯 Selected ruleset "${selectedRuleset.name}" (ID: ${selectedRuleset.l3_assignment_rulesets_id}) at ${hierarchyLevel.name} level`);
-        console.log(`   Priority: ${selectedRuleset.priority || 0}`);
-        break; // EXIT THE LOOP - don't check deeper levels
-      } else {
-        console.log(`   ❌ No matches at ${hierarchyLevel.name} level, moving to next level...`);
-        // Continue to next level with same ruleset pool
-      }
-    }
-
-    // If no matches found at any hierarchy level, fall back to college-only
-    if (!selectedRuleset) {
-      console.log("\n📌 No matches found at any hierarchy level - using college-only fallback");
-      console.log(`   Total college-matching rulesets: ${filteredRulesets.length}`);
-      
-      // Sort by priority and pick the highest
-      filteredRulesets.sort((a, b) => (b.priority || 0) - (a.priority || 0));
-      selectedRuleset = filteredRulesets[0];
-      matchedAt = "college-name-only";
-      
-      console.log(`   🎯 Selected ruleset "${selectedRuleset.name}" (ID: ${selectedRuleset.l3_assignment_rulesets_id}) based on college match + priority`);
-      console.log(`   Priority: ${selectedRuleset.priority || 0}`);
-    }
-
-    if (!selectedRuleset) {
-      console.log("No ruleset selected - throwing error");
-      return res
-        .status(404)
-        .json({ message: "No matching ruleset found for the given criteria" });
-    }
+    console.log(
+      `🎯 Selected ruleset "${selectedRuleset.name}" (ID: ${selectedRuleset.l3_assignment_rulesets_id})`,
+    );
+    console.log(`   Priority: ${selectedRuleset.priority || 0}`);
 
     console.log("\n=== Selected Ruleset Details ===");
     console.log("Selected ruleset:", JSON.stringify(selectedRuleset, null, 2));
-    console.log("Matched at level:", matchedAt);
 
     const assignedCounsellors = selectedRuleset.assigned_counsellor_ids;
     console.log("Assigned counsellors from ruleset:", assignedCounsellors);
@@ -480,9 +393,7 @@ export const assignedtoL3byruleSet = async (req, res) => {
       return res.status(404).json({ message: "Selected counsellor not found or is inactive" });
     }
 
-    const responseMessage = matchedAt !== "college-name-only"
-      ? `L3 counsellor assigned successfully based on ${matchedAt} match`
-      : "L3 counsellor assigned based on college name match (no course criteria matched)";
+    const responseMessage = "L3 counsellor assigned successfully based on matching ruleset conditions";
 
     console.log("Triggering assignment email...");
     await sendAssignmentEmail(
@@ -494,8 +405,7 @@ export const assignedtoL3byruleSet = async (req, res) => {
         Specialization,
         level,
         stream,
-        assignmentType: matchedAt !== "college-name-only" ? "hierarchy_match" : "college_only_match",
-        matchedAt,
+        assignmentType: "condition_match",
       },
       counsellorDetails.counsellor_email,
       counsellorDetails.counsellor_name,
@@ -508,7 +418,6 @@ export const assignedtoL3byruleSet = async (req, res) => {
       assigned_l3_counsellor_id: counsellorDetails.counsellor_id,
       counsellor_name: counsellorDetails.counsellor_name,
       assignment_method: assignmentMethod,
-      matched_at_level: matchedAt,
       matched_ruleset: selectedRuleset.name,
     });
 
@@ -518,7 +427,6 @@ export const assignedtoL3byruleSet = async (req, res) => {
       assigned_l3_counsellor_id: counsellorDetails.counsellor_id,
       counsellor_name_l3: counsellorDetails.counsellor_name,
       assignment_method: assignmentMethod,
-      matched_at_level: matchedAt,
       matched_ruleset: {
         id: selectedRuleset.l3_assignment_rulesets_id,
         name: selectedRuleset.name,

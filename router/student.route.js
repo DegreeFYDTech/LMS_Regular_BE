@@ -14,6 +14,7 @@ import {
   getAllLeadsofDatatest,
   bulkCreateStudents,
   markWalkin,
+  initiateClick2Call,
 } from "../controllers/student.controller.js";
 import { getAdvancedFilterSchema } from "../controllers/advancedFilter.controller.js";
 import { exportStudentsCSV } from "../controllers/exports/leads_csv_export.js";
@@ -77,5 +78,10 @@ router.post(
   addLeadDirect,
 );
 router.post("/bulk-transfer", bulkCreateStudents);
+router.post(
+  "/click2call",
+  authorize(["l2", "l3", "to", "supervisor", "Supervisor", "to_l3"]),
+  initiateClick2Call,
+);
 
 export default router;

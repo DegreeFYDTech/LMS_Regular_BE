@@ -3697,3 +3697,46 @@ export const bulkCreateStudents = async (req, res) => {
     });
   }
 };
+
+export const initiateClick2Call = async (req, res) => {
+  try {
+    const counsellorId = req.user.id;
+    const { studentId } = req.body;
+
+    if (!studentId) return res.status(400).json({ message: "studentId required" });
+
+    const [counsellor, student] = await Promise.all([
+      Counsellor.findByPk(counsellorId, {
+        attributes: ["did_number", "counsellor_phone", "dialer_user_id"],
+      }),
+      Student.findByPk(studentId, {
+        attributes: ["student_phone"],
+      }),
+    ]);
+
+    if (!counsellor?.did_number) {
+      return res.status(403).json({ message: "Counsellor is not configured for Click2Call" });
+    }
+    if (!student?.student_phone) {
+      return res.status(400).json({ message: "Student phone number not available" });
+    }
+
+    const payload = {
+      user_id: counsellor.dialer_user_id || counsellorId,
+      customer_number: student.student_phone,
+      agen_number: counsellor.counsellor_phone || "",
+      did: counsellor.did_number,
+      number: "1",
+    };
+
+    const formData = new FormData();
+    Object.entries(payload).forEach(([k, v]) => formData.append(k, v));
+
+    const response = await axios.post("https://greeter.co.in/api/click2call", formData);
+
+    return res.status(200).json(response.data);
+  } catch (error) {
+    console.error("Click2Call error:", error?.response?.data || error.message);
+    return res.status(500).json({ message: "Click2Call failed", error: error.message });
+  }
+};

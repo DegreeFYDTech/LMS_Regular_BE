@@ -1327,12 +1327,33 @@ export const toggleBlockCounsellor = async (req, res) => {
       }
     }
     
-    res.status(200).json({ 
+    res.status(200).json({
       message: `Counsellor successfully ${newBlockedStatus ? 'blocked' : 'unblocked'}`,
-      is_blocked: newBlockedStatus 
+      is_blocked: newBlockedStatus
     });
   } catch (error) {
     console.error('Error toggling block status:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+export const updateCallSettings = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { counsellor_phone, did_number, dialer_user_id } = req.body;
+
+    const counsellor = await Counsellor.findByPk(id);
+    if (!counsellor) return res.status(404).json({ message: "Counsellor not found" });
+
+    await counsellor.update({
+      ...(counsellor_phone !== undefined && { counsellor_phone }),
+      ...(did_number !== undefined && { did_number }),
+      ...(dialer_user_id !== undefined && { dialer_user_id }),
+    });
+
+    res.json({ message: "Call settings updated", counsellor_phone: counsellor.counsellor_phone, did_number: counsellor.did_number, dialer_user_id: counsellor.dialer_user_id });
+  } catch (error) {
+    console.error("updateCallSettings error:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };

@@ -66,6 +66,18 @@ const Counsellor = sequelize.define('counsellors', {
     defaultValue: [],
     comment: 'Current valid JWT tokens to enforce max session limits'
   },
+  counsellor_phone: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  did_number: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  dialer_user_id: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   updated_at: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW,

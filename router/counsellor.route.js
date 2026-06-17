@@ -17,7 +17,8 @@ import {
   getLoginAttempts,
   updateCounsellorAccessSettings,
   bulkUpdateCounsellorAccessSettings,
-  toggleBlockCounsellor
+  toggleBlockCounsellor,
+  updateCallSettings,
 } from '../controllers/counsellor.controller.js';
 import { authorize } from '../middlewares/authMiddleware.js';
 
@@ -46,5 +47,6 @@ router.get('/access-settings/:id', authorize(["Supervisor", "to", 'to_l3']), get
 router.put('/access-settings/:id', authorize(["Supervisor", "to", 'to_l3']), updateCounsellorAccessSettings);
 router.get('/login-attempts', authorize(["Supervisor","to","l2","l3"]), getLoginAttempts);
 router.put('/toggleBlock/:id', authorize(["Supervisor", "to", 'to_l3']), toggleBlockCounsellor);
+router.put('/call-settings/:id', authorize(["Supervisor", "to", 'to_l3']), updateCallSettings);
 
 export default router;

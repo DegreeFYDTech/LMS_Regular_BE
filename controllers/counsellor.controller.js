@@ -215,7 +215,10 @@ export const loginCounsellor = async (req, res) => {
         name: counsellor.counsellor_name,
         email: counsellor.counsellor_email,
         phoneNumber: counsellor?.counsellor_phone_number,
-        role: counsellor?.role
+        role: counsellor?.role,
+        did_number: counsellor?.did_number || null,
+        counsellor_phone: counsellor?.counsellor_phone || null,
+        dialer_user_id: counsellor?.dialer_user_id || null,
       }
     });
   } catch (err) {

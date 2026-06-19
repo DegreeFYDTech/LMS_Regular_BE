@@ -921,16 +921,31 @@ export const processStudentLead = async (leadData) => {
   if (existingStudent) {
     student = existingStudent;
     studentStatus = "already_exists";
-    const lastActivityUrl =
-      existingStudent.lead_activities?.[0]?.source_url || "";
-    const incomingUrl = mappedLeadData.first_source_url || "";
-    const isNewSource =
-      incomingUrl && lastActivityUrl
-        ? incomingUrl.trim().toLowerCase() !==
-          lastActivityUrl.trim().toLowerCase()
-        : false;
+    const lastActivity = existingStudent.lead_activities?.[0];
+    const latestRemark = existingStudent.student_remarks?.[0];
+    const leadType = (mappedLeadData.lead_type || "").toLowerCase();
 
-    if (isNewSource) {
+    let isReactive = false;
+
+    if (leadType === "csl") {
+      // Reactive if the latest remark is after the latest lead activity
+      if (lastActivity?.created_at && latestRemark?.created_at) {
+        const lastActivityTime = new Date(lastActivity.created_at).getTime();
+        if (new Date(latestRemark.created_at).getTime() > lastActivityTime) {
+          isReactive = true;
+        }
+      }
+    } else {
+      // Reactive if the latest remark is more than 12 hours before this incoming request
+      if (latestRemark?.created_at) {
+        const twelveHoursMs = 12 * 60 * 60 * 1000;
+        if ((Date.now() - new Date(latestRemark.created_at).getTime()) > twelveHoursMs) {
+          isReactive = true;
+        }
+      }
+    }
+
+    if (isReactive) {
       await Student.update(
         { is_reactivity: true },
         { where: { student_id: existingStudent.student_id } },

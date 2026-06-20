@@ -878,6 +878,7 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
       created_at_end,
       counsellor_id,
       counsellor_status,
+      counsellor_blocked,
       sortBy,
       sortOrder,
       form_type,
@@ -1182,6 +1183,13 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
 
       if (counsellor_status) {
         counsellorStatusCondition = `AND (assigned_counsellor.status = '${counsellor_status}' OR c.status = '${counsellor_status}')`;
+      }
+      if (counsellor_blocked !== undefined && counsellor_blocked !== '') {
+        const blockedVal = counsellor_blocked === 'true';
+        const blockedPart = `(COALESCE(assigned_counsellor.is_blocked, c.is_blocked, false) = ${blockedVal})`;
+        counsellorStatusCondition = counsellorStatusCondition
+          ? `${counsellorStatusCondition} AND ${blockedPart}`
+          : `AND ${blockedPart}`;
       }
     } else if (type === "source") {
       groupByField = `COALESCE(NULLIF(s.source, ''), 'NA')`;
@@ -1694,6 +1702,9 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
 
       if (counsellor_status) {
         allCounsellorsQuery += ` AND c1.status = '${counsellor_status}'`;
+      }
+      if (counsellor_blocked !== undefined && counsellor_blocked !== '') {
+        allCounsellorsQuery += ` AND c1.is_blocked = ${counsellor_blocked === 'true'}`;
       }
 
       allCounsellorsQuery += ` ORDER BY c1.counsellor_id, c1.counsellor_name`;

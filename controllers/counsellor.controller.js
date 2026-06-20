@@ -350,8 +350,11 @@ export const getAllCounsellors = async (req, res) => {
     }
 
     // Status filter
-    if (status) {
-      whereClause.status = status;
+    if (status && status.toLowerCase() === 'suspended') {
+      whereClause.is_blocked = true;
+    } else {
+      whereClause.is_blocked = false;
+      if (status) whereClause.status = status;
     }
 
     // Supervisor filter

@@ -55,13 +55,13 @@ export const getActiveFormCollegeReport = async (req, res) => {
             ),
             first_entry_in_range AS (
                 SELECT student_id, course_id,
-                       MIN(created_at + interval '5 hours 30 minutes') AS entry_date
+                       MIN(created_at AT TIME ZONE 'Asia/Kolkata') AS entry_date
                 FROM course_status_journeys
                 WHERE course_status IN (:statuses)
                 ${formTypeSql}
                 GROUP BY student_id, course_id
-                HAVING MIN(created_at + interval '5 hours 30 minutes') >= :date_from_start ::timestamp
-                   AND MIN(created_at + interval '5 hours 30 minutes') <= :date_to_end ::timestamp
+                HAVING MIN(created_at AT TIME ZONE 'Asia/Kolkata') >= :date_from_start ::timestamp
+                   AND MIN(created_at AT TIME ZONE 'Asia/Kolkata') <= :date_to_end ::timestamp
             ),
             current_active_students AS (
                 SELECT
@@ -82,7 +82,7 @@ export const getActiveFormCollegeReport = async (req, res) => {
             latest_l3_remark AS (
                 SELECT DISTINCT ON (sr.student_id)
                     sr.student_id,
-                    (sr.created_at + interval '5 hours 30 minutes') AS remark_at_ist,
+                    (sr.created_at AT TIME ZONE 'Asia/Kolkata') AS remark_at_ist,
                     sr.remarks AS remark_content,
                     c.counsellor_name AS l3_counsellor_name
                 FROM student_remarks sr
@@ -92,7 +92,7 @@ export const getActiveFormCollegeReport = async (req, res) => {
             )
         `;
 
-        const daysSinceExpr = `EXTRACT(DAY FROM ((CURRENT_TIMESTAMP + interval '5 hours 30 minutes') - lsr.remark_at_ist))`;
+        const daysSinceExpr = `EXTRACT(DAY FROM ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') - lsr.remark_at_ist))`;
 
         let query = '';
 

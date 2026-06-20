@@ -34,7 +34,7 @@ export async function runMidnightCleanup() {
              FROM student_remarks
              WHERE counsellor_id IN (
                  SELECT counsellor_id FROM counsellors
-                 WHERE role IN ('l2', 'l3')
+                 WHERE role IN ('l2')
                    AND LOWER(counsellor_name) NOT LIKE '%dummy%'
              )
              GROUP BY counsellor_id`,
@@ -43,7 +43,7 @@ export async function runMidnightCleanup() {
 
         const l2l3Counsellors = await Counsellor.findAll({
             where: {
-                role: { [Op.in]: ['l2', 'l3'] },
+                role: { [Op.in]: ['l2'] },
                 counsellor_name: { [Op.notILike]: '%dummy%' },
             },
             attributes: ['counsellor_id', 'role'],

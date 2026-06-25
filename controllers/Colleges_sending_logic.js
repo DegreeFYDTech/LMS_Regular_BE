@@ -8,6 +8,7 @@ import {
 import { createCollegeApiSentStatus } from "./collegeApiSentStatus.controller.js";
 import CourseHeaderValue from "../models/university_header_values.js";
 import { Op, fn, col, where,Sequelize } from "sequelize";
+import { sendCollegeTechFailureAlert } from "../helper/whatsappAlertService.js";
 import { getEligibleCourseIds } from "./getEligibleCourseIds.js";
 import sendMail from "../config/SendTechIssueMail.js";
 import { addCuBotJob } from "../cu_bot/queues/cuBotQueue.js";
@@ -193,6 +194,7 @@ async function updateStudentShortlistStatus(
           emailError,
         );
       }
+      sendCollegeTechFailureAlert(studentId, collegeName, status).catch(() => {});
     }
 
     console.log(`✅ Status updated successfully for ${collegeName}: ${status}`);

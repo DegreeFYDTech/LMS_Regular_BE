@@ -756,7 +756,6 @@ export const updateStudentStatus = async (req, res) => {
         "Lovely Professional University": "Lovely Professional University Online",
       };
 
-      // Replace each regular college with its online equivalent; deduplicate
       const lead_type_online = studentleadActivityDetails.dataValues.lead_type;
       const raw_cll_online = studentleadActivityDetails.dataValues.preferred_college_cll || [];
       const hasOnlineableCollege = raw_cll_online.some((c) => ONLINE_COLLEGE_MAP[c]);

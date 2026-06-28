@@ -872,14 +872,16 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       sr.created_at as remark_created_at, sr.counsellor_id
     FROM student_remarks sr
     ${latestRemarkWhere ? latestRemarkWhere + ' AND' : 'WHERE'} sr.student_id IN (SELECT student_id FROM filtered_students)
+      AND sr.isdisabled = false
     ORDER BY sr.student_id, sr.created_at DESC
   ),
   remarks_count_by_counsellor AS (
-    SELECT 
+    SELECT
       sr.student_id,
       COUNT(*) as total_remarks_by_this_counsellor
     FROM student_remarks sr
     ${latestRemarkWhere ? latestRemarkWhere + ' AND' : 'WHERE'} sr.student_id IN (SELECT student_id FROM filtered_students)
+      AND sr.isdisabled = false
     GROUP BY sr.student_id
   ),
   first_lead_activity AS (
@@ -898,6 +900,13 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     FROM student_lead_activities la
     WHERE la.student_id IN (SELECT student_id FROM filtered_students)
     ORDER BY la.student_id, la.created_at DESC
+  ),
+  swap_created_at AS (
+    SELECT student_id, MAX(swapped_at) AS latest_swap_at
+    FROM lead_swap_logs
+    WHERE remarks_hidden = true
+      AND student_id IN (SELECT student_id FROM filtered_students)
+    GROUP BY student_id
   )`
         : `
   filtered_students AS (
@@ -914,6 +923,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       sr.created_at as remark_created_at, sr.counsellor_id
     FROM student_remarks sr
     ${latestRemarkWhere ? latestRemarkWhere + ' AND' : 'WHERE'} sr.student_id IN (SELECT student_id FROM filtered_students)
+      AND sr.isdisabled = false
     ORDER BY sr.student_id, sr.created_at DESC
   ),
   first_lead_activity AS (
@@ -932,6 +942,13 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     FROM student_lead_activities la
     WHERE la.student_id IN (SELECT student_id FROM filtered_students)
     ORDER BY la.student_id, la.created_at DESC
+  ),
+  swap_created_at AS (
+    SELECT student_id, MAX(swapped_at) AS latest_swap_at
+    FROM lead_swap_logs
+    WHERE remarks_hidden = true
+      AND student_id IN (SELECT student_id FROM filtered_students)
+    GROUP BY student_id
   )`;
 
     const downloadCTEs = isDownload
@@ -994,10 +1011,10 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       if (data === "l3") {
         orderBySQL = `ORDER BY fje.first_journey_timestamp ${createdAtsort.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
       } else {
-        orderBySQL = `ORDER BY s.created_at ${createdAtsort.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
+        orderBySQL = `ORDER BY COALESCE(sca.latest_swap_at, s.created_at) ${createdAtsort.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
       }
     } else if (callback) {
-      orderBySQL = `ORDER BY 
+      orderBySQL = `ORDER BY
         lr.callback_date ASC NULLS LAST,
         lr.callback_time ASC NULLS LAST`;
     } else {
@@ -1006,7 +1023,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       } else if (data === "l3") {
         orderBySQL = `ORDER BY fje.first_journey_timestamp ${sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
       } else {
-        orderBySQL = `ORDER BY s.created_at ${sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
+        orderBySQL = `ORDER BY COALESCE(sca.latest_swap_at, s.created_at) ${sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
       }
     }
 
@@ -1177,7 +1194,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       s.student_id,
       s.student_name,
       s.number_of_unread_messages,
-      s.created_at,
+      COALESCE(sca.latest_swap_at, s.created_at) AS created_at,
       s.assigned_l3_date,
       s.last_call_date_l3,
       s.next_call_time_l3,
@@ -1301,6 +1318,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       LEFT JOIN remarks_count_by_counsellor rcc ON s.student_id = rcc.student_id
       LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
       LEFT JOIN latest_lead_activity lla ON s.student_id = lla.student_id
+      LEFT JOIN swap_created_at sca ON sca.student_id = s.student_id
       ${
         isDownload
           ? `
@@ -1370,6 +1388,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       LEFT JOIN latest_remark lr ON s.student_id = lr.student_id
       LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
       LEFT JOIN latest_lead_activity lla ON s.student_id = lla.student_id
+      LEFT JOIN swap_created_at sca ON sca.student_id = s.student_id
       ${
         isDownload
           ? `
@@ -1390,7 +1409,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
         fla.utm_source, fla.utm_medium, fla.utm_campaign, fla.utm_keyword,
         fla.utm_campaign_id, fla.utm_adgroup_id, fla.utm_creative_id,
         fla.source, fla.source_url, fla.activity_created_at,
-        lla.lead_type
+        lla.lead_type,
+        sca.latest_swap_at
         ${
           isDownload
             ? `,

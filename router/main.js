@@ -35,6 +35,7 @@ import paymentRoutes from './payment.route.js';
 import couponRoutes from './coupon.route.js';
 import pricingRuleRoutes from './pricingRule.route.js';
 import firstRemarkTimeRoutes from './firstRemarkTime.route.js';
+import swapMonitorRoutes from './swapMonitor.route.js';
 
 import centralMgmtRoutes from './centralMgmt.route.js';
 
@@ -78,5 +79,6 @@ router.use('/payment', paymentRoutes);
 router.use('/coupons', couponRoutes);
 router.use('/pricing-rules', pricingRuleRoutes);
 router.use('/first-remark-time', firstRemarkTimeRoutes);
+router.use('/swap-monitor', swapMonitorRoutes);
 
 export default router;

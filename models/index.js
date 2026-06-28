@@ -44,6 +44,7 @@ import Admission from './Admission.js';
 import Registration from './Registration.js';
 import StudentQuestionResponse from './StudentQuestionResponse.js';
 import CuBotSending from './CuBotSending.js';
+import LeadSwapLog from './LeadSwapLog.js';
 
 Student.belongsTo(Counsellor, { foreignKey: 'assigned_counsellor_id', as: 'assignedCounsellor' });
 Student.belongsTo(Counsellor, { foreignKey: 'assigned_counsellor_l3_id', as: 'assignedCounsellorL3' });
@@ -236,8 +237,10 @@ export {
   UserActionLog,
   LoginAttempt,
   StudentQuestionResponse,
-  CuBotSending
+  CuBotSending,
+  LeadSwapLog
 };
 
 Student.sync({ alter: true }).catch((e) => console.error('sync Student error', e));
 LeadAssignmentRuleL3.sync({ alter: true }).catch((e) => console.error('sync LeadAssignmentRuleL3 error', e));
+LeadSwapLog.sync({ alter: true }).catch((e) => console.error('sync LeadSwapLog error', e));

@@ -28,6 +28,7 @@ import MetaAdsLead from "../models/ads/meta.js";
 import { helperForMeta } from "./meta_remarketing/metaEvents.js";
 import { formatDate } from "./studentcoursestatus.controller.js";
 import { uploadToCloudinary } from "../config/cloudinary.js";
+import LeadSwapLog from "../models/LeadSwapLog.js";
 
 export const createStudent = async (req, res) => {
   try {
@@ -680,6 +681,12 @@ export const updateStudentStatus = async (req, res) => {
     };
 
     const newRemark = await createRemark(remarkData);
+
+    await Student.update(
+      { is_swapped_remarks: true },
+      { where: { student_id: studentId, is_swapped: true, is_swapped_remarks: false } }
+    );
+
     try {
       if (leadStatus === "NotInterested" || leadStatus === "Not Interested") {
         const niRuleResponse = await axios.post(
@@ -1732,6 +1739,27 @@ export const getStudentById = async (req, res) => {
       };
     }
 
+    const swapCheck = await LeadSwapLog.findOne({
+      where: { student_id: id, remarks_hidden: true },
+      attributes: ["id", "swapped_at"],
+      order: [["swapped_at", "DESC"]],
+    });
+    studentData.is_swapped = !!swapCheck;
+
+    if (swapCheck?.swapped_at) {
+      studentData.created_at = swapCheck.swapped_at;
+
+      if (studentData.lead_activities?.length > 0) {
+        const swapTime = new Date(swapCheck.swapped_at);
+        studentData.lead_activities = studentData.lead_activities.map((activity) => {
+          if (new Date(activity.created_at) < swapTime) {
+            return { ...activity, created_at: swapCheck.swapped_at };
+          }
+          return activity;
+        });
+      }
+    }
+
     return res.status(200).json(studentData);
   } catch (error) {
     console.error("Error fetching student:", error);
@@ -2637,6 +2665,7 @@ export const getAllLeadsofDatatest = async (req, res) => {
           sr.sub_calling_status, sr.remarks, sr.callback_date, sr.callback_time,
           sr.created_at as remark_created_at, sr.counsellor_id
         FROM student_remarks sr
+        WHERE sr.isdisabled = false
         ORDER BY sr.student_id, sr.created_at DESC
       )
     `;

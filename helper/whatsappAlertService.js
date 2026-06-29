@@ -3,7 +3,10 @@ import { UniversityCourse } from '../models/index.js';
 
 const WHAPI_URL   = 'https://gate.whapi.cloud/messages/text';
 const WHAPI_TOKEN = process.env.WHAPI_TOKEN;
-const ALERT_TO    = process.env.WHAPI_ALERT_TO; // group JID or phone e.g. "918796457951"
+const ALERT_TO    = process.env.WHAPI_ALERT_TO;
+
+const recentAlerts = new Map();
+const DEDUP_WINDOW_MS = 60 * 1000;
 
 async function lookupCourseName(collegeName) {
   try {
@@ -20,11 +23,20 @@ async function lookupCourseName(collegeName) {
 export async function sendCollegeTechFailureAlert(studentId, collegeName, status, courseName) {
   if (!WHAPI_TOKEN || !ALERT_TO) return;
 
+  const alertKey = `${studentId}:${collegeName}`;
+  const now = Date.now();
+  if (recentAlerts.has(alertKey) && now - recentAlerts.get(alertKey) < DEDUP_WINDOW_MS) {
+    console.log(`[WhatsApp Alert] Skipping duplicate alert for ${alertKey}`);
+    return;
+  }
+  recentAlerts.set(alertKey, now);
+
   const resolvedCourse = courseName || await lookupCourseName(collegeName);
   const timeIST = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
   const body =
     `🚨 *College API Tech Failure*\n\n` +
+    `*LMS:* Regular LMS\n` +
     `*Student ID:* ${studentId}\n` +
     `*College:* ${collegeName}\n` +
     `*Course:* ${resolvedCourse}\n` +

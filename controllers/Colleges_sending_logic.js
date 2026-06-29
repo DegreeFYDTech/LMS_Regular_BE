@@ -172,29 +172,35 @@ async function updateStudentShortlistStatus(
       status === "Failed due to Technical Issues" ||
       status === "TEch issues"
     ) {
-      try {
-        await sendMail(
-          {
-            timestamp: new Date().toLocaleString(),
-            name: `Student ID: ${studentId}`,
-            phone: studentPhone || "N/A",
-            stream: collegeName,
-            responseData: JSON.stringify(
-              responseData || "No response data available",
-            ),
-          },
-          "harsh.pandey@degreefyd.com",
-        );
-        console.log(
-          `✅ Technical failure notification email sent for student ${studentId}`,
-        );
-      } catch (emailError) {
-        console.error(
-          `❌ Failed to send technical failure notification email:`,
-          emailError,
-        );
+      const hasApiMapping = await CourseHeaderValue.findOne({
+        where: { university_name: { [Op.iLike]: collegeName } },
+        attributes: ['course_id'],
+      });
+      if (hasApiMapping) {
+        try {
+          await sendMail(
+            {
+              timestamp: new Date().toLocaleString(),
+              name: `Student ID: ${studentId}`,
+              phone: studentPhone || "N/A",
+              stream: collegeName,
+              responseData: JSON.stringify(
+                responseData || "No response data available",
+              ),
+            },
+            "harsh.pandey@degreefyd.com",
+          );
+          console.log(
+            `✅ Technical failure notification email sent for student ${studentId}`,
+          );
+        } catch (emailError) {
+          console.error(
+            `❌ Failed to send technical failure notification email:`,
+            emailError,
+          );
+        }
+        sendCollegeTechFailureAlert(studentId, collegeName, status).catch(() => {});
       }
-      sendCollegeTechFailureAlert(studentId, collegeName, status).catch(() => {});
     }
 
     console.log(`✅ Status updated successfully for ${collegeName}: ${status}`);
@@ -2789,6 +2795,20 @@ export const sentStatustoCollege = async (req, res) => {
         success: false,
         message: "collegeName is required",
       });
+    }
+
+    if (studentId) {
+      const alreadySent = await StudentCollegeApiSentStatus.findOne({
+        where: { student_id: studentId, college_name: collegeName },
+        attributes: ["student_id"],
+      });
+      if (alreadySent) {
+        return res.status(409).json({
+          success: false,
+          message: "Already sent successfully for this student and university",
+          status: "Do not Proceed",
+        });
+      }
     }
 
     let userResponse = await getStudentDataForRequest(

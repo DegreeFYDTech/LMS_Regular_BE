@@ -4,7 +4,7 @@ import { Student, StudentLeadActivity, StudentCollegeApiSentStatus } from "../mo
 import { processStandardUniversity } from "../controllers/Colleges_sending_logic.js";
 
 const startLpuPhagwaraRegularCron = () => {
-  cron.schedule("0 * * * *", async () => {
+  cron.schedule("50 * * * *", async () => {
     console.log(" [CRON] Starting Lovely Professional University lead sync...");
 
     try {

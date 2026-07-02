@@ -973,7 +973,7 @@ function processApiResponse(apiResponse, collegeName) {
   return "Failed due to Technical Issues";
 }
 
-async function processStandardUniversity(
+export async function processStandardUniversity(
   req,
   collegeName,
   userResponse,

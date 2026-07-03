@@ -202,7 +202,8 @@ const sendMail = async (data, to) => {
 
     const emailFunction = await EmailFunction(
       emailContent,
-      'College API Response Notification'
+      'College API Response Notification',
+      to
     );
     return emailFunction;
   } catch (error) {

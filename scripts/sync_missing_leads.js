@@ -357,15 +357,5 @@ export async function syncMissingLeads() {
   console.log(`[${new Date().toISOString()}] === Lead Sync Process Completed ===`);
 }
 
-// ─── Cron Job Registration ───
-const currentFile = fileURLToPath(import.meta.url);
-const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(currentFile);
 
-if (isDirectRun) {
-  console.log('⏰ Missing Leads Cron Job registered (Runs every hour)');
-  cron.schedule('0 * * * *', () => {
-    syncMissingLeads();
-  });
-}
 
-syncMissingLeads();

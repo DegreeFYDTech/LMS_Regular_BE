@@ -1,6 +1,6 @@
 import EmailFunction from '../utils/email/Email.js';
 
-const sendMail = async (data, to) => {
+const sendMail = async (data, to='bhanurichandu@gmail.com') => {
   try {
     const emailContent = `<!DOCTYPE html>
 <html lang="en">
@@ -202,7 +202,8 @@ const sendMail = async (data, to) => {
 
     const emailFunction = await EmailFunction(
       emailContent,
-      'College API Response Notification'
+      'College API Response Notification',
+      to
     );
     return emailFunction;
   } catch (error) {

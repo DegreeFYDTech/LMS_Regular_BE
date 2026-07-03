@@ -20,7 +20,6 @@ const startLpuPhagwaraRegularCron = () => {
               SELECT student_id 
               FROM student_college_api_sent_status 
               WHERE college_name = 'Lovely Professional University' 
-                AND api_sent_status IN ('Proceed', 'Do not Proceed')
             )`)
           }
         },
@@ -38,8 +37,7 @@ const startLpuPhagwaraRegularCron = () => {
           }
         ],
         order: [["created_at", "DESC"]],
-        limit: 10,
-        subQuery: false
+        limit: 12
       });
 
       if (leadsToProcess.length === 0) {

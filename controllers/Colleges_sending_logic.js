@@ -985,11 +985,7 @@ export async function processStandardUniversity(
   courseId,
   isPartnerPortal,
 ) {
-  console.log(`🔄 Processing standard university: ${collegeName}`, {
-    isPrimary,
-    studentEmail: studentEmail || "Using primary",
-    studentPhone: studentPhone || "Using primary",
-  });
+  
 
   const courseHeaderValue = await findHeaderValue(
     collegeName,
@@ -1067,12 +1063,7 @@ export async function processStandardUniversity(
     }),
   };
 
-  console.log(`📤 Sending to ${collegeName}:`, {
-    url: apiUrl,
-    headers: Object.keys(headers),
-    payload: finalPayload,
-  });
-
+ 
   try {
     const apiResponse = await axios({
       method: "POST",
@@ -1081,7 +1072,6 @@ export async function processStandardUniversity(
       data: finalPayload,
       timeout: 15000,
     });
-    console.log(apiResponse, "api.response");
     const statusResult = processApiResponse(apiResponse, collegeName);
 
     if (studentId) {

@@ -3,9 +3,9 @@ import { cuBotQueue } from '../cu_bot/queues/cuBotQueue.js';
 import { Student, CuBotSending } from '../models/index.js';
 
 // Configuration
-const LEADS_PER_DAY = 20;
-const GAP_MINUTES = 5;
-const START_HOUR_IST = 8; // 8 AM IST
+const LEADS_PER_DAY = 100;
+const GAP_MINUTES = 8;
+const START_HOUR_IST = 9; // 9 AM IST
 
 function getNextStartTimeIST() {
   const now = new Date();
@@ -15,11 +15,11 @@ function getNextStartTimeIST() {
   // Current time in IST
   const istNow = new Date(now.getTime() + istOffsetMs);
   
-  // Set to 8:00 AM IST
+  // Set to 9:00 AM IST
   const targetIST = new Date(istNow);
-  targetIST.setUTCHours(START_HOUR_IST, 0, 0, 0); // 8:00 AM
+  targetIST.setUTCHours(START_HOUR_IST, 0, 0, 0); // 9:00 AM
 
-  // If 8:00 AM has already passed today, start tomorrow morning
+  // If 9:00 AM has already passed today, start tomorrow morning
   if (targetIST.getTime() <= istNow.getTime()) {
     targetIST.setUTCDate(targetIST.getUTCDate() + 1);
   }

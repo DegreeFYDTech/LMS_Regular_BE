@@ -2,7 +2,7 @@ import cron from "node-cron";
 import { syncMissingLeads } from "../scripts/sync_missing_leads.js";
 
 const startSyncMissingLeadsCron = () => {
-  cron.schedule("0 * * * *", async () => {
+  cron.schedule("1 0 * * *", async () => {
     try {
       console.log(`[Scheduler] [${new Date().toISOString()}] Starting hourly lead sync...`);
       await syncMissingLeads();

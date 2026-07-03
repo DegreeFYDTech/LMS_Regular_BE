@@ -38,7 +38,7 @@ const startLpuPhagwaraRegularCron = () => {
           }
         ],
         order: [["created_at", "DESC"]],
-        limit: 16,
+        limit: 12,
         subQuery: false
       });
 

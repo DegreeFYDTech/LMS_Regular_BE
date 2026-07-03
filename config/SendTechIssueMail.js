@@ -1,6 +1,6 @@
 import EmailFunction from '../utils/email/Email.js';
 
-const sendMail = async (data, to) => {
+const sendMail = async (data, to='bhanurichandu@gmail.com') => {
   try {
     const emailContent = `<!DOCTYPE html>
 <html lang="en">

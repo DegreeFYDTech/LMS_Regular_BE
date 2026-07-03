@@ -119,6 +119,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
 
     const userRole = requestingUser?.role || userrole;
     const userId = requestingUser?.id || requestingUser?.counsellor_id;
+    const useSwapDate = userRole !== 'Supervisor';
 
     const pageNum = isDownload ? 1 : Math.max(parseInt(page, 10) || 1, 1);
     const limitNum = isDownload
@@ -1011,7 +1012,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       if (data === "l3") {
         orderBySQL = `ORDER BY fje.first_journey_timestamp ${createdAtsort.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
       } else {
-        orderBySQL = `ORDER BY COALESCE(sca.latest_swap_at, s.created_at) ${createdAtsort.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
+        orderBySQL = `ORDER BY ${useSwapDate ? 'COALESCE(sca.latest_swap_at, s.created_at)' : 's.created_at'} ${createdAtsort.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
       }
     } else if (callback) {
       orderBySQL = `ORDER BY
@@ -1023,7 +1024,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       } else if (data === "l3") {
         orderBySQL = `ORDER BY fje.first_journey_timestamp ${sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
       } else {
-        orderBySQL = `ORDER BY COALESCE(sca.latest_swap_at, s.created_at) ${sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
+        orderBySQL = `ORDER BY ${useSwapDate ? 'COALESCE(sca.latest_swap_at, s.created_at)' : 's.created_at'} ${sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC"}`;
       }
     }
 
@@ -1194,7 +1195,7 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       s.student_id,
       s.student_name,
       s.number_of_unread_messages,
-      COALESCE(sca.latest_swap_at, s.created_at) AS created_at,
+      ${useSwapDate ? 'COALESCE(sca.latest_swap_at, s.created_at)' : 's.created_at'} AS created_at,
       s.assigned_l3_date,
       s.last_call_date_l3,
       s.next_call_time_l3,

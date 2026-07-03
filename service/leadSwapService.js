@@ -163,7 +163,6 @@ const executeSwap = async (plan, hideRemarks, config) => {
           current_student_ni_sub_status  = NULL,
           first_icc_date                 = NULL,
           reassigneddate                 = :swapTime,
-          created_at                     = :swapTime,
           updated_at                     = :swapTime
         WHERE student_id IN (${escapedIds})
         `,

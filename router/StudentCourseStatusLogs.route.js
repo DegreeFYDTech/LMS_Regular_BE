@@ -16,6 +16,9 @@ import {
   getFormData,
   checkRegistrationFormType,
   getPaidPhones,
+  getF2AReport,
+  getF2AReportDrilldown,
+  getF2AFilterOptions,
   getCollegeStatusDrillDownStudents,
   getCounsellorStatsDrillDown,
 } from "../controllers/StudentCourseStatusLogs.controller.js";
@@ -71,5 +74,7 @@ router.post(
   authorize(["l2", "l3", "Supervisor", "to", "to_l3"]),
   createStatusLog,
 );
-
+router.get('/f2a-report', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getF2AReport);
+router.get('/f2a-report-drilldown', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getF2AReportDrilldown);
+router.get('/f2a-filter-options', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getF2AFilterOptions);
 export default router;

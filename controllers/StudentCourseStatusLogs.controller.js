@@ -3044,3 +3044,532 @@ export const checkRegistrationFormType = async (req, res) => {
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
+
+
+export const getF2AReport = async (req, res) => {
+  try {
+    const { type = 'agent', start_date, end_date } = req.query;
+    const validTypes = ['agent', 'source', 'source_url', 'campaign', 'created_at'];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({ success: false, message: 'Invalid type' });
+    }
+
+    const esc = (v) => String(v).replace(/'/g, "''");
+    const toArr = (v) => v ? String(v).split(',').map(s => s.trim()).filter(Boolean) : [];
+    const toIn  = (arr) => arr.map(v => `'${esc(v)}'`).join(',');
+
+    const sources        = toArr(req.query.source);
+    const sourceUrls     = toArr(req.query.source_url);
+    const campaigns      = toArr(req.query.campaign);
+    const universities   = toArr(req.query.university_name);
+    const l3Counsellors  = toArr(req.query.l3_counsellor);
+
+    const dateCondition = (start_date && end_date)
+      ? `AND csj.created_at >= '${start_date} 00:00:00' AND csj.created_at <= '${end_date} 23:59:59'`
+      : '';
+    const dateConditionRaw = (start_date && end_date)
+      ? `AND course_status_journeys.created_at >= '${start_date} 00:00:00' AND course_status_journeys.created_at <= '${end_date} 23:59:59'`
+      : '';
+
+    const hasFilters = sources.length || sourceUrls.length || campaigns.length;
+    const filterCTE = hasFilters ? `
+      filter_students AS (
+        SELECT DISTINCT s.student_id
+        FROM students s
+        LEFT JOIN (
+          SELECT DISTINCT ON (student_id) student_id, utm_campaign
+          FROM student_lead_activities ORDER BY student_id, created_at ASC
+        ) fla ON fla.student_id = s.student_id
+        WHERE 1=1
+        ${sources.length    ? `AND s.source IN (${toIn(sources)})`                                   : ''}
+        ${sourceUrls.length ? `AND SPLIT_PART(s.first_source_url, '?', 1) IN (${toIn(sourceUrls)})` : ''}
+        ${campaigns.length  ? `AND fla.utm_campaign IN (${toIn(campaigns)})`                         : ''}
+      ),` : '';
+
+    const filterCondition    = hasFilters ? `AND csj.student_id IN (SELECT student_id FROM filter_students)` : '';
+    const filterConditionRaw = hasFilters ? `AND student_id IN (SELECT student_id FROM filter_students)` : '';
+
+    const univJoin         = universities.length ? `JOIN university_courses uc ON csj.course_id = uc.course_id` : '';
+    const univCondition    = universities.length ? `AND uc.university_name IN (${toIn(universities)})` : '';
+    const univJoinRaw      = universities.length ? `JOIN university_courses uc ON course_status_journeys.course_id = uc.course_id` : '';
+    const univConditionRaw = universities.length ? `AND uc.university_name IN (${toIn(universities)})` : '';
+
+    const l3Condition    = l3Counsellors.length ? `AND csj.assigned_l3_counsellor_id IN (SELECT counsellor_id FROM counsellors WHERE counsellor_name IN (${toIn(l3Counsellors)}))` : '';
+    const l3ConditionRaw = l3Counsellors.length ? `AND course_status_journeys.assigned_l3_counsellor_id IN (SELECT counsellor_id FROM counsellors WHERE counsellor_name IN (${toIn(l3Counsellors)}))` : '';
+
+    const groupExprs = {
+      agent:      { label: `COALESCE(c.counsellor_name, 'Unassigned')`, join: `LEFT JOIN counsellors c ON csj.assigned_l3_counsellor_id = c.counsellor_id` },
+      source:     { label: `COALESCE(s.source, 'Unknown')`,            join: `JOIN students s ON csj.student_id = s.student_id` },
+      source_url: { label: `COALESCE(SPLIT_PART(s.first_source_url, '?', 1), 'Unknown')`, join: `JOIN students s ON csj.student_id = s.student_id` },
+      campaign:   { label: `COALESCE(la.utm_campaign, 'Direct')`,      join: `LEFT JOIN first_la la ON la.student_id = csj.student_id` },
+      created_at: { label: `TO_CHAR((csj.created_at + interval '5 hours 30 minutes'), 'YYYY-MM-DD')`, join: `` },
+    };
+    const { label: groupLabel, join: groupJoin } = groupExprs[type];
+
+    const FORM_STATUSES = `'Form Submitted – Portal Pending','Form Submitted – Completed','Walkin Completed','Exam Interview Pending','Exam/Interview Pending','Exam/Interview Scheduled','Offer Letter/Results Pending','Offer Letter/Results Released','Ready For Admission','Form Filled_Partner website','Form Filled_Degreefyd','Application Fee Paid','Form Submitted – Offline'`;
+
+    const query = `
+      WITH
+      ${filterCTE}
+      first_la AS (
+        SELECT DISTINCT ON (student_id) student_id, utm_campaign
+        FROM student_lead_activities
+        ORDER BY student_id, created_at ASC
+      ),
+      base_students AS (
+        ${type === 'agent' ? `
+        SELECT _first.student_id, _first.course_id, COALESCE(c.counsellor_name, 'Unassigned') AS group_label
+        FROM (
+          SELECT DISTINCT ON (csj.student_id, csj.course_id)
+            csj.student_id, csj.course_id, csj.assigned_l3_counsellor_id,
+            TO_CHAR((csj.created_at + interval '5 hours 30 minutes'), 'YYYY-MM-DD') AS first_date
+          FROM course_status_journeys csj
+          ${univJoinRaw}
+          WHERE csj.course_status IN (${FORM_STATUSES})
+          ${filterConditionRaw} ${univConditionRaw} ${l3ConditionRaw}
+          ORDER BY csj.student_id, csj.course_id, csj.created_at ASC
+        ) _first
+        LEFT JOIN counsellors c ON _first.assigned_l3_counsellor_id = c.counsellor_id
+        ${(start_date && end_date) ? `WHERE first_date >= '${start_date}' AND first_date <= '${end_date}'` : ''}
+        ` : type === 'created_at' ? `
+        SELECT _first.student_id, _first.course_id, _first.group_label
+        FROM (
+          SELECT DISTINCT ON (csj.student_id, csj.course_id)
+            csj.student_id, csj.course_id,
+            TO_CHAR((csj.created_at + interval '5 hours 30 minutes'), 'YYYY-MM-DD') AS group_label
+          FROM course_status_journeys csj
+          ${univJoin}
+          WHERE csj.course_status IN (${FORM_STATUSES})
+          ${filterCondition} ${univCondition} ${l3Condition}
+          ORDER BY csj.student_id, csj.course_id, csj.created_at ASC
+        ) _first
+        ${(start_date && end_date) ? `WHERE group_label >= '${start_date}' AND group_label <= '${end_date}'` : ''}
+        ` : `
+        SELECT _first.student_id, _first.course_id, _first.group_label
+        FROM (
+          SELECT DISTINCT ON (csj.student_id, csj.course_id)
+            csj.student_id, csj.course_id,
+            ${groupLabel} AS group_label,
+            TO_CHAR((csj.created_at + interval '5 hours 30 minutes'), 'YYYY-MM-DD') AS first_date
+          FROM course_status_journeys csj
+          ${groupJoin}
+          ${univJoin}
+          WHERE csj.course_status IN (${FORM_STATUSES})
+          ${filterCondition} ${univCondition} ${l3Condition}
+          ORDER BY csj.student_id, csj.course_id, csj.created_at ASC
+        ) _first
+        ${(start_date && end_date) ? `WHERE first_date >= '${start_date}' AND first_date <= '${end_date}'` : ''}
+        `}
+      ),
+      student_journey_flags AS (
+        SELECT
+          student_id,
+          BOOL_OR(course_status = 'Form Submitted – Portal Pending')                                          AS form_pp,
+          BOOL_OR(course_status = 'Form Submitted – Completed')                                               AS form_completed,
+          BOOL_OR(course_status = 'Walkin Completed')                                                         AS walkin_completed,
+          BOOL_OR(course_status IN ('Exam/Interview Pending','Exam Interview Pending'))                        AS exam_pending,
+          BOOL_OR(course_status IN ('Exam/Interview Scheduled','Exam Interview Scheduled'))                    AS exam_scheduled,
+          BOOL_OR(course_status = 'Offer Letter/Results Pending')                                             AS offer_pending,
+          BOOL_OR(course_status = 'Offer Letter/Results Released')                                            AS offer_released,
+          BOOL_OR(course_status = 'Ready For Admission')                                                      AS ready_for_admission,
+          BOOL_OR(course_status = 'Admission') AS ever_admitted
+        FROM course_status_journeys
+        GROUP BY student_id
+      ),
+      l3_remark_stats AS (
+        SELECT sr.student_id,
+          TRUE                                                              AS has_remark,
+          BOOL_OR(LOWER(TRIM(sr.calling_status)) = 'connected')            AS has_connected
+        FROM student_remarks sr
+        INNER JOIN counsellors c ON sr.counsellor_id = c.counsellor_id AND LOWER(c.role) = 'l3'
+        GROUP BY sr.student_id
+      ),
+      ni_students AS (
+        SELECT student_id
+        FROM (
+          SELECT DISTINCT ON (student_id) student_id, course_status
+          FROM course_status_journeys
+          ORDER BY student_id, created_at DESC
+        ) last_csj
+        WHERE course_status = 'NotInterested'
+      )
+      SELECT
+        bs.group_label,
+        COUNT(DISTINCT bs.student_id)                                                                                       AS leads,
+        COUNT(DISTINCT CASE WHEN lrs.has_remark    THEN bs.student_id END)                                                 AS attempted,
+        COUNT(DISTINCT CASE WHEN sjf.form_pp              THEN bs.student_id END)                                                 AS form_submitted_pp,
+        COUNT(DISTINCT CASE WHEN sjf.form_completed       THEN bs.student_id END)                                                 AS form_submitted_completed,
+        COUNT(DISTINCT CASE WHEN sjf.walkin_completed     THEN bs.student_id END)                                                 AS walkin_completed,
+        COUNT(DISTINCT CASE WHEN sjf.exam_pending         THEN bs.student_id END)                                                 AS exam_pending,
+        COUNT(DISTINCT CASE WHEN sjf.exam_scheduled       THEN bs.student_id END)                                                 AS exam_scheduled,
+        COUNT(DISTINCT CASE WHEN sjf.offer_pending        THEN bs.student_id END)                                                 AS offer_pending,
+        COUNT(DISTINCT CASE WHEN sjf.offer_released       THEN bs.student_id END)                                                 AS offer_released,
+        COUNT(DISTINCT CASE WHEN sjf.ready_for_admission  THEN bs.student_id END)                                                 AS ready_for_admission,
+        COUNT(DISTINCT CASE WHEN sjf.ever_admitted        THEN bs.student_id END)                                                 AS admission,
+        COUNT(DISTINCT CASE WHEN ni.student_id IS NOT NULL THEN bs.student_id END)                                                AS ni_count,
+        ROUND(100.0 * COUNT(DISTINCT CASE WHEN sjf.ever_admitted THEN bs.student_id END)
+              / NULLIF(COUNT(DISTINCT bs.student_id),0), 1)          AS f2a_pct
+      FROM base_students bs
+      LEFT JOIN student_journey_flags sjf ON bs.student_id = sjf.student_id
+      LEFT JOIN l3_remark_stats lrs        ON bs.student_id = lrs.student_id
+      LEFT JOIN ni_students ni             ON bs.student_id = ni.student_id
+      GROUP BY bs.group_label
+      ORDER BY ${type === 'created_at' ? 'bs.group_label DESC' : 'leads DESC'}
+    `;
+
+    const rows = await sequelize.query(query, { type: QueryTypes.SELECT });
+
+    const num = (v) => parseInt(v || 0, 10);
+
+    let totals;
+    if (type === 'created_at') {
+      // For created_at grouping, per-row student counts can overlap across dates.
+      // Compute true totals with a separate deduplicated query.
+      const totalQuery = `
+        WITH
+        ${filterCTE}
+        base AS (
+          SELECT _first.student_id, _first.course_id
+          FROM (
+            SELECT DISTINCT ON (course_status_journeys.student_id, course_status_journeys.course_id)
+              course_status_journeys.student_id, course_status_journeys.course_id,
+              TO_CHAR((course_status_journeys.created_at + interval '5 hours 30 minutes'), 'YYYY-MM-DD') AS first_date
+            FROM course_status_journeys
+            ${univJoinRaw}
+            WHERE course_status_journeys.course_status IN (${FORM_STATUSES})
+            ${filterConditionRaw} ${univConditionRaw} ${l3ConditionRaw}
+            ORDER BY course_status_journeys.student_id, course_status_journeys.course_id, course_status_journeys.created_at ASC
+          ) _first
+          ${(start_date && end_date) ? `WHERE first_date >= '${start_date}' AND first_date <= '${end_date}'` : ''}
+        ),
+        sjf AS (
+          SELECT student_id,
+            BOOL_OR(course_status = 'Form Submitted – Portal Pending')                          AS form_pp,
+            BOOL_OR(course_status = 'Form Submitted – Completed')                               AS form_completed,
+            BOOL_OR(course_status = 'Walkin Completed')                                         AS walkin_completed,
+            BOOL_OR(course_status IN ('Exam/Interview Pending','Exam Interview Pending'))        AS exam_pending,
+            BOOL_OR(course_status IN ('Exam/Interview Scheduled','Exam Interview Scheduled'))    AS exam_scheduled,
+            BOOL_OR(course_status = 'Offer Letter/Results Pending')                             AS offer_pending,
+            BOOL_OR(course_status = 'Offer Letter/Results Released')                            AS offer_released,
+            BOOL_OR(course_status = 'Ready For Admission')                                      AS ready_for_admission,
+            BOOL_OR(course_status = 'Admission')                                                AS ever_admitted
+          FROM course_status_journeys GROUP BY student_id
+        ),
+        lrs AS (
+          SELECT sr.student_id, TRUE AS has_remark
+          FROM student_remarks sr
+          INNER JOIN counsellors c ON sr.counsellor_id = c.counsellor_id AND LOWER(c.role) = 'l3'
+          GROUP BY sr.student_id
+        ),
+        ni AS (
+          SELECT student_id
+          FROM (
+            SELECT DISTINCT ON (student_id) student_id, course_status
+            FROM course_status_journeys
+            ORDER BY student_id, created_at DESC
+          ) last_csj
+          WHERE course_status = 'NotInterested'
+        )
+        SELECT
+          COUNT(DISTINCT b.student_id)                                                          AS leads,
+          COUNT(DISTINCT CASE WHEN lrs.has_remark    THEN b.student_id END)                    AS attempted,
+          COUNT(DISTINCT CASE WHEN sjf.form_pp              THEN b.student_id END)             AS form_submitted_pp,
+          COUNT(DISTINCT CASE WHEN sjf.form_completed       THEN b.student_id END)             AS form_submitted_completed,
+          COUNT(DISTINCT CASE WHEN sjf.walkin_completed     THEN b.student_id END)             AS walkin_completed,
+          COUNT(DISTINCT CASE WHEN sjf.exam_pending         THEN b.student_id END)             AS exam_pending,
+          COUNT(DISTINCT CASE WHEN sjf.exam_scheduled       THEN b.student_id END)             AS exam_scheduled,
+          COUNT(DISTINCT CASE WHEN sjf.offer_pending        THEN b.student_id END)             AS offer_pending,
+          COUNT(DISTINCT CASE WHEN sjf.offer_released       THEN b.student_id END)             AS offer_released,
+          COUNT(DISTINCT CASE WHEN sjf.ready_for_admission  THEN b.student_id END)             AS ready_for_admission,
+          COUNT(DISTINCT CASE WHEN sjf.ever_admitted        THEN b.student_id END)             AS admission,
+          COUNT(DISTINCT CASE WHEN ni.student_id IS NOT NULL THEN b.student_id END)            AS ni_count
+        FROM base b
+        LEFT JOIN sjf  ON b.student_id = sjf.student_id
+        LEFT JOIN lrs  ON b.student_id = lrs.student_id
+        LEFT JOIN ni   ON b.student_id = ni.student_id
+      `;
+      const [tr] = await sequelize.query(totalQuery, { type: QueryTypes.SELECT });
+      totals = { group_label: 'Total', ...Object.fromEntries(Object.entries(tr).map(([k, v]) => [k, num(v)])) };
+    } else {
+      totals = rows.reduce(
+        (acc, r) => {
+          acc.leads               += num(r.leads);
+          acc.attempted           += num(r.attempted);
+          acc.form_submitted_pp   += num(r.form_submitted_pp);
+          acc.form_submitted_completed += num(r.form_submitted_completed);
+          acc.walkin_completed    += num(r.walkin_completed);
+          acc.exam_pending        += num(r.exam_pending);
+          acc.exam_scheduled      += num(r.exam_scheduled);
+          acc.offer_pending       += num(r.offer_pending);
+          acc.offer_released      += num(r.offer_released);
+          acc.ready_for_admission += num(r.ready_for_admission);
+          acc.admission           += num(r.admission);
+          acc.ni_count            += num(r.ni_count);
+          return acc;
+        },
+        { group_label: 'Total', leads: 0, attempted: 0, form_submitted_pp: 0, form_submitted_completed: 0, walkin_completed: 0, exam_pending: 0, exam_scheduled: 0, offer_pending: 0, offer_released: 0, ready_for_admission: 0, admission: 0, ni_count: 0 }
+      );
+    }
+    totals.f2a_pct = totals.leads > 0 ? parseFloat((totals.admission / totals.leads * 100).toFixed(1)) : 0;
+
+    return res.status(200).json({ success: true, data: [...rows, totals] });
+  } catch (error) {
+    console.error('getF2AReport error:', error.message);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getF2AReportDrilldown = async (req, res) => {
+  try {
+    const { type = 'agent', group_label, bucket = 'leads', start_date, end_date } = req.query;
+    const page  = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = 10;
+    const offset = (page - 1) * limit;
+
+    const validTypes   = ['agent', 'source', 'source_url', 'campaign', 'created_at'];
+    const validBuckets = ['leads', 'attempted', 'connected', 'form_submitted_pp', 'form_submitted_completed',
+      'walkin_completed', 'exam_pending', 'exam_scheduled', 'offer_pending', 'offer_released',
+      'ready_for_admission', 'admission', 'ni_count'];
+
+    if (!validTypes.includes(type))    return res.status(400).json({ success: false, message: 'Invalid type' });
+    if (!validBuckets.includes(bucket)) return res.status(400).json({ success: false, message: 'Invalid bucket' });
+    if (!group_label)                  return res.status(400).json({ success: false, message: 'group_label is required' });
+
+    const esc   = (v) => String(v).replace(/'/g, "''");
+    const toArr = (v) => v ? String(v).split(',').map(s => s.trim()).filter(Boolean) : [];
+    const toIn  = (arr) => arr.map(v => `'${esc(v)}'`).join(',');
+
+    const sources       = toArr(req.query.source);
+    const sourceUrls    = toArr(req.query.source_url);
+    const campaigns     = toArr(req.query.campaign);
+    const universities  = toArr(req.query.university_name);
+    const l3Counsellors = toArr(req.query.l3_counsellor);
+
+    const dateCondition    = (start_date && end_date)
+      ? `AND csj.created_at >= '${start_date} 00:00:00' AND csj.created_at <= '${end_date} 23:59:59'`
+      : '';
+    const dateConditionRaw = (start_date && end_date)
+      ? `AND course_status_journeys.created_at >= '${start_date} 00:00:00' AND course_status_journeys.created_at <= '${end_date} 23:59:59'`
+      : '';
+
+    const hasFilters        = sources.length || sourceUrls.length || campaigns.length;
+    const filterCTE         = hasFilters ? `
+      filter_students AS (
+        SELECT DISTINCT s.student_id
+        FROM students s
+        LEFT JOIN (
+          SELECT DISTINCT ON (student_id) student_id, utm_campaign
+          FROM student_lead_activities ORDER BY student_id, created_at ASC
+        ) fla ON fla.student_id = s.student_id
+        WHERE 1=1
+        ${sources.length    ? `AND s.source IN (${toIn(sources)})`                                   : ''}
+        ${sourceUrls.length ? `AND SPLIT_PART(s.first_source_url, '?', 1) IN (${toIn(sourceUrls)})` : ''}
+        ${campaigns.length  ? `AND fla.utm_campaign IN (${toIn(campaigns)})`                         : ''}
+      ),` : '';
+
+    const filterCondition    = hasFilters ? `AND csj.student_id IN (SELECT student_id FROM filter_students)` : '';
+    const filterConditionRaw = hasFilters ? `AND student_id IN (SELECT student_id FROM filter_students)` : '';
+
+    const univJoin         = universities.length ? `JOIN university_courses uc ON csj.course_id = uc.course_id` : '';
+    const univCondition    = universities.length ? `AND uc.university_name IN (${toIn(universities)})` : '';
+    const univJoinRaw      = universities.length ? `JOIN university_courses uc ON course_status_journeys.course_id = uc.course_id` : '';
+    const univConditionRaw = universities.length ? `AND uc.university_name IN (${toIn(universities)})` : '';
+
+    const l3Condition    = l3Counsellors.length ? `AND csj.assigned_l3_counsellor_id IN (SELECT counsellor_id FROM counsellors WHERE counsellor_name IN (${toIn(l3Counsellors)}))` : '';
+    const l3ConditionRaw = l3Counsellors.length ? `AND course_status_journeys.assigned_l3_counsellor_id IN (SELECT counsellor_id FROM counsellors WHERE counsellor_name IN (${toIn(l3Counsellors)}))` : '';
+
+    const groupExprs = {
+      agent:      { label: `COALESCE(c.counsellor_name, 'Unassigned')`,                              join: `LEFT JOIN counsellors c ON csj.assigned_l3_counsellor_id = c.counsellor_id` },
+      source:     { label: `COALESCE(s.source, 'Unknown')`,                                          join: `JOIN students s ON csj.student_id = s.student_id` },
+      source_url: { label: `COALESCE(SPLIT_PART(s.first_source_url, '?', 1), 'Unknown')`,           join: `JOIN students s ON csj.student_id = s.student_id` },
+      campaign:   { label: `COALESCE(la.utm_campaign, 'Direct')`,                                    join: `LEFT JOIN first_la la ON la.student_id = csj.student_id` },
+      created_at: { label: `TO_CHAR((csj.created_at + interval '5 hours 30 minutes'), 'YYYY-MM-DD')`, join: `` },
+    };
+    const { label: groupLabelExpr, join: groupJoin } = groupExprs[type];
+
+    const FORM_STATUSES = `'Form Submitted – Portal Pending','Form Submitted – Completed','Walkin Completed','Exam Interview Pending','Exam/Interview Pending','Exam/Interview Scheduled','Offer Letter/Results Pending','Offer Letter/Results Released','Ready For Admission','Form Filled_Partner website','Form Filled_Degreefyd','Application Fee Paid','Form Submitted – Offline'`;
+
+    const BUCKET_WHERE = {
+      leads:                    `1=1`,
+      attempted:                `lrs.has_remark IS TRUE`,
+      connected:                `lrs.has_connected IS TRUE`,
+      form_submitted_pp:        `sjf.form_pp IS TRUE`,
+      form_submitted_completed: `sjf.form_completed IS TRUE`,
+      walkin_completed:         `sjf.walkin_completed IS TRUE`,
+      exam_pending:             `sjf.exam_pending IS TRUE`,
+      exam_scheduled:           `sjf.exam_scheduled IS TRUE`,
+      offer_pending:            `sjf.offer_pending IS TRUE`,
+      offer_released:           `sjf.offer_released IS TRUE`,
+      ready_for_admission:      `sjf.ready_for_admission IS TRUE`,
+      admission:                `sjf.ever_admitted IS TRUE`,
+      ni_count:                 `ni.student_id IS NOT NULL`,
+    };
+
+    const query = `
+      WITH
+      ${filterCTE}
+      first_la AS (
+        SELECT DISTINCT ON (student_id) student_id, utm_campaign
+        FROM student_lead_activities
+        ORDER BY student_id, created_at ASC
+      ),
+      base_students AS (
+        ${type === 'agent' ? `
+        SELECT lat.student_id, lat.course_id, COALESCE(c.counsellor_name, 'Unassigned') AS group_label
+        FROM (
+          SELECT DISTINCT ON (course_status_journeys.student_id, course_status_journeys.course_id)
+            course_status_journeys.student_id, course_status_journeys.course_id, course_status_journeys.assigned_l3_counsellor_id
+          FROM course_status_journeys
+          ${univJoinRaw}
+          WHERE course_status IN (${FORM_STATUSES})
+          ${dateConditionRaw} ${filterConditionRaw} ${univConditionRaw} ${l3ConditionRaw}
+          ORDER BY course_status_journeys.student_id, course_status_journeys.course_id, course_status_journeys.created_at DESC
+        ) lat
+        LEFT JOIN counsellors c ON lat.assigned_l3_counsellor_id = c.counsellor_id
+        ` : type === 'created_at' ? `
+        SELECT DISTINCT ON (csj.student_id, csj.course_id)
+          csj.student_id, csj.course_id,
+          TO_CHAR((csj.created_at + interval '5 hours 30 minutes'), 'YYYY-MM-DD') AS group_label
+        FROM course_status_journeys csj
+        ${univJoin}
+        WHERE csj.course_status IN (${FORM_STATUSES})
+        ${dateCondition} ${filterCondition} ${univCondition} ${l3Condition}
+        ORDER BY csj.student_id, csj.course_id, csj.created_at ASC
+        ` : `
+        SELECT DISTINCT csj.student_id, csj.course_id, ${groupLabelExpr} AS group_label
+        FROM course_status_journeys csj
+        ${groupJoin}
+        ${univJoin}
+        WHERE csj.course_status IN (${FORM_STATUSES})
+        ${dateCondition} ${filterCondition} ${univCondition} ${l3Condition}
+        `}
+      ),
+      student_journey_flags AS (
+        SELECT
+          student_id,
+          BOOL_OR(course_status = 'Form Submitted – Portal Pending')                                AS form_pp,
+          BOOL_OR(course_status = 'Form Submitted – Completed')                                     AS form_completed,
+          BOOL_OR(course_status = 'Walkin Completed')                                               AS walkin_completed,
+          BOOL_OR(course_status IN ('Exam/Interview Pending','Exam Interview Pending'))              AS exam_pending,
+          BOOL_OR(course_status IN ('Exam/Interview Scheduled','Exam Interview Scheduled'))          AS exam_scheduled,
+          BOOL_OR(course_status = 'Offer Letter/Results Pending')                                   AS offer_pending,
+          BOOL_OR(course_status = 'Offer Letter/Results Released')                                  AS offer_released,
+          BOOL_OR(course_status = 'Ready For Admission')                                            AS ready_for_admission,
+          BOOL_OR(course_status = 'Admission')                                                      AS ever_admitted
+        FROM course_status_journeys
+        GROUP BY student_id
+      ),
+      l3_remark_stats AS (
+        SELECT sr.student_id,
+          TRUE                                                           AS has_remark,
+          BOOL_OR(LOWER(TRIM(sr.calling_status)) = 'connected')         AS has_connected
+        FROM student_remarks sr
+        INNER JOIN counsellors c ON sr.counsellor_id = c.counsellor_id AND LOWER(c.role) = 'l3'
+        GROUP BY sr.student_id
+      ),
+      ni_students AS (
+        SELECT student_id
+        FROM (
+          SELECT DISTINCT ON (student_id) student_id, course_status
+          FROM course_status_journeys
+          ORDER BY student_id, created_at DESC
+        ) last_csj
+        WHERE course_status = 'NotInterested'
+      )
+      SELECT *, COUNT(*) OVER() AS _total_count FROM (SELECT DISTINCT
+        bs.student_id,
+        st.student_name,
+        st.student_phone,
+        st.student_email,
+        st.source,
+        st.current_student_status,
+        uc_out.course_name,
+        uc_out.university_name,
+        COALESCE(cl.counsellor_name, 'Unassigned') AS counsellor_name,
+        st.created_at
+      FROM base_students bs
+      LEFT JOIN student_journey_flags sjf ON bs.student_id = sjf.student_id
+      LEFT JOIN l3_remark_stats lrs        ON bs.student_id = lrs.student_id
+      LEFT JOIN ni_students ni             ON bs.student_id = ni.student_id
+      LEFT JOIN students st                ON st.student_id = bs.student_id
+      LEFT JOIN counsellors cl             ON st.assigned_counsellor_id = cl.counsellor_id
+      LEFT JOIN university_courses uc_out  ON uc_out.course_id = bs.course_id
+      WHERE bs.group_label = $group_label
+        AND (${BUCKET_WHERE[bucket]})) _sub
+      ORDER BY created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+
+    const rows = await sequelize.query(query, {
+      type: QueryTypes.SELECT,
+      bind: { group_label },
+    });
+
+    const total = rows.length > 0 ? parseInt(rows[0]._total_count) : 0;
+    const data  = rows.map(({ _total_count, ...r }) => r);
+    return res.status(200).json({ success: true, data, total, page, limit });
+  } catch (err) {
+    console.error('getF2AReportDrilldown error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const getF2AFilterOptions = async (req, res) => {
+  try {
+    const [sources, sourceUrls, campaigns, universities, l3Counsellors] = await Promise.all([
+      sequelize.query(
+        `SELECT DISTINCT source FROM students WHERE source IS NOT NULL AND source != '' ORDER BY source`,
+        { type: QueryTypes.SELECT }
+      ),
+      sequelize.query(
+        `SELECT DISTINCT SPLIT_PART(first_source_url, '?', 1) AS source_url FROM students WHERE first_source_url IS NOT NULL AND first_source_url != '' ORDER BY source_url`,
+        { type: QueryTypes.SELECT }
+      ),
+      sequelize.query(
+        `SELECT DISTINCT utm_campaign FROM student_lead_activities WHERE utm_campaign IS NOT NULL AND utm_campaign != '' ORDER BY utm_campaign`,
+        { type: QueryTypes.SELECT }
+      ),
+      sequelize.query(
+        `SELECT DISTINCT uc.university_name
+         FROM university_courses uc
+         JOIN course_status_journeys csj ON csj.course_id = uc.course_id
+         WHERE csj.course_status IN (
+           'Form Submitted – Portal Pending','Form Submitted – Completed','Walkin Completed',
+           'Exam Interview Pending','Exam/Interview Pending','Exam/Interview Scheduled',
+           'Offer Letter/Results Pending','Offer Letter/Results Released','Ready For Admission',
+           'Form Filled_Partner website','Form Filled_Degreefyd','Application Fee Paid','Form Submitted – Offline'
+         )
+         AND uc.university_name IS NOT NULL AND uc.university_name != ''
+         ORDER BY uc.university_name`,
+        { type: QueryTypes.SELECT }
+      ),
+      sequelize.query(
+        `SELECT DISTINCT c.counsellor_name
+         FROM counsellors c
+         JOIN course_status_journeys csj ON csj.assigned_l3_counsellor_id = c.counsellor_id
+         WHERE LOWER(c.role) = 'l3'
+           AND c.counsellor_name IS NOT NULL AND c.counsellor_name != ''
+           AND csj.course_status IN (
+             'Form Submitted – Portal Pending','Form Submitted – Completed','Walkin Completed',
+             'Exam Interview Pending','Exam/Interview Pending','Exam/Interview Scheduled',
+             'Offer Letter/Results Pending','Offer Letter/Results Released','Ready For Admission',
+             'Form Filled_Partner website','Form Filled_Degreefyd','Application Fee Paid','Form Submitted – Offline'
+           )
+         ORDER BY c.counsellor_name`,
+        { type: QueryTypes.SELECT }
+      ),
+    ]);
+    return res.status(200).json({
+      success: true,
+      data: {
+        sources:        sources.map(r => r.source),
+        source_urls:    sourceUrls.map(r => r.source_url),
+        campaigns:      campaigns.map(r => r.utm_campaign),
+        universities:   universities.map(r => r.university_name),
+        l3_counsellors: l3Counsellors.map(r => r.counsellor_name),
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

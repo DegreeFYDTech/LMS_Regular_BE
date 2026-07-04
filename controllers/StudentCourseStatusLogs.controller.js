@@ -3055,7 +3055,9 @@ export const getF2AReport = async (req, res) => {
     }
 
     const esc = (v) => String(v).replace(/'/g, "''");
-    const toArr = (v) => v ? String(v).split(',').map(s => s.trim()).filter(Boolean) : [];
+    // Delimiter is "|||", not ",", because raw filter values (e.g. "Chandigarh University, Mohali")
+    // can contain literal commas — splitting on "," would corrupt those values.
+    const toArr = (v) => v ? String(v).split('|||').map(s => s.trim()).filter(Boolean) : [];
     const toIn  = (arr) => arr.map(v => `'${esc(v)}'`).join(',');
 
     const sources        = toArr(req.query.source);
@@ -3339,7 +3341,9 @@ export const getF2AReportDrilldown = async (req, res) => {
     if (!group_label)                  return res.status(400).json({ success: false, message: 'group_label is required' });
 
     const esc   = (v) => String(v).replace(/'/g, "''");
-    const toArr = (v) => v ? String(v).split(',').map(s => s.trim()).filter(Boolean) : [];
+    // Delimiter is "|||", not ",", because raw filter values (e.g. "Chandigarh University, Mohali")
+    // can contain literal commas — splitting on "," would corrupt those values.
+    const toArr = (v) => v ? String(v).split('|||').map(s => s.trim()).filter(Boolean) : [];
     const toIn  = (arr) => arr.map(v => `'${esc(v)}'`).join(',');
 
     const sources       = toArr(req.query.source);

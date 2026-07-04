@@ -3048,7 +3048,7 @@ export const checkRegistrationFormType = async (req, res) => {
 
 export const getF2AReport = async (req, res) => {
   try {
-    const { type = 'agent', start_date, end_date } = req.query;
+    const { type = 'agent', start_date, end_date, form_type } = req.query;
     const validTypes = ['agent', 'source', 'source_url', 'campaign', 'created_at'];
     if (!validTypes.includes(type)) {
       return res.status(400).json({ success: false, message: 'Invalid type' });
@@ -3063,6 +3063,9 @@ export const getF2AReport = async (req, res) => {
     const campaigns      = toArr(req.query.campaign);
     const universities   = toArr(req.query.university_name);
     const l3Counsellors  = toArr(req.query.l3_counsellor);
+
+    const { sqlFragment: formTypeSql } = await getFormTypeStudentCondition(form_type);
+    const formTypeSqlQualified = formTypeSql.replace(/\bstudent_id\b/, 'csj.student_id');
 
     const dateCondition = (start_date && end_date)
       ? `AND csj.created_at >= '${start_date} 00:00:00' AND csj.created_at <= '${end_date} 23:59:59'`
@@ -3126,7 +3129,7 @@ export const getF2AReport = async (req, res) => {
           FROM course_status_journeys csj
           ${univJoinRaw}
           WHERE csj.course_status IN (${FORM_STATUSES})
-          ${filterConditionRaw} ${univConditionRaw} ${l3ConditionRaw}
+          ${filterConditionRaw} ${univConditionRaw} ${l3ConditionRaw} ${formTypeSql}
           ORDER BY csj.student_id, csj.course_id, csj.created_at ASC
         ) _first
         LEFT JOIN counsellors c ON _first.assigned_l3_counsellor_id = c.counsellor_id
@@ -3140,7 +3143,7 @@ export const getF2AReport = async (req, res) => {
           FROM course_status_journeys csj
           ${univJoin}
           WHERE csj.course_status IN (${FORM_STATUSES})
-          ${filterCondition} ${univCondition} ${l3Condition}
+          ${filterCondition} ${univCondition} ${l3Condition} ${formTypeSqlQualified}
           ORDER BY csj.student_id, csj.course_id, csj.created_at ASC
         ) _first
         ${(start_date && end_date) ? `WHERE group_label >= '${start_date}' AND group_label <= '${end_date}'` : ''}
@@ -3155,7 +3158,7 @@ export const getF2AReport = async (req, res) => {
           ${groupJoin}
           ${univJoin}
           WHERE csj.course_status IN (${FORM_STATUSES})
-          ${filterCondition} ${univCondition} ${l3Condition}
+          ${filterCondition} ${univCondition} ${l3Condition} ${formTypeSqlQualified}
           ORDER BY csj.student_id, csj.course_id, csj.created_at ASC
         ) _first
         ${(start_date && end_date) ? `WHERE first_date >= '${start_date}' AND first_date <= '${end_date}'` : ''}
@@ -3237,7 +3240,7 @@ export const getF2AReport = async (req, res) => {
             FROM course_status_journeys
             ${univJoinRaw}
             WHERE course_status_journeys.course_status IN (${FORM_STATUSES})
-            ${filterConditionRaw} ${univConditionRaw} ${l3ConditionRaw}
+            ${filterConditionRaw} ${univConditionRaw} ${l3ConditionRaw} ${formTypeSql}
             ORDER BY course_status_journeys.student_id, course_status_journeys.course_id, course_status_journeys.created_at ASC
           ) _first
           ${(start_date && end_date) ? `WHERE first_date >= '${start_date}' AND first_date <= '${end_date}'` : ''}
@@ -3321,7 +3324,7 @@ export const getF2AReport = async (req, res) => {
 
 export const getF2AReportDrilldown = async (req, res) => {
   try {
-    const { type = 'agent', group_label, bucket = 'leads', start_date, end_date } = req.query;
+    const { type = 'agent', group_label, bucket = 'leads', start_date, end_date, form_type } = req.query;
     const page  = Math.max(1, parseInt(req.query.page) || 1);
     const limit = 10;
     const offset = (page - 1) * limit;
@@ -3344,6 +3347,9 @@ export const getF2AReportDrilldown = async (req, res) => {
     const campaigns     = toArr(req.query.campaign);
     const universities  = toArr(req.query.university_name);
     const l3Counsellors = toArr(req.query.l3_counsellor);
+
+    const { sqlFragment: formTypeSql } = await getFormTypeStudentCondition(form_type);
+    const formTypeSqlQualified = formTypeSql.replace(/\bstudent_id\b/, 'csj.student_id');
 
     const dateCondition    = (start_date && end_date)
       ? `AND csj.created_at >= '${start_date} 00:00:00' AND csj.created_at <= '${end_date} 23:59:59'`
@@ -3422,7 +3428,7 @@ export const getF2AReportDrilldown = async (req, res) => {
           FROM course_status_journeys
           ${univJoinRaw}
           WHERE course_status IN (${FORM_STATUSES})
-          ${dateConditionRaw} ${filterConditionRaw} ${univConditionRaw} ${l3ConditionRaw}
+          ${dateConditionRaw} ${filterConditionRaw} ${univConditionRaw} ${l3ConditionRaw} ${formTypeSql}
           ORDER BY course_status_journeys.student_id, course_status_journeys.course_id, course_status_journeys.created_at DESC
         ) lat
         LEFT JOIN counsellors c ON lat.assigned_l3_counsellor_id = c.counsellor_id
@@ -3433,7 +3439,7 @@ export const getF2AReportDrilldown = async (req, res) => {
         FROM course_status_journeys csj
         ${univJoin}
         WHERE csj.course_status IN (${FORM_STATUSES})
-        ${dateCondition} ${filterCondition} ${univCondition} ${l3Condition}
+        ${dateCondition} ${filterCondition} ${univCondition} ${l3Condition} ${formTypeSqlQualified}
         ORDER BY csj.student_id, csj.course_id, csj.created_at ASC
         ` : `
         SELECT DISTINCT csj.student_id, csj.course_id, ${groupLabelExpr} AS group_label
@@ -3441,7 +3447,7 @@ export const getF2AReportDrilldown = async (req, res) => {
         ${groupJoin}
         ${univJoin}
         WHERE csj.course_status IN (${FORM_STATUSES})
-        ${dateCondition} ${filterCondition} ${univCondition} ${l3Condition}
+        ${dateCondition} ${filterCondition} ${univCondition} ${l3Condition} ${formTypeSqlQualified}
         `}
       ),
       student_journey_flags AS (

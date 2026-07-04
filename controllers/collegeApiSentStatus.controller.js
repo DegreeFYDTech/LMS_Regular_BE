@@ -77,7 +77,10 @@ export const createCollegeApiSentStatus = async ({
       existingEntry.sent_type = sendType;
       existingEntry.trigger_count = trigger_count;
       existingEntry.retry_tag = retryTag;
-
+      if(sendType=='bot')
+      {
+        existingEntry.created_at = new Date();
+      }
       await existingEntry.save();
       if (isPrimary) {
         await updatedIncourseStatus(status, flatCourseIds, studentId);

@@ -3127,9 +3127,9 @@ export const getF2AReport = async (req, res) => {
             csj.student_id, csj.course_id, csj.assigned_l3_counsellor_id,
             TO_CHAR((csj.created_at + interval '5 hours 30 minutes'), 'YYYY-MM-DD') AS first_date
           FROM course_status_journeys csj
-          ${univJoinRaw}
+          ${univJoin}
           WHERE csj.course_status IN (${FORM_STATUSES})
-          ${filterConditionRaw} ${univConditionRaw} ${l3ConditionRaw} ${formTypeSql}
+          ${filterConditionRaw} ${univCondition} ${l3Condition} ${formTypeSql}
           ORDER BY csj.student_id, csj.course_id, csj.created_at ASC
         ) _first
         LEFT JOIN counsellors c ON _first.assigned_l3_counsellor_id = c.counsellor_id

@@ -51,6 +51,11 @@ const StudentLeadActivity = sequelize.define(
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
     },
+      gcl_id:{
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: null,
+    }
   },
   {
     timestamps: true,

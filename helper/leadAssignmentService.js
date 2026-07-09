@@ -706,7 +706,7 @@ export const processStudentLead = async (leadData) => {
       leadData.MOBILE ||
       "",
     gcl_id:
-      queryParams.gcl_id ||
+      queryParams.gclid ||
       queryParams.GCL_ID ,
     highest_degree: leadData.highest_degree || "",
     completion_year: leadData.completion_year || "",

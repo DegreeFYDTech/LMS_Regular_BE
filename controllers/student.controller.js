@@ -18,6 +18,7 @@ import {
 } from "../models/index.js";
 import { internalAssignL3 } from "./leadassignmentl3.controller.js";
 import { processStudentLead } from "../helper/leadAssignmentService.js";
+import {inform_Google} from '../helper/google.js';
 import { createRemark } from "./remark.controller.js";
 import { normalizePhoneNumber, processAltNumbers } from "../utils/validators.js";
 import { Op, QueryTypes } from "sequelize";
@@ -414,7 +415,9 @@ export const updateStudentStatus = async (req, res) => {
           ? leadSubStatus
           : null;
     }
-
+    if(leadStatus === "Admission"){
+      await inform_Google(studentId);
+    }
     if (
       counsellorPreferredMode == "Online" &&
       (leadStatus == "Application" || leadStatus == "Admission")

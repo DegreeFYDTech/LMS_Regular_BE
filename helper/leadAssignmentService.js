@@ -707,6 +707,7 @@ export const processStudentLead = async (leadData) => {
       "",
     gcl_id:
       queryParams.gclid ||
+      leadData?.gclid || leadData.gcl_id ||
       queryParams.GCL_ID ,
     highest_degree: leadData.highest_degree || "",
     completion_year: leadData.completion_year || "",

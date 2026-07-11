@@ -39,7 +39,7 @@ export const inform_Google = async (student_id) => {
     };
 
     const response = await axios.post(
-      `${process.env.ENTERPRISE_HUB_URL}/api/sheets/push`,
+      `${process.env.ENTERPRISE_HUB_URL}/sheets/push`,
       sending_data
     );
 

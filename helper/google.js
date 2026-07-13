@@ -50,6 +50,6 @@ export const inform_Google = async (student_id) => {
       error.response?.data || error.message
     );
 
-    throw error;
+   
   }
 };

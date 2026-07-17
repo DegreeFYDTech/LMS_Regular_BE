@@ -17,7 +17,7 @@ export async function runMidnightCleanup() {
             max_active_sessions: 1,
             allowed_devices: ['desktop'],
             login_start_time: '09:00:00',
-            login_end_time: '20:00:00',
+            login_end_time: '21:00:00',
         }, {
             where: {}
         });

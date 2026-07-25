@@ -19,7 +19,6 @@ const APPLICATION_STATUSES = [
 ];
 
 export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
-  console.log(filters);
   try {
     const {
       page = 1,
@@ -101,21 +100,12 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
     let leadStatus = rawLeadStatus;
     if (Array.isArray(leadStatus) && leadStatus.length === 1) {
       leadStatus = leadStatus[0];
-      console.log("Converted leadStatus from array to string:", leadStatus);
     } else if (Array.isArray(leadStatus) && leadStatus.length > 1) {
-      console.log(
-        "Keeping leadStatus as array with multiple values:",
-        leadStatus,
-      );
       // Keep as array for multiple OR conditions
     }
 
     const isAnalyser = userrole === "Analyser";
     const requestingUser = req?.user;
-    console.log("User role from JWT:", requestingUser?.role);
-    console.log("Userrole from filters:", userrole);
-    console.log("Is Analyser:", isAnalyser);
-    console.log("Final leadStatus:", leadStatus);
 
     const userRole = requestingUser?.role || userrole;
     const userId = requestingUser?.id || requestingUser?.counsellor_id;
@@ -619,7 +609,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
           });
         }
       } catch (e) {
-        console.error("Error parsing advancedFilters:", e);
       }
     }
 
@@ -1813,7 +1802,6 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
 
     return response;
   } catch (error) {
-    console.error("Error in getStudentsRawSQL:", error);
     throw error;
   }
 };
@@ -2127,7 +2115,6 @@ async function getL3OverallStatsFromJourney({
       createdToday: parseInt(result.created_today) || 0,
     };
   } catch (error) {
-    console.error("Error in getL3OverallStatsFromJourney:", error);
     return {
       total: 0,
       freshLeads: 0,

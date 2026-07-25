@@ -49,7 +49,6 @@ export const getStudentReassignmentLogic = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get reassignment logic error:', error);
     return res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -158,7 +157,6 @@ export const createOrUpdateStudentReassignmentLogic = async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Create/Update reassignment logic error:', error);
     return res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -204,7 +202,6 @@ export const toggleRuleStatus = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Toggle rule status error:', error);
     return res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -241,7 +238,6 @@ export const deleteStudentReassignmentLogic = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Delete reassignment logic error:', error);
     return res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -268,7 +264,6 @@ export const getActivityLogs = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get activity logs error:', error);
     return res.status(500).json({
       success: false,
       message: 'Internal server error'

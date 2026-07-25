@@ -25,7 +25,6 @@ export const exportStudentsCSV = async (req, res) => {
           };
         }
       } catch (error) {
-        console.error('Error fetching analyser data:', error);
       }
     }
 
@@ -236,7 +235,6 @@ export const exportStudentsCSV = async (req, res) => {
 
     res.status(200).send(csvData);
   } catch (error) {
-    console.error('Error in exportStudentsCSV:', error);
     res.status(500).json({
       success: false,
       message: 'Error exporting CSV',

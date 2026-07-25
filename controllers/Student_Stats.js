@@ -210,7 +210,6 @@ export const getOptimizedOverallStatsFromHelper = async ({
       reactivityCount: parseInt(result.reactivity_count) || 0,
     };
   } catch (error) {
-    console.error("Failed to fetch optimized overall stats:", error);
     throw new Error(
       `Failed to fetch optimized overall stats: ${error.message}`,
     );

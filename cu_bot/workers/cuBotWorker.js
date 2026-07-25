@@ -23,11 +23,9 @@ export const startCuBotWorker = () => {
           });
           if (uCourse) {
             resolvedCollegeName = uCourse.university_name;
-            console.log(` [Worker] Dynamically resolved collegeName from database: ${resolvedCollegeName}`);
           }
         }
       } catch (dbErr) {
-        console.error(' [Worker] Error dynamically resolving collegeName from database:', dbErr.message);
       }
     }
 
@@ -44,10 +42,8 @@ export const startCuBotWorker = () => {
         program: job.data.program || "Bachelor of Engineering (Computer Science and Engineering)",
         dob: job.data.dob || "1990-10-10"
       };
-      console.log(` [Worker] Selected attributes for student ${studentId}:`, leadData);
 
       const delayMs = Math.floor(Math.random() * (8000 - 2000 + 1)) + 2000;
-      console.log(` [Worker] Delaying submission for ${delayMs / 1000}s to mimic natural user behaviour...`);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
 
       const result = await submitCucetLead(
@@ -76,11 +72,9 @@ export const startCuBotWorker = () => {
         isPrimary: true
       });
 
-      console.log(` [Worker] Lead submission successful for student ${studentId}!`);
       return result;
 
     } catch (error) {
-      console.error(` [Worker] Automation error for student ${studentId}: ${error.message}`);
       
       await CuBotSending.update({
         status: 'failed',
@@ -98,7 +92,6 @@ export const startCuBotWorker = () => {
         studentPhone: phone,
         isPrimary: true
       }).catch((syncError) => {
-        console.error(`[Worker] Failed to sync error status to primary DB: ${syncError.message}`);
       });
 
       throw error;
@@ -110,13 +103,10 @@ export const startCuBotWorker = () => {
   });
 
   worker.on('completed', (job) => {
-    console.log(` [Worker] Job ${job.id} (Student ${job.data.studentId}) successfully executed.`);
   });
 
   worker.on('failed', (job, err) => {
-    console.error(` [Worker] Job ${job?.id} (Student ${job?.data?.studentId}) failed after retries. Error: ${err.message}`);
   });
 
-  console.log(' [Worker] BullMQ CUCET worker process is running and listening for jobs...');
   return worker;
 };

@@ -8,7 +8,6 @@ export const getRuleset = async (req, res) => {
     }
     res.json(ruleset);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -52,7 +51,6 @@ export const upsertRuleset = async (req, res) => {
 
     res.json({ message: "Ruleset saved successfully", ruleset });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 };

@@ -84,7 +84,6 @@ function getNightQueueDateKey() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const addCuBotJob = async (leadData) => {
-  console.log(`📡 [Queue] Enqueuing CUCET job for lead: ${leadData.studentId}`);
 
   if (isNightWindow()) {
     // ── Night-time: compute staggered delay ──────────────────────────────────
@@ -108,12 +107,6 @@ export const addCuBotJob = async (leadData) => {
       .replace('T', ' ')
       .substring(0, 16) + ' IST';
 
-    console.log(
-      `🌙 [Queue] Night-time lead detected. Position #${position} in queue.\n` +
-      `   Base delay until 8 AM : ${Math.round(baseDelayMs / 60000)} min\n` +
-      `   Stagger offset         : ${Math.round(staggerOffsetMs / 60000)} min\n` +
-      `   ⏰ Will fire at        : ${fireAtISTStr}`
-    );
 
     return await cuBotQueue.add(
       `lead-submit-${leadData.studentId}`,
@@ -123,7 +116,6 @@ export const addCuBotJob = async (leadData) => {
   }
 
   // ── Day-time: send immediately (existing behaviour) ──────────────────────
-  console.log(`☀️  [Queue] Day-time lead — queuing immediately.`);
   return await cuBotQueue.add(`lead-submit-${leadData.studentId}`, leadData);
 };
 

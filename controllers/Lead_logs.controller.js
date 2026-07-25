@@ -3,7 +3,7 @@ import {LeadAssignmentLogs} from '../models/index.js';
 export const createLeadLog = async ({ studentId, assignedCounsellorId, assignedBy = 'Rulset Based' }) => {
   try {
     // Basic validation
-    console.log({ studentId, assignedCounsellorId, assignedBy  })
+    undefined
     if (!studentId || !assignedCounsellorId) {
       throw new Error('studentId and assignedCounsellorId are required.');
     }
@@ -14,10 +14,9 @@ export const createLeadLog = async ({ studentId, assignedCounsellorId, assignedB
       assigned_by:assignedBy,
       created_at:new Date()
     });
-    // console.log('new Studeny',newLeadLog)
+    // undefined
     return { success: true, data: newLeadLog };
   } catch (error) {
-    console.error('Error creating lead log:', error);
     return { success: false, message: error.message };
   }
 };

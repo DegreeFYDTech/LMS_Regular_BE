@@ -15,7 +15,7 @@ export const createStudentCollegeCreds = async (req, res) => {
       counsellorId,
       counsellorName
     } = req.body;
-    console.log("hello")
+    undefined
     if (!studentId || !courseId || !collegeName) {
       return res.status(400).json({ message: 'studentId, courseId, and collegeName are required' });
     }
@@ -96,7 +96,7 @@ export const createStudentCollegeCreds = async (req, res) => {
 
 export const getStudentCredsByCourseAndStudent = async (req, res) => {
   try {
-    console.log("hi")
+    undefined
     const { courseId, studentId } = req.query;
 
     if (!courseId || !studentId) {
@@ -267,7 +267,6 @@ export const getCollegeCredsForReport = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('❌ Error in getCollegeCredsForReport:', err);
     return res.status(500).json({ success: false, message: 'Server Error', error: err.message });
   }
 };
@@ -366,7 +365,6 @@ export const downloadCollegeCredsForReport = async (req, res) => {
       data: formatted
     });
   } catch (err) {
-    console.error('❌ Error in getCollegeCredsForReport:', err);
     return res.status(500).json({ success: false, message: 'Server Error', error: err.message });
   }
 };

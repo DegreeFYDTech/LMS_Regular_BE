@@ -18,7 +18,6 @@ export const getEligibleLeadsForDialer = async (counsellorId, limit = 10) => {
     });
 
     if (rules.length === 0) {
-      console.log("No active L2 rules found");
       return [];
     }
 
@@ -110,7 +109,6 @@ export const getEligibleLeadsForDialer = async (counsellorId, limit = 10) => {
     // Return top N leads
     return leadsWithScores.slice(0, limit);
   } catch (error) {
-    console.error("Error in getEligibleLeadsForDialer:", error);
     return [];
   }
 };
@@ -357,7 +355,6 @@ const calculateLeadScoreFromL2RulesForDialer = async (leadData, rules) => {
       matchedCount: allMatchingRules.length,
     };
   } catch (error) {
-    console.error("Error calculating score:", error);
     return {
       totalScore: 0,
       rawScore: 0,
@@ -407,7 +404,6 @@ export const assignNextLeadFromDialer = async (counsellorId) => {
       assigned_at: new Date(),
     };
   } catch (error) {
-    console.error("Error in assignNextLeadFromDialer:", error);
     return null;
   }
 };
@@ -449,7 +445,6 @@ export const releaseLeadFromDialer = async (studentId, counsellorId, isPermanent
     }
     return true;
   } catch (error) {
-    console.error("Error in releaseLeadFromDialer:", error);
     return false;
   }
 };
@@ -467,10 +462,8 @@ export const resetDailyDialerCounts = async () => {
     `,
       { type: QueryTypes.UPDATE }
     );
-    console.log("Daily dialer counts reset successfully");
     return true;
   } catch (error) {
-    console.error("Error resetting daily dialer counts:", error);
     return false;
   }
 };
@@ -499,7 +492,6 @@ export const getDialerStats = async (counsellorId) => {
     
     return stats[0] || { active_calls: 0, permanent_assignments: 0, retry_leads: 0, total_temp_assignments: 0 };
   } catch (error) {
-    console.error("Error getting dialer stats:", error);
     return { active_calls: 0, permanent_assignments: 0, retry_leads: 0, total_temp_assignments: 0 };
   }
 };

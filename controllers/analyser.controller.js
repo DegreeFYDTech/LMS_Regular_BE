@@ -37,45 +37,28 @@ export const getAllAnalysers = async (req, res) => {
 
 export const createAnalyser = async (req, res) => {
   try {
-    console.log("=== CREATE ANALYSER START ===");
-    console.log("Request body:", req.body);
 
     const { name, email, password, sources, student_creation_date, source_urls, campaigns } = req.body;
 
     // Check what's in the database
-    console.log("Checking for existing analyser with email:", email);
     const allAnalysers = await Analyser.findAll({ attributes: ['id', 'email'] });
-    console.log("All analysers in DB:", allAnalysers.map(a => a.email));
 
     const existing = await Analyser.findOne({
       where: { email },
       attributes: ['id', 'email', 'name']
     });
 
-    console.log("Existing analyser found:", existing);
 
     if (existing) {
-      console.log("❌ Email already exists in database");
       return res.status(400).json({
         message: 'Email already exists',
         existing: { id: existing.id, email: existing.email, name: existing.name }
       });
     }
 
-    console.log("✅ Email is unique, proceeding to create...");
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    console.log("Password hashed successfully");
 
-    console.log("Creating analyser with data:", {
-      name,
-      email,
-      password: hashedPassword.substring(0, 20) + "...", // Log first 20 chars only
-      sources: sources || [],
-      student_creation_date: student_creation_date || "",
-      source_urls: source_urls || [],
-      campaigns: campaigns || []
-    });
 
     const analyser = await Analyser.create({
       name,
@@ -87,7 +70,6 @@ export const createAnalyser = async (req, res) => {
       campaigns: campaigns || []
     });
 
-    console.log("✅ Analyser created successfully! ID:", analyser.id);
 
     res.status(201).json({
       id: analyser.id,
@@ -100,25 +82,13 @@ export const createAnalyser = async (req, res) => {
       created_at: analyser.created_at
     });
 
-    console.log("=== CREATE ANALYSER END ===");
 
   } catch (error) {
-    console.error("❌ ERROR in createAnalyser:");
-    console.error("Error name:", error.name);
-    console.error("Error message:", error.message);
-    console.error("Error stack:", error.stack);
 
     if (error.errors) {
-      console.error("Validation errors:", error.errors.map(e => ({
-        field: e.path,
-        message: e.message,
-        value: e.value
-      })));
     }
 
     if (error.original) {
-      console.error("Original error:", error.original);
-      console.error("SQL:", error.original?.sql);
     }
 
     res.status(500).json({
@@ -165,7 +135,6 @@ export const createAnalyser = async (req, res) => {
 //       token
 //     });
 //   } catch (error) {
-//     console.error('Login Analyser Error:', error);
 //     res.status(500).json({ message: 'Internal server error' });
 //   }
 // };
@@ -316,7 +285,7 @@ export const forceLogout = async (req, res) => {
 
 export const getUserDetails = async (req, res) => {
   try {
-    console.log(req.user)
+    undefined
     const analyserId = req.user?.id;
 
     const analyser = await Analyser.findByPk(analyserId, {
@@ -343,7 +312,6 @@ export const getUserDetails = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting analyser details:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',

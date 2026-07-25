@@ -67,11 +67,8 @@ async function fetchMetaLeads(pageAccessToken) {
     params: { access_token: pageAccessToken, fields: 'id,name', limit: 100 },
   });
   const forms = formsRes.data?.data || [];
-  console.log(`📋 Found ${forms.length} lead form(s)`);
-  console.log(`📅 Filtering leads from: ${new Date(since * 1000).toLocaleDateString('en-IN')} → today\n`);
 
   for (const form of forms) {
-    console.log(`\n🔍 Fetching leads from form: ${form.name} (${form.id})`);
     let url = `${BASE_URL}/${form.id}/leads`;
     let params = {
       access_token: pageAccessToken,
@@ -102,7 +99,6 @@ async function fetchMetaLeads(pageAccessToken) {
         leads.push(parsed);
       }
 
-      console.log(`  ↳ Fetched ${data.length} leads (running total: ${leads.length})`);
 
       // Pagination — next URL already has all params baked in
       const next = res.data?.paging?.next;
@@ -137,7 +133,6 @@ async function existsInDB(pool, table, email, phone) {
     const result = await pool.query(sql, values);
     return result.rowCount > 0;
   } catch (err) {
-    console.error(`  ⚠️  DB query error on ${table}:`, err.message);
     return false; // treat as not found on error, but log it
   }
 }
@@ -152,7 +147,6 @@ async function findMissingLeads() {
 
   let pageAccessToken;
   {
-    console.log(`🔌 Connecting to Online LMS DB to fetch token...`);
     // Token is stored in the Online LMS DB (meta_ads_tokens)
     const tokenRes = await onlinePool.query(
       `SELECT page_access_token FROM meta_ads_tokens WHERE page_id = $1 LIMIT 1`,
@@ -164,35 +158,27 @@ async function findMissingLeads() {
         `SELECT page_id, page_access_token FROM meta_ads_tokens ORDER BY updated_at asc LIMIT 1`
       );
       if (!altRes.rowCount) {
-        console.error('❌ No token rows found in Online LMS meta_ads_tokens. Please ensure a token has been saved.');
         process.exit(1);
       }
-      console.warn(`⚠️  Token for page ${PAGE_ID} not found; using token for page ${altRes.rows[0].page_id} instead.`);
       pageAccessToken = altRes.rows[0].page_access_token;
     } else {
       pageAccessToken = tokenRes.rows[0].page_access_token;
     }
-    console.log('🔑 Page access token loaded from Online LMS DB\n');
   }
 
   // ── Fetch last-30-days leads from Meta ──
-  console.log('📡 Fetching Meta leads from last 30 days...\n');
   let metaLeads;
   try {
     metaLeads = await fetchMetaLeads(pageAccessToken);
   } catch (err) {
-    console.error('❌ Error fetching Meta leads:', err.response?.data || err.message);
     process.exit(1);
   }
-  console.log(`\n✅ Total Meta leads fetched: ${metaLeads.length}\n`);
 
   if (metaLeads.length === 0) {
-    console.log('No leads to check. Exiting.');
     process.exit(0);
   }
 
   // ── Check each lead across all 3 systems ──
-  console.log('🔎 Checking each lead across Regular, Online & Enterprise LMS...\n');
 
   const missingLeads   = [];
   const summary        = { total: metaLeads.length, foundRegular: 0, foundOnline: 0, foundEnterprise: 0, missingAll: 0 };
@@ -216,10 +202,6 @@ async function findMissingLeads() {
       inEnterprise ? '✓Enterprise' : null,
     ].filter(Boolean).join(', ') || '✗ NONE';
 
-    console.log(
-      `[${i + 1}/${metaLeads.length}] ${lead_id} | email: ${email || '-'} | phone: ${phone || '-'} ` +
-      `| created: ${new Date(created_time).toLocaleDateString('en-IN')} | found: ${tag}`
-    );
 
     if (!foundAnywhere) {
       missingLeads.push({
@@ -233,28 +215,11 @@ async function findMissingLeads() {
   }
 
   // ── Final Report ──
-  console.log('\n' + '═'.repeat(70));
-  console.log('📊 SUMMARY');
-  console.log('═'.repeat(70));
-  console.log(`  Total Meta leads (last 30 days) : ${summary.total}`);
-  console.log(`  Found in Regular LMS            : ${summary.foundRegular}`);
-  console.log(`  Found in Online LMS             : ${summary.foundOnline}`);
-  console.log(`  Found in Enterprise LMS         : ${summary.foundEnterprise}`);
-  console.log(`  ❗ NOT FOUND in ANY system       : ${summary.missingAll}`);
-  console.log('═'.repeat(70));
 
   if (missingLeads.length > 0) {
-    console.log('\n🚨 MISSING LEAD IDs (not in any LMS):');
-    console.log('─'.repeat(70));
     missingLeads.forEach((l, idx) => {
-      console.log(
-        `  ${idx + 1}. lead_id=${l.lead_id} | email=${l.email || '-'} | phone=${l.phone || '-'} | created=${new Date(l.created_time).toLocaleDateString('en-IN')}`
-      );
     });
-    console.log('\n📋 Raw lead_id list (copy-paste ready):');
-    console.log(missingLeads.map(l => l.lead_id).join('\n'));
   } else {
-    console.log('\n✅ All Meta leads are present in at least one LMS system!');
   }
 
   // ── Cleanup ──
@@ -265,10 +230,8 @@ async function findMissingLeads() {
 }
 
 // findMissingLeads().catch(err => {
-//   console.error('💥 Unexpected error:', err);
 //   process.exit(1);
 // });
 findMissingLeads().catch(err => {
-  console.error('💥 Unexpected error:', err);
   process.exit(1);
 });

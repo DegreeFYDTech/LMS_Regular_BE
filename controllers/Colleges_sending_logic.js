@@ -25,11 +25,6 @@ async function handleTechnicalFailure(
   isPrimary,
   isPartnerPortal,
 ) {
-  console.error(`❌ Technical failure for ${collegeName}:`, {
-    message: error.message,
-    studentId: studentId,
-    response: error.response?.data,
-  });
 
   const errorStatus = "Failed due to Technical Issues";
   const responseData = error.response?.data || {
@@ -107,10 +102,6 @@ async function findHeaderValue(
 
     return courseHeaderValue;
   } catch (error) {
-    console.error(
-      ` Error fetching course header values for ${collegeName}:`,
-      error,
-    );
     return await handleTechnicalFailure(
       studentId,
       collegeName,
@@ -139,17 +130,9 @@ async function updateStudentShortlistStatus(
   isPrimary = true,
   isPartnerPortal,
 ) {
-  console.log(`📝 Updating status for ${collegeName}:`, {
-    studentId,
-    status,
-    isPrimary,
-    studentEmail: studentEmail || "Using primary email",
-    studentPhone: studentPhone || "Using primary phone",
-  });
 
   try {
     if (!collegeName || !studentId) {
-      console.error("❌ Missing collegeName or studentId for status update");
       return;
     }
 
@@ -166,7 +149,6 @@ async function updateStudentShortlistStatus(
       isPrimary,
       isPartnerPortal,
     });
-    console.log(status, "hello ok");
     // 📧 Trigger notification email for technical failures
     if (
       status === "Failed due to Technical Issues" ||
@@ -190,26 +172,14 @@ async function updateStudentShortlistStatus(
             },
             "harsh.pandey@degreefyd.com",
           );
-          console.log(
-            `✅ Technical failure notification email sent for student ${studentId}`,
-          );
         } catch (emailError) {
-          console.error(
-            `❌ Failed to send technical failure notification email:`,
-            emailError,
-          );
         }
         sendCollegeTechFailureAlert(studentId, collegeName, status).catch(() => {});
       }
     }
 
-    console.log(`✅ Status updated successfully for ${collegeName}: ${status}`);
     return status;
   } catch (error) {
-    console.error(
-      `❌ Error updating student status for ${collegeName}:`,
-      error,
-    );
     throw error;
   }
 }
@@ -226,13 +196,6 @@ async function handleApiError(
   studentPhone = null,
   isPrimary = true,
 ) {
-  console.error(`🚨 API Error for ${collegeName}:`, {
-    error: error.message,
-    statusCode: error.response?.status,
-    isPrimary,
-    studentEmail,
-    studentPhone,
-  });
 
   const errorStatus = "Failed due to Technical Issues";
 
@@ -240,10 +203,6 @@ async function handleApiError(
     const statusCode = error.response.status;
     const responseData = error.response.data;
 
-    console.log(`📊 Error Response for ${collegeName}:`, {
-      statusCode,
-      response: responseData,
-    });
 
     if (statusCode === 400 || statusCode === 422) {
       // Only log once with correct status
@@ -304,7 +263,7 @@ async function handleApiError(
           studentPhone,
           isPrimary,
         ).catch((err) =>
-          console.error("❌ Failed to update student status on error:", err),
+          undefined,
         );
       }
       return res.status(500).json({
@@ -315,7 +274,6 @@ async function handleApiError(
       });
     }
   } else if (error.request) {
-    console.error(`⏰ No response received from ${collegeName} API`);
     // Log timeout/no-response as technical failure
     if (studentId && collegeName) {
       await updateStudentShortlistStatus(
@@ -330,7 +288,7 @@ async function handleApiError(
         studentPhone,
         isPrimary,
       ).catch((err) =>
-        console.error("❌ Failed to update student status on timeout:", err),
+        undefined,
       );
     }
     return res.status(504).json({
@@ -355,7 +313,7 @@ async function handleApiError(
       studentPhone,
       isPrimary,
     ).catch((err) =>
-      console.error("❌ Failed to update student status on error:", err),
+      undefined,
     );
   }
 
@@ -375,20 +333,9 @@ async function getStudentDataForRequest(
   isPrimary,
   isPartnerPortal,
 ) {
-  console.log(`👤 Getting student data:`, {
-    studentId,
-    hasStudentData: !!studentData,
-    isPrimary,
-    providedEmail: studentEmail,
-    providedPhone: studentPhone,
-  });
 
   if (!isPrimary && studentEmail && studentPhone && !isPartnerPortal) {
-    console.log(
-      `📞 Using secondary contact details: ${studentEmail}, ${studentPhone}`,
-    );
     const user = await Student.findByPk(studentId);
-    console.log(user);
     return {
       student_email: studentEmail,
       student_phone: studentPhone,
@@ -397,41 +344,26 @@ async function getStudentDataForRequest(
   }
 
   if (studentId) {
-    console.log(`🔍 Fetching primary student data for: ${studentId}`);
     const student = await Student.findByPk(studentId);
     if (!student) {
-      console.error(`❌ Student not found: ${studentId}`);
       throw new Error("Student not found");
     }
-    console.log(`✅ Found primary student: ${student.student_email}`);
     return student.toJSON();
   }
 
   if (studentData) {
-    console.log(`📋 Using provided student data`);
     return studentData;
   }
 
-  console.error(`❌ No student data available`);
   throw new Error("Either studentId or studentData is required");
 }
 
 function  processSpecialUniversityApiResponse(apiResponse, collegeName) {
-  console.log(`📊 Processing special university response for ${collegeName}:`, {
-    status: apiResponse?.status,
-    data: apiResponse?.data,
-    error: apiResponse?.error,
-  });
 
   if (apiResponse?.error) {
-    console.error(`❌ API Error from ${collegeName}:`, {
-      error: apiResponse.error,
-      location: apiResponse.location,
-    });
 
     // Handle specific error cases
     if (apiResponse.error === "A Lead with same Email already exists.") {
-      console.log(`⚠️ Lead already exists for ${collegeName} - Do not proceed`);
       return "Do not Proceed";
     }
 
@@ -440,7 +372,6 @@ function  processSpecialUniversityApiResponse(apiResponse, collegeName) {
 
   // Check if we have valid response data
   if (!apiResponse?.data) {
-    console.error(`❌ No response data from ${collegeName}`);
     return "Failed due to Technical Issues";
   }
 
@@ -448,27 +379,16 @@ function  processSpecialUniversityApiResponse(apiResponse, collegeName) {
   const status = responseData.Status || responseData.status;
   const message = responseData.Message;
 
-  console.log(`📋 Response analysis:`, {
-    status,
-    messageType: typeof message,
-    hasMessageObject: message && typeof message === "object",
-    isCreated: message?.IsCreated,
-    relatedId: message?.RelatedId,
-    id: message?.Id,
-  });
 
   if (status !== "Success") {
-    console.error(`❌ Non-success status from ${collegeName}:`, status);
     return "Failed due to Technical Issues";
   }
 
   if (!message) {
-    console.error(`❌ No message object in response from ${collegeName}`);
     return "Failed due to Technical Issues";
   }
 
   if (typeof message === "string") {
-    console.log(`⚠️ String message from ${collegeName}:`, message);
 
     // Check for error messages
     if (message.includes("already exists") || message.includes("duplicate")) {
@@ -480,7 +400,6 @@ function  processSpecialUniversityApiResponse(apiResponse, collegeName) {
 
   if (typeof message === "object") {
     if (message.IsCreated === true) {
-      console.log(`✅ ${collegeName} - Lead created successfully, proceed`);
       return "Proceed";
     }
 
@@ -488,34 +407,19 @@ function  processSpecialUniversityApiResponse(apiResponse, collegeName) {
       message.IsCreated === false ||
       responseData?.error == "A Lead with same Email already exists."
     ) {
-      console.log(`⚠️ ${collegeName} - Lead already exists, do not proceed`);
-      console.log(`   Existing lead ID: ${message.RelatedId || message.Id}`);
       return "Do not Proceed";
     }
 
     // If IsCreated is undefined or not boolean
-    console.error(
-      `❌ Invalid IsCreated value from ${collegeName}:`,
-      message.IsCreated,
-    );
     return "Failed due to Technical Issues";
   }
 
   // Fallback for unexpected response format
-  console.error(
-    `❌ Unexpected response format from ${collegeName}:`,
-    responseData,
-  );
   return "Failed due to Technical Issues";
 }
 function processJaypeeApiResponse(apiResponse, collegeName) {
-  console.log(`📊 Processing Jaypee (NoPaperForms) response:`, {
-    status: apiResponse.status,
-    data: apiResponse.data,
-  });
 
   if (!apiResponse?.data) {
-    console.error(`❌ No response data from ${collegeName}`);
     return "Failed due to Technical Issues";
   }
 
@@ -523,16 +427,13 @@ function processJaypeeApiResponse(apiResponse, collegeName) {
   const status = responseData.status || responseData.Status;
   const message = responseData.message || responseData.Message;
 
-  console.log(`📋 Jaypee response analysis:`, { status, message });
 
   // Handle Jaypee/NoPaperForms specific responses
   if (status === "Success") {
-    console.log(`✅ ${collegeName}: Lead created successfully`);
     return "Proceed";
   }
 
   if (status === "Duplicate") {
-    console.log(`⚠️ ${collegeName}: Email/Mobile already registered (DND)`);
     return "Do not Proceed";
   }
 
@@ -544,7 +445,6 @@ function processJaypeeApiResponse(apiResponse, collegeName) {
       msgLower.includes("duplicate") ||
       msgLower.includes("already exists")
     ) {
-      console.log(`⚠️ ${collegeName}: Duplicate lead detected`);
       return "Do not Proceed";
     }
 
@@ -553,22 +453,15 @@ function processJaypeeApiResponse(apiResponse, collegeName) {
       msgLower.includes("mandatory") ||
       msgLower.includes("missing")
     ) {
-      console.log(`⚠️ ${collegeName}: Field missing`);
       return "Field Missing";
     }
   }
 
-  console.error(`❌ ${collegeName}: Failed due to technical issues`);
   return "Failed due to Technical Issues";
 }
 function processShooliniApiResponse(apiResponse, collegeName) {
-  console.log(`📊 Processing Shoolini response:`, {
-    status: apiResponse.status,
-    data: apiResponse.data,
-  });
 
   if (!apiResponse?.data) {
-    console.error(`❌ No response data from Shoolini`);
     return "Failed due to Technical Issues";
   }
 
@@ -578,12 +471,6 @@ function processShooliniApiResponse(apiResponse, collegeName) {
   const exceptionType = responseData.ExceptionType;
   const exceptionMessage = responseData.ExceptionMessage || "";
 
-  console.log(`📋 Shoolini response analysis:`, {
-    status,
-    messageType: typeof message,
-    exceptionType,
-    exceptionMessage,
-  });
 
   // ⚠️ Duplicate lead (Email already exists) → Do not Proceed
   if (
@@ -591,13 +478,11 @@ function processShooliniApiResponse(apiResponse, collegeName) {
     (exceptionType === "MXDuplicateEntryException" ||
       exceptionMessage.includes("already exists"))
   ) {
-    console.log(`⚠️ Shoolini: Duplicate lead detected`);
     return "Do not Proceed";
   }
 
   // ❌ Invalid / unexpected response
   if (status !== "Success" || !message || typeof message !== "object") {
-    console.error(`❌ Invalid response structure from Shoolini`);
     return "Failed due to Technical Issues";
   }
 
@@ -608,15 +493,10 @@ function processShooliniApiResponse(apiResponse, collegeName) {
         ? "Do not Proceed"
         : "Failed due to Technical Issues";
 
-  console.log(`✅ Shoolini result: ${result}`);
   return result;
 }
 
 function processManipalApiResponse(apiResponse, collegeName) {
-  console.log(`📊 Processing Manipal response for ${collegeName}:`, {
-    status: apiResponse?.status,
-    data: apiResponse?.data,
-  });
 
   if (!apiResponse?.data) {
     return "Failed due to Technical Issues";
@@ -675,10 +555,6 @@ function processManipalApiResponse(apiResponse, collegeName) {
 }
 
 function processVivekanandApiResponse(apiResponse, collegeName) {
-  console.log(`📊 Processing Vivekanand response:`, {
-    status: apiResponse.status,
-    data: apiResponse.data,
-  });
 
   if (!apiResponse?.data) return "Failed due to Technical Issues";
 
@@ -698,10 +574,6 @@ function processVivekanandApiResponse(apiResponse, collegeName) {
 }
 
 function processGLAApiResponse(apiResponse, collegeName) {
-  console.log(`📊 Processing GLA response:`, {
-    status: apiResponse.status,
-    data: apiResponse.data,
-  });
 
   if (!apiResponse?.data) return "Failed due to Technical Issues";
 
@@ -711,10 +583,8 @@ function processGLAApiResponse(apiResponse, collegeName) {
       ? responseData
       : JSON.stringify(responseData);
 
-  console.log(`📋 GLA response text: ${responseText.substring(0, 200)}...`);
 
   if (responseText.includes("Email Id or Mobile No already registered")) {
-    console.log(`⚠️ GLA: Duplicate registration detected`);
     return "Do not Proceed";
   }
 
@@ -722,19 +592,13 @@ function processGLAApiResponse(apiResponse, collegeName) {
     responseText.includes("Rgistration successful with UserId:") ||
     responseText.includes("Registration successful with UserId:")
   ) {
-    console.log(`✅ GLA: Registration successful`);
     return "Proceed";
   }
 
-  console.error(`❌ GLA: Unrecognized response`);
   return "Failed due to Technical Issues";
 }
 
 function processGalgotiasApiResponse(apiResponse, collegeName) {
-  console.log(`📊 Processing Galgotias response:`, {
-    status: apiResponse.status,
-    data: apiResponse.data,
-  });
 
   if (!apiResponse?.data) return "Failed due to Technical Issues";
 
@@ -743,21 +607,14 @@ function processGalgotiasApiResponse(apiResponse, collegeName) {
   const status = responseData.status;
   const message = responseData.message || "";
 
-  console.log(`📋 Galgotias response:`, {
-    code,
-    status,
-    message: message.substring(0, 100),
-  });
 
   // ❌ Non-200 code → technical issue
   if (code !== 200) {
-    console.error(`❌ Galgotias: Invalid status code ${code}`);
     return "Failed due to Technical Issues";
   }
 
   // ⚠️ Email already used → Do not Proceed
   if (status === false && message.includes("Email is already being used")) {
-    console.log(`⚠️ Galgotias: Email already in use`);
     return "Do not Proceed";
   }
 
@@ -766,7 +623,6 @@ function processGalgotiasApiResponse(apiResponse, collegeName) {
     status === false &&
     message.includes("Mobile number is already being used")
   ) {
-    console.log(`⚠️ Galgotias: Mobile number already in use`);
     return "Do not Proceed";
   }
 
@@ -776,20 +632,14 @@ function processGalgotiasApiResponse(apiResponse, collegeName) {
     message.includes("Lead has been created successfully") &&
     responseData.data?.lead_id
   ) {
-    console.log(`✅ Galgotias: Lead created successfully`);
     return "Proceed";
   }
 
   // ❌ Everything else
-  console.error(`❌ Galgotias: Unrecognized response`, responseData);
   return "Failed due to Technical Issues";
 }
 
 function processAmityOnlineApiResponse(apiResponse, collegeName) {
-  console.log(`📊 Processing Amity Online response:`, {
-    status: apiResponse.status,
-    data: apiResponse.data,
-  });
 
   if (!apiResponse?.data) return "Failed due to Technical Issues";
 
@@ -798,39 +648,27 @@ function processAmityOnlineApiResponse(apiResponse, collegeName) {
   const leadId = responseData.lead_id;
   const amsId = responseData.ams_id;
 
-  console.log(`📋 Amity Online response:`, { status, leadId, amsId });
 
   if (status === "Lead already exists" && leadId && amsId) {
-    console.log(`⚠️ Amity Online: Lead already exists`);
     return "Do not Proceed";
   }
 
   if (status === "Success" && leadId && amsId) {
-    console.log(`✅ Amity Online: Success`);
     return "Proceed";
   }
 
-  console.error(`❌ Amity Online: Unrecognized response`);
   return "Failed due to Technical Issues";
 }
 
 function processMangalayatanApiResponse(apiResponse, collegeName) {
-  console.log(`📊 Processing Mangalayatan response:`, {
-    status: apiResponse.status,
-    data: apiResponse.data,
-  });
 
   if (!apiResponse?.data) return "Failed due to Technical Issues";
 
   const responseData = apiResponse.data;
   const status = apiResponse.status;
 
-  console.log(
-    `📋 Mangalayatan status: ${status}, leadAlreadyExists: ${responseData.leadAlreadyExists}`,
-  );
 
   if (status !== 200) {
-    console.error(`❌ Mangalayatan: Invalid status ${status}`);
     return "Failed due to Technical Issues";
   }
 
@@ -866,10 +704,6 @@ function CgcApiResponse(apiResponse, collegeName) {
 }
 
 function processLPUOnlineApiResponse(apiResponse, collegeName) {
-  console.log(`📊 Processing LPU Online response:`, {
-    status: apiResponse.status,
-    data: apiResponse.data,
-  });
 
   if (!apiResponse?.data) return "Failed due to Technical Issues";
 
@@ -877,12 +711,8 @@ function processLPUOnlineApiResponse(apiResponse, collegeName) {
   const statusCode = responseData.statusCode || responseData.code;
   const status = responseData.status;
 
-  console.log(`📋 LPU Online: statusCode=${statusCode}, status=${status}`);
 
   if (statusCode === 200 && status === true && responseData.data?.lead_id) {
-    console.log(
-      `✅ LPU Online: Proceed with lead_id ${responseData.data.lead_id}`,
-    );
     return "Proceed";
   }
 
@@ -891,22 +721,15 @@ function processLPUOnlineApiResponse(apiResponse, collegeName) {
     status === false &&
     (!responseData.data || responseData.data.length === 0)
   ) {
-    console.log(`⚠️ LPU Online: Do not Proceed - no data returned`);
     return "Do not Proceed";
   }
 
-  console.error(`❌ LPU Online: Failed due to technical issues`);
   return "Failed due to Technical Issues";
 }
 
 function processApiResponse(apiResponse, collegeName) {
-  console.log(`📊 Processing standard response for ${collegeName}:`, {
-    status: apiResponse.status,
-    data: apiResponse.data,
-  });
 
   if (!apiResponse?.data) {
-    console.error(`❌ No response data from ${collegeName}`);
     return "Failed due to Technical Issues";
   }
 
@@ -915,14 +738,8 @@ function processApiResponse(apiResponse, collegeName) {
   const statusCode = responseData.statusCode || responseData.code;
   const message = responseData.message || responseData.Message;
 
-  console.log(`📋 Standard response analysis:`, {
-    status,
-    statusCode,
-    message: message?.substring(0, 100),
-  });
 
   if (!status && !statusCode) {
-    console.error(`❌ Invalid response from ${collegeName}`);
     return "Failed due to Technical Issues";
   }
 
@@ -932,11 +749,9 @@ function processApiResponse(apiResponse, collegeName) {
 
   if (isLPU) {
     if (status === "Success") {
-      console.log(`✅ LPU: Success`);
       return "Proceed";
     }
     if (status === "Duplicate") {
-      console.log(`⚠️ LPU: Duplicate lead`);
       return "Do not Proceed";
     }
     if (status === "Fail") {
@@ -946,30 +761,24 @@ function processApiResponse(apiResponse, collegeName) {
         messageStr.includes("required") ||
         messageStr.includes("missing")
       ) {
-        console.log(`⚠️ LPU: Field missing`);
         return "Field Missing";
       }
-      console.error(`❌ LPU: Failed`);
       return "Failed due to Technical Issues";
     }
   }
 
   if (status === "Lead already exists") {
-    console.log(`⚠️ ${collegeName}: Lead already exists`);
     return "Do not Proceed";
   }
 
   if (status === "Success") {
-    console.log(`✅ ${collegeName}: Success`);
     return "Proceed";
   }
 
   if (status?.includes("required")) {
-    console.log(`⚠️ ${collegeName}: Required field missing`);
     return "Field Missing";
   }
 
-  console.error(`❌ ${collegeName}: Failed due to technical issues`);
   return "Failed due to Technical Issues";
 }
 
@@ -1092,7 +901,6 @@ export async function processStandardUniversity(
     return statusResult;
   } catch (error) {
     const errorStatus = "Failed due to Technical Issues";
-    console.error(`❌ Error sending to ${collegeName}:`, error.message);
 
     if (studentId) {
       await updateStudentShortlistStatus(
@@ -1123,12 +931,6 @@ async function handleShooliniOnline(
   courseId,
   isPartnerPortal,
 ) {
-  console.log(`🎯 Handling Shoolini University Online`, {
-    collegeName,
-    isPrimary,
-    studentEmail,
-    studentPhone,
-  });
 
   const courseHeaderValue = await findHeaderValue(
     collegeName,
@@ -1160,7 +962,6 @@ async function handleShooliniOnline(
   const fullApiUrl = `${baseApiUrl}?${queryParams.toString()}`;
   const shooliniPayload = [];
 
-  console.log(`🔗 Shoolini API URL: ${fullApiUrl}`);
 
   for (const [key, value] of Object.entries(values)) {
     if (
@@ -1264,12 +1065,6 @@ async function handleShooliniOnline(
     "Content-Type": "application/json",
   };
 
-  console.log(`📤 Sending to Shoolini:`, {
-    url: fullApiUrl,
-    payload: shooliniPayload,
-    isPrimary,
-    studentEmail: studentEmail || userResponse.student_email,
-  });
 
   try {
     const apiResponse = await axios({
@@ -1301,7 +1096,6 @@ async function handleShooliniOnline(
   } catch (error) {
     // 🔥 CRITICAL FIX: Handle LeadSquared business errors sent as HTTP 500
     if (error.response && error.response.data) {
-      console.warn("⚠️ Shoolini returned error response, processing body");
 
       const statusResult = processShooliniApiResponse(
         error.response,
@@ -1351,9 +1145,6 @@ async function handleJaypeeNoPaperForms(
   courseId,
   isPartnerPortal,
 ) {
-  console.log(`🎯 Handling Jaypee NoPaperForms API: ${collegeName}`, {
-    isPrimary,
-  });
 
   const courseHeaderValue = await findHeaderValue(
     collegeName,
@@ -1429,14 +1220,6 @@ async function handleJaypeeNoPaperForms(
     "Content-Type": "application/x-www-form-urlencoded",
   };
 
-  console.log(`📤 Sending to Jaypee (NoPaperForms):`, {
-    url: apiUrl,
-    isPrimary,
-    email:
-      !isPrimary && studentEmail ? studentEmail : userResponse.student_email,
-    phone:
-      !isPrimary && studentPhone ? studentPhone : userResponse.student_phone,
-  });
 
   try {
     const apiResponse = await axios({
@@ -1466,7 +1249,6 @@ async function handleJaypeeNoPaperForms(
 
     return statusResult;
   } catch (error) {
-    console.error(`❌ Jaypee NoPaperForms API error:`, error.message);
 
     // Handle specific NoPaperForms errors
     if (error.response?.data) {
@@ -1523,7 +1305,6 @@ async function handleCucetBotFallback(
   specialPayload = null,
   headers = null
 ) {
-  console.log(` CUCET API technical failure for ${collegeName}. Routing to BullMQ fallback...`);
   const finalLeadData= await CheckDetails(userResponse.student_id || studentId)
   const botRecord = await CuBotSending.create({
     student_id: userResponse.student_id || studentId,
@@ -1614,7 +1395,6 @@ async function handleSpecialUniversity(
     studentId,
     isPartnerPortal,
   );
-  console.log(courseHeaderValue);
   const specialPayload = [
     { Attribute: "FirstName", Value: userResponse.student_name || "" },
     {
@@ -1684,22 +1464,8 @@ async function handleSpecialUniversity(
   if (apiKey1) headers["secret-key"] = apiKey1;
   if (apiKey2) headers["access-key"] = apiKey2;
 
-  console.log(`📤 Sending to special university:`, {
-    url: apiUrl,
-    headers: Object.keys(headers),
-    isPrimary,
-    email:
-      !isPrimary && studentEmail ? studentEmail : userResponse.student_email,
-  });
 
   try {
-    console.log("hello", {
-      method: "POST",
-      url: apiUrl,
-      headers: headers,
-      data: specialPayload,
-      timeout: 15000,
-    });
     const apiResponse = await axios({
       method: "POST",
       url: apiUrl,
@@ -1707,7 +1473,6 @@ async function handleSpecialUniversity(
       data: specialPayload,
       timeout: 15000,
     });
-    console.log(apiResponse, "api.response");
     const statusResult = processSpecialUniversityApiResponse(
       apiResponse,
       collegeName,
@@ -1804,8 +1569,6 @@ async function handleManipalOnline(
   courseId,
   isPartnerPortal = false,
 ) {
-  console.log(`🎯 Handling Manipal Online: ${collegeName}`, { isPrimary });
-  console.log(userResponse);
   const manipalPayload = [
     { Attribute: "FirstName", Value: userResponse.student_name || "" },
     {
@@ -1859,15 +1622,8 @@ async function handleManipalOnline(
   if (apiKey1) headers["secret-key"] = apiKey1;
   if (apiKey2) headers["access-key"] = apiKey2;
 
-  console.log(`📤 Sending to Manipal:`, {
-    url: apiUrl,
-    isPrimary,
-    email:
-      !isPrimary && studentEmail ? studentEmail : userResponse.student_email,
-  });
 
   try {
-    console.log("hello", manipalPayload, apiUrl, headers);
     const apiResponse = await axios({
       method: "POST",
       url: apiUrl,
@@ -1875,7 +1631,6 @@ async function handleManipalOnline(
       data: manipalPayload,
       timeout: 15000,
     });
-    console.log(apiResponse, "api.response");
     const statusResult = processManipalApiResponse(apiResponse, collegeName);
 
     if (studentId) {
@@ -1921,7 +1676,6 @@ async function handleVivekanandGlobal(
   courseId,
   isPartnerPortal,
 ) {
-  console.log(`🎯 Handling Vivekanand Global: ${collegeName}`, { isPrimary });
 
   const vivekanandPayload = [
     { Attribute: "FirstName", Value: userResponse.student_name || "" },
@@ -1978,12 +1732,6 @@ async function handleVivekanandGlobal(
   if (apiKey1) headers["secret-key"] = apiKey1;
   if (apiKey2) headers["access-key"] = apiKey2;
 
-  console.log(`📤 Sending to Vivekanand Global:`, {
-    url: apiUrl,
-    isPrimary,
-    email:
-      !isPrimary && studentEmail ? studentEmail : userResponse.student_email,
-  });
 
   try {
     const apiResponse = await axios({
@@ -2039,7 +1787,6 @@ async function handleLPUOnline(
   courseId,
   isPartnerPortal,
 ) {
-  console.log(`🎯 Handling LPU Online: ${collegeName}`, { isPrimary });
 
   const lpuOnlinePayload = {
     source: "324RJ0174",
@@ -2083,12 +1830,6 @@ async function handleLPUOnline(
     headers["access-key"] = "3344c49e16f54991b9c8e528a0ba0041";
   }
 
-  console.log(`📤 Sending to LPU Online:`, {
-    url: apiUrl,
-    isPrimary,
-    email:
-      !isPrimary && studentEmail ? studentEmail : userResponse.student_email,
-  });
 
   try {
     const apiResponse = await axios({
@@ -2144,7 +1885,6 @@ async function handleGLAOnline(
   courseId,
   isPartnerPortal,
 ) {
-  console.log(`🎯 Handling GLA Online: ${collegeName}`, { isPrimary });
 
   const courseHeaderValue = await findHeaderValue(
     collegeName,
@@ -2179,12 +1919,6 @@ async function handleGLAOnline(
   const fullApiUrl = `${baseApiUrl}?${queryParams.toString()}`;
   const headers = {};
 
-  console.log(`📤 Sending to GLA Online:`, {
-    url: fullApiUrl,
-    isPrimary,
-    email:
-      !isPrimary && studentEmail ? studentEmail : userResponse.student_email,
-  });
 
   try {
     const apiResponse = await axios({
@@ -2268,7 +2002,6 @@ async function handleGalgotiasOnline(
   courseId,
   isPartnerPortal,
 ) {
-  console.log(`🎯 Handling Galgotias Online: ${collegeName}`, { isPrimary });
 
   const courseHeaderValue = await findHeaderValue(
     collegeName,
@@ -2345,14 +2078,6 @@ async function handleGalgotiasOnline(
     }
   }
 
-  console.log(`📤 Sending to Galgotias:`, {
-    url: apiUrl,
-    isPrimary,
-    phone: transformedPayload?.mobile || transformedPayload?.phone,
-    email:
-      !isPrimary && studentEmail ? studentEmail : userResponse.student_email,
-  });
-  console.log(apiUrl, headers, transformedPayload, "harsh");
   try {
     const apiResponse = await axios({
       method: "POST",
@@ -2407,7 +2132,6 @@ async function handleAmityOnline(
   courseId,
   isPartnerPortal,
 ) {
-  console.log(`🎯 Handling Amity Online: ${collegeName}`, { isPrimary });
 
   const courseHeaderValue = await findHeaderValue(
     collegeName,
@@ -2473,12 +2197,6 @@ async function handleAmityOnline(
     }
   }
 
-  console.log(`📤 Sending to Amity Online:`, {
-    url: apiUrl,
-    isPrimary,
-    email:
-      !isPrimary && studentEmail ? studentEmail : userResponse.student_email,
-  });
 
   try {
     const apiResponse = await axios({
@@ -2537,7 +2255,6 @@ async function handleMangalayatanOnline(
   courseId,
   isPartnerPortal,
 ) {
-  console.log(`🎯 Handling Mangalayatan Online: ${collegeName}`, { isPrimary });
 
   const courseHeaderValue = await findHeaderValue(
     collegeName,
@@ -2609,12 +2326,6 @@ async function handleMangalayatanOnline(
     "Content-Type": "application/json",
   };
 
-  console.log(`📤 Sending to Mangalayatan:`, {
-    url: baseApiUrl,
-    isPrimary,
-    email:
-      !isPrimary && studentEmail ? studentEmail : userResponse.student_email,
-  });
 
   try {
     const apiResponse = await axios.post(baseApiUrl, mangalayatanPayload, {
@@ -2669,18 +2380,12 @@ async function CgcLandran(
   courseId,
   isPartnerPortal,
 ) {
-  console.log(
-    `🎯 Handling CGC Landran: ${collegeName}`,
-    { courseId },
-    { isPrimary },
-  );
   const courseHeaderValue = await findHeaderValue(
     collegeName,
     courseId,
     studentId,
     isPartnerPortal,
   );
-  console.log(courseHeaderValue, "course.header.value");
   const defaultValues = {
     name: `${userResponse.student_name || ""} ${""}`.trim(),
     email:
@@ -2715,7 +2420,6 @@ async function CgcLandran(
       headers,
       timeout: 15000,
     });
-    console.log(apiResponse, "api.response.cgc");
     const statusResult = CgcApiResponse(apiResponse, collegeName);
 
     if (studentId) {
@@ -2750,9 +2454,6 @@ async function CgcLandran(
   }
 }
 export const sentStatustoCollege = async (req, res) => {
-  console.log("\n" + "=".repeat(60));
-  console.log(`🚀 START: Sending status to college`);
-  console.log("=".repeat(60));
 
   try {
     const {
@@ -2767,20 +2468,8 @@ export const sentStatustoCollege = async (req, res) => {
       isPartnerPortal = false,
     } = req.body;
 
-    console.log(`📋 Request Parameters:`, {
-      collegeName,
-      studentId,
-      sendType: "manual",
-      studentData,
-      studentEmail,
-      studentPhone,
-      isPrimary: true,
-      courseId,
-      isPartnerPortal,
-    });
 
     if (!collegeName) {
-      console.error(`❌ Missing collegeName`);
       return res.status(400).json({
         success: false,
         message: "collegeName is required",
@@ -2809,16 +2498,8 @@ export const sentStatustoCollege = async (req, res) => {
       isPrimary,
       isPartnerPortal,
     );
-    console.log(
-      `✅ Student data retrieved successfully for studentId: ${studentData}`,
-    );
     userResponse.student_name =
       userResponse.student_name || userResponse.studentName || "";
-    console.log(`✅ Student data retrieved:`, {
-      email: userResponse.student_email,
-      phone: userResponse.student_phone,
-      name: userResponse.student_name,
-    });
 
     if (!isPartnerPortal) {
       const existingEntry = await StudentCollegeApiSentStatus.findOne({
@@ -2830,9 +2511,6 @@ export const sentStatustoCollege = async (req, res) => {
       });
 
       if (existingEntry) {
-        console.log(
-          `⚠️ EXIT: Chandigarh University hit already exists (${existingEntry.api_sent_status}). Skipping API call.`,
-        );
         return res.status(200).json({
           success: existingEntry.api_sent_status === "Proceed",
           message: existingEntry.api_sent_status,
@@ -2862,10 +2540,8 @@ export const sentStatustoCollege = async (req, res) => {
   },
 });
 
-      console.log(` [CUCET Route] Today's official API count for Chandigarh University: ${apiCount}`);
 
       if (apiCount >= 120) {
-        console.log(` CUCET Official API limit reached (${apiCount}/120). Routing to BullMQ Queue...`);
 
         const courseHeaderValue = await findHeaderValue(
           collegeName,
@@ -2985,7 +2661,6 @@ export const sentStatustoCollege = async (req, res) => {
     let statusResult;
 
     if (isSpecialUniversity) {
-      console.log(`🔄 Routing to Special University handler`);
       statusResult = await handleSpecialUniversity(
         collegeName,
         userResponse,
@@ -2998,7 +2673,6 @@ export const sentStatustoCollege = async (req, res) => {
         isPartnerPortal,
       );
     } else if (isJaypeeNoPaperForms) {
-      console.log(`🔄 Routing to Jaypee NoPaperForms handler`);
       statusResult = await handleJaypeeNoPaperForms(
         collegeName,
         userResponse,
@@ -3011,7 +2685,6 @@ export const sentStatustoCollege = async (req, res) => {
         isPartnerPortal,
       );
     } else if (isShooliniOnline) {
-      console.log(`🔄 Routing to Shoolini Online handler`);
       statusResult = await handleShooliniOnline(
         collegeName,
         userResponse,
@@ -3024,7 +2697,6 @@ export const sentStatustoCollege = async (req, res) => {
         isPartnerPortal,
       );
     } else if (isManipalOnline) {
-      console.log(`🔄 Routing to Manipal Online handler`);
       statusResult = await handleManipalOnline(
         collegeName,
         userResponse,
@@ -3037,7 +2709,6 @@ export const sentStatustoCollege = async (req, res) => {
         isPartnerPortal,
       );
     } else if (isVivekanandGlobal) {
-      console.log(`🔄 Routing to Vivekanand Global handler`);
       statusResult = await handleVivekanandGlobal(
         collegeName,
         userResponse,
@@ -3050,7 +2721,6 @@ export const sentStatustoCollege = async (req, res) => {
         isPartnerPortal,
       );
     } else if (isLPUOnline) {
-      console.log(`🔄 Routing to LPU Online handler`);
       statusResult = await handleLPUOnline(
         collegeName,
         userResponse,
@@ -3063,7 +2733,6 @@ export const sentStatustoCollege = async (req, res) => {
         isPartnerPortal,
       );
     } else if (isGLAOnline) {
-      console.log(`🔄 Routing to GLA Online handler`);
       statusResult = await handleGLAOnline(
         collegeName,
         userResponse,
@@ -3076,7 +2745,6 @@ export const sentStatustoCollege = async (req, res) => {
         isPartnerPortal,
       );
     } else if (isGalgotiasOnline) {
-      console.log(`🔄 Routing to Galgotias Online handler`);
       statusResult = await handleGalgotiasOnline(
         collegeName,
         userResponse,
@@ -3089,7 +2757,6 @@ export const sentStatustoCollege = async (req, res) => {
         isPartnerPortal,
       );
     } else if (isAmityOnline) {
-      console.log(`🔄 Routing to Amity Online handler`);
       statusResult = await handleAmityOnline(
         collegeName,
         userResponse,
@@ -3102,7 +2769,6 @@ export const sentStatustoCollege = async (req, res) => {
         isPartnerPortal,
       );
     } else if (isMangalayatanOnline) {
-      console.log(`🔄 Routing to Mangalayatan Online handler`);
       statusResult = await handleMangalayatanOnline(
         collegeName,
         userResponse,
@@ -3131,7 +2797,6 @@ export const sentStatustoCollege = async (req, res) => {
         isPartnerPortal,
       );
     } else {
-      console.log(`🔄 Routing to Standard University handler`);
       statusResult = await processStandardUniversity(
         req,
         collegeName,
@@ -3146,7 +2811,6 @@ export const sentStatustoCollege = async (req, res) => {
       );
     }
 
-    console.log(`🎉 Final Result: ${statusResult}`);
 
     if (statusResult.status === "Failed due to Technical Issues") {
       return res.status(500).json({
@@ -3163,10 +2827,6 @@ export const sentStatustoCollege = async (req, res) => {
       status: statusResult,
     });
   } catch (error) {
-    console.error("\n" + "❌".repeat(20));
-    console.error(`💥 ERROR in sentStatustoCollege:`, error.message);
-    console.error(`Stack:`, error.stack);
-    console.error("❌".repeat(20) + "\n");
 
     if (!error.response) {
       return handleApiError(
@@ -3189,9 +2849,6 @@ export const sentStatustoCollege = async (req, res) => {
       error: error.message,
     });
   } finally {
-    console.log("=".repeat(60));
-    console.log(`🏁 END: Sending status to college`);
-    console.log("=".repeat(60) + "\n");
   }
 };
 const CheckDetails = async (student_id) => {
@@ -3235,7 +2892,6 @@ const CheckDetails = async (student_id) => {
 
   } catch (err) {
 
-    console.log("CheckDetails Error:", err);
 
     return {
       email: null,

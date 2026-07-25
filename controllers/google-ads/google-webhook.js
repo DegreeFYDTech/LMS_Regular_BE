@@ -29,7 +29,7 @@ export const Postwebhook = async (req, res) => {
         phone_number: formattedLead.phone_number,
       },
     });
-console.log(formattedLead,"amy test")
+undefined
     if (!existing) {
       await GoogleWebHook.create(formattedLead);
     } 
@@ -51,16 +51,15 @@ console.log(formattedLead,"amy test")
     //   'Deepak@degreefyd.com',
     //   'Vinay.sharma@degreefyd.com',
     // ]);
-console.log("trigger1")
+undefined
     await forwardToStudentAPI(formattedLead, mappedValues);
   } catch (error) {
-    console.error('Error processing lead webhook:', error.message);
     res.status(500).send('Internal Server Error');
   }
 };
 
 const mapGoogleLead = (lead) => {
-  console.log(lead)
+  undefined
   const fieldMappings = {
     full_name: ['FULL_NAME', 'full_name', 'name', 'Name', 'Full Name'],
     email: ['EMAIL', 'email', 'Email', 'User Email'],
@@ -105,7 +104,7 @@ const mapGoogleLead = (lead) => {
 
 const forwardToStudentAPI = async (formattedLead, mappedValues) => {
   try {
-    console.log(formattedLead,"new trigger1")
+    undefined
     let student_extra_details = mapAnswersByKeyword(formattedLead?.additional_fields)
     await axios.post('http://localhost:3031/v1/student/create', {
       name: formattedLead.full_name,
@@ -128,7 +127,6 @@ const forwardToStudentAPI = async (formattedLead, mappedValues) => {
       ...student_extra_details
     });
   } catch (err) {
-    console.error('Failed to forward lead to student API:', err.message);
   }
 };
 
@@ -191,7 +189,6 @@ export const Func1Controller = async (req, res) => {
         });
 
       } catch (apiError) {
-        console.error(`Error forwarding lead ${lead.form_id}:`, apiError.message);
 
         results.push({
           lead: lead.form_id,
@@ -206,7 +203,6 @@ export const Func1Controller = async (req, res) => {
       results,
     });
   } catch (error) {
-    console.error("Error in Func1Controller:", error.message);
     return res.status(500).json({
       error: "Failed to process lead(s)",
       details: error.message,

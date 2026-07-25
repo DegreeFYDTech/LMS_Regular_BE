@@ -207,7 +207,6 @@ const sendMail = async (data, to='bhanurichandu@gmail.com') => {
     );
     return emailFunction;
   } catch (error) {
-    console.error('Error sending email:', error);
     throw new Error('Error generating email');
   }
 };

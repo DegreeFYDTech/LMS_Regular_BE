@@ -60,7 +60,6 @@ export const handleWebhook = async (req, res) => {
             apiResponse: response.data,
         });
     } catch (error) {
-        console.error('❌ Error in webhook processing:', error.message);
         res.status(500).json({
             message: 'Webhook processing failed',
             error: error.message,

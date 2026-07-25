@@ -22,7 +22,6 @@ export const createCollegeApiSentStatus = async ({
     ]);
     const student = await Student.findByPk(studentId);
     if (!student) {
-      console.error("Student not found for ID:", studentId);
       return;
     }
     const flatCourseIds = course_ids.flat().map(course => course.course_id);
@@ -128,7 +127,6 @@ export const createCollegeApiSentStatus = async ({
       };
     }
   } catch (error) {
-    console.error('Error in createCollegeApiSentStatus:', error);
     throw new Error('Failed to create or update College API sent status');
   }
 };
@@ -150,7 +148,6 @@ async function sendStatusEmail(student, collegeName, status, timestamp, response
     await sendMail(data);
 
   } catch (error) {
-    console.error('Error sending status email:', error);
   }
 }
 async function updatedIncourseStatus(status, course_ids, studentId) {
@@ -170,7 +167,6 @@ async function updatedIncourseStatus(status, course_ids, studentId) {
     );
     return updated;
   } catch (error) {
-    console.error('Error updating course status:', error.message);
     throw error;
   }
 }
@@ -250,7 +246,6 @@ export const getCollegeApiStatusForReport = async (req, res) => {
       data: data,
     });
   } catch (err) {
-    console.error('❌ Error in getCollegeApiStatusForReport:', err);
     return res.status(500).json({
       success: false,
       message: 'Server Error',
@@ -317,7 +312,6 @@ export const downloadCollegeApiStatus = async (req, res) => {
     })
   }
   catch (err) {
-    console.error('❌ Error in getCollegeApiStatusForReport:', err);
     return res.status(500).json({
       success: false,
       message: 'Server Error',
@@ -445,9 +439,9 @@ const CollegeApiHelper = async (param) => {
     });
   }
   catch (e) {
-    console({
+    return {
       success: false
-    })
+    };
   }
 }
 

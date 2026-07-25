@@ -112,7 +112,7 @@ export default async function GenerateEmailFunction(data, subject, reason) {
         return emailFunction
     }
     catch (error) {
-        console.error(error)
+        undefined
         throw new Error('Error generating email')
     }
 }

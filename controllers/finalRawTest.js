@@ -506,7 +506,6 @@ export const getStudentsRawSQL = async (filters) => {
       },
     };
   } catch (error) {
-    console.error('Error in getStudentsRawSQL:', error);
     throw error;
   }
 };

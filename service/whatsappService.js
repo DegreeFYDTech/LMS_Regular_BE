@@ -87,10 +87,6 @@ export const sendNotInterestedFollowup = async (
       whatsapptosend: [messageData],
     };
 
-    console.log(`📤 Sending WhatsApp request:`);
-    console.log(`   Template: ${templateId}`);
-    console.log(`   To: ${formatPhoneNumber(phone)}`);
-    console.log(`   Student: ${studentId}`);
 
     const response = await axios.post(
       `${MEDIA_API_BASE}/mediasend`,
@@ -104,15 +100,10 @@ export const sendNotInterestedFollowup = async (
       },
     );
 
-    console.log(
-      `📩 WhatsApp API Response:`,
-      JSON.stringify(response.data, null, 2),
-    );
 
     if (response.data && Array.isArray(response.data)) {
       const result = response.data[0];
       if (result.Error === "0x204") {
-        console.log(`✅ Message sent to ${result.to}`);
         return {
           success: true,
           messageId: `day_${dayNumberOrTemplate}_${Date.now()}`,
@@ -125,9 +116,6 @@ export const sendNotInterestedFollowup = async (
     }
 
     if (response.status === 200) {
-      console.log(
-        `✅ Successfully sent message to student ${studentId}`,
-      );
       return {
         success: true,
         messageId: response.data?.messageId || `msg_${Date.now()}`,
@@ -139,19 +127,9 @@ export const sendNotInterestedFollowup = async (
       "Failed to send message: " + (response.data?.message || "Unknown error"),
     );
   } catch (error) {
-    console.error(
-      `❌ Error sending message to student ${studentId}:`,
-      error.message,
-    );
 
     if (error.response) {
-      console.error(`   Response status: ${error.response.status}`);
-      console.error(
-        `   Response data:`,
-        JSON.stringify(error.response.data, null, 2),
-      );
     } else if (error.request) {
-      console.error(`   No response received:`, error.request);
     }
 
     return {

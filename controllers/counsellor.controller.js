@@ -46,7 +46,6 @@ export const registerCounsellor = async (req, res) => {
       counsellor: newCounsellor
     });
   } catch (err) {
-    console.error('Registration error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -77,7 +76,6 @@ export const getLoginAttempts = async (req, res) => {
 
     res.json({ attempts: rows, total: count, page, limit });
   } catch (err) {
-    console.error('getLoginAttempts error', err);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -222,7 +220,6 @@ export const loginCounsellor = async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('Login error:', err);
     res.status(500).json({ message: 'Login error' });
   }
 };
@@ -256,7 +253,6 @@ export const logoutCounsellor = async (req, res) => {
 
     res.status(200).json({ message: 'Logout successful' });
   } catch (error) {
-    console.error('Logout error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -273,7 +269,6 @@ export const logoutFromAllDevices = async (req, res) => {
 
     res.status(200).json({ message: 'Logged out successfully' });
   } catch (error) {
-    console.error('Error in logoutFromAllDevices:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -289,7 +284,6 @@ export const getUserDetails = async (req, res) => {
 
     res.json({ user });
   } catch (error) {
-    console.error('getUserDetails error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 };
@@ -421,7 +415,7 @@ export const updateCounsellorStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-    console.log(status, id)
+    undefined
     if (!['active', 'inactive', 'suspended'].includes(status)) {
       return res.status(400).json({ message: 'Invalid status value' });
     }
@@ -431,7 +425,7 @@ export const updateCounsellorStatus = async (req, res) => {
       { where: { counsellor_id: id } }
     );
 
-    console.log(': Counsellor not found', updated)
+    undefined
 
     if (updated === 0) return res.status(404).json({ message: 'Counsellor not found' });
 
@@ -447,7 +441,6 @@ export const updateCounsellorStatus = async (req, res) => {
           ip_address: req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress
         });
       } catch (logError) {
-        console.error("Error logging user action:", logError);
       }
     }
 
@@ -461,14 +454,14 @@ export const changeCounsellorPassword = async (req, res) => {
   try {
     const { id } = req.params;
     const { password: newPassword } = req.body;
-    console.log(id, newPassword)
+    undefined
     if (!newPassword || newPassword.length < 6) {
       return res.status(400).json({ message: 'Password must be at least 6 characters long' });
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    console.log(hashedPassword, 'hasedPass')
-    console.log(hashedPassword)
+    undefined
+    undefined
     const [updated] = await Counsellor.update(
       { counsellor_password: hashedPassword, counsellor_real_password: newPassword },
       { where: { counsellor_id: id } }
@@ -488,7 +481,6 @@ export const changeCounsellorPassword = async (req, res) => {
           ip_address: req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress
         });
       } catch (logError) {
-        console.error("Error logging user action:", logError);
       }
     }
 
@@ -502,7 +494,7 @@ export const updateCounsellorPreferredMode = async (req, res) => {
   try {
     const { id } = req.params;
     const { preferredMode } = req.body;
-    console.log('id', id)
+    undefined
     if (!['Regular', 'Online'].includes(preferredMode)) {
       return res.status(400).json({ message: 'Invalid preferred mode' });
     }
@@ -525,7 +517,6 @@ export const updateCounsellorPreferredMode = async (req, res) => {
           ip_address: req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress
         });
       } catch (logError) {
-        console.error("Error logging user action:", logError);
       }
     }
 
@@ -550,7 +541,6 @@ export const getCounsellorById = async (req, res) => {
 
     return res.status(200).json(response);
   } catch (error) {
-    console.error('Error in getCounsellorById:', error);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
@@ -696,7 +686,6 @@ export const assignCounsellorsToStudents = async (req, res) => {
     })
 
   } catch (error) {
-    console.error('Error in assignCounsellorsToStudents:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -722,7 +711,6 @@ export const makeCounsellorLogout = async (req, res) => {
     res.status(200).json({ message: 'Counsellor logged out successfully' });
 
   } catch (error) {
-    console.error('Error in making Logout :', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -733,7 +721,7 @@ export const makeCounsellorLogout = async (req, res) => {
 
 export const start_Counsellors_break = async (req, res) => {
   const { counselor_id, break_start, break_type, break_notes } = req.body;
-  console.log(req.body)
+  undefined
   try {
     const row = await counsellorBreak.create({
       counsellor_id: counselor_id,
@@ -745,13 +733,13 @@ export const start_Counsellors_break = async (req, res) => {
     res.status(201).send({ success: true, data: row })
   }
   catch (e) {
-    console.log(e.message, 'eror')
+    undefined
   }
 }
 
 export const end_Counsellors_break = async (req, res) => {
   const { counselor_id, break_end } = req.body;
-  console.log(counselor_id, break_end)
+  undefined
   if (!counselor_id) {
     return res.status(400).json({
       success: false,
@@ -838,7 +826,6 @@ export const end_Counsellors_break = async (req, res) => {
 
   } catch (e) {
     await transaction.rollback();
-    console.log(e.message, 'error');
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -850,7 +837,7 @@ export const end_Counsellors_break = async (req, res) => {
 export const activeBreak = async (req, res) => {
   try {
     const { counsellor_id } = req.params;
-    console.log(req.params)
+    undefined
     const activeBreak = await counsellorBreak.findOne({
       where: {
         counsellor_id: counsellor_id,
@@ -858,14 +845,13 @@ export const activeBreak = async (req, res) => {
       },
       order: [['created_at', 'DESC']]
     });
-    console.log('active break', activeBreak)
+    undefined
     res.status(200).json({
       success: true,
       data: activeBreak
     })
   }
   catch (e) {
-    console.log(e.message, 'error');
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -1133,7 +1119,6 @@ export async function getCounsellorBreakStats(param = {}, userRole = null, userI
 export async function getCounsellor_break_stats(req, res) {
   try {
     const user = req.user;
-    console.log('User accessing break stats:', user.id, 'Role:', user.role);
 
     // Pass user role and ID to the stats function
     const data = await getCounsellorBreakStats(req.query, user.role, user.id);
@@ -1160,7 +1145,6 @@ export async function getCounsellor_break_stats(req, res) {
 
     res.status(200).send(response);
   } catch (e) {
-    console.log('Error in getCounsellor_break_stats:', e.message);
     res.status(200).send({
       success: false,
       message: e.message,
@@ -1201,7 +1185,7 @@ export const getCounsellorBreakDetails = async (req, res) => {
 
 export const changeSupervisor = async (req, res) => {
   const { counsellor_id, supervisor_id } = req.body;
-  console.log(counsellor_id, supervisor_id)
+  undefined
   try {
     if (supervisor_id) {
       const supervisor = await Counsellor.findOne({
@@ -1210,7 +1194,7 @@ export const changeSupervisor = async (req, res) => {
           role: { [Op.in]: ['to', 'to_l3'] }
         }
       });
-      console.log(supervisor)
+      undefined
       if (!supervisor) {
         return res.status(404).json({
           message: 'Supervisor not found or not a valid supervisor (role must be "to")'
@@ -1253,7 +1237,6 @@ export const changeSupervisor = async (req, res) => {
       counsellor: formattedCounsellor
     });
   } catch (error) {
-    console.error('Error changing supervisor:', error.message);
     res.status(500).json({ message: 'Error changing supervisor', error: error.message });
   }
 };
@@ -1267,7 +1250,6 @@ export const getCounsellorAccessSettings = async (req, res) => {
     if (!counsellor) return res.status(404).json({ message: 'Counsellor not found' });
     res.json({ settings: counsellor });
   } catch (err) {
-    console.error('getCounsellorAccessSettings error', err);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -1287,7 +1269,6 @@ export const updateCounsellorAccessSettings = async (req, res) => {
     if (updated === 0) return res.status(404).json({ message: 'Counsellor not found or nothing changed' });
     res.json({ message: 'Access settings updated' });
   } catch (err) {
-    console.error('updateCounsellorAccessSettings error', err);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -1309,7 +1290,6 @@ export const bulkUpdateCounsellorAccessSettings = async (req, res) => {
     await Counsellor.update(updates, { where: { counsellor_id: { [Op.in]: ids } } });
     res.json({ message: 'Bulk access settings updated' });
   } catch (err) {
-    console.error('bulkUpdateCounsellorAccessSettings error', err);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -1338,7 +1318,6 @@ export const toggleBlockCounsellor = async (req, res) => {
       is_blocked: newBlockedStatus
     });
   } catch (error) {
-    console.error('Error toggling block status:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -1359,7 +1338,6 @@ export const updateCallSettings = async (req, res) => {
 
     res.json({ message: "Call settings updated", counsellor_phone: counsellor.counsellor_phone, did_number: counsellor.did_number, dialer_user_id: counsellor.dialer_user_id });
   } catch (error) {
-    console.error("updateCallSettings error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };

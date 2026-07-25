@@ -44,18 +44,12 @@ const pricingData = [
 ];
 
 async function seed() {
-    console.log("🚀 SCRIPT STARTED: seedPricingRules.js");
     try {
-        console.log("🔗 Connecting to database...");
         await sequelize.authenticate();
-        console.log("✅ Connection established successfully!");
 
         // Specifically sync ONLY the PricingRule model table
-        console.log("🔄 Syncing PricingRules table...");
         await PricingRule.sync({ alter: true });
-        console.log("✅ PricingRules table ready.");
 
-        console.log("🌱 Inserting/Updating data...");
 
         for (const data of pricingData) {
             const [rule, created] = await PricingRule.findOrCreate({
@@ -64,17 +58,13 @@ async function seed() {
             });
 
             if (created) {
-                console.log(`+ Created: ${data.pageSlug}`);
             } else {
                 await rule.update(data);
-                console.log(`~ Updated: ${data.pageSlug}`);
             }
         }
 
-        console.log("✨ ALL DONE!");
         process.exit(0);
     } catch (error) {
-        console.error("❌ ERROR DURING SEEDING:", error);
         process.exit(1);
     }
 }

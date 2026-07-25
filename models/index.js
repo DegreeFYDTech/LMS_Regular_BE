@@ -241,6 +241,6 @@ export {
   LeadSwapLog
 };
 
-Student.sync({ alter: true }).catch((e) => console.error('sync Student error', e));
-LeadAssignmentRuleL3.sync({ alter: true }).catch((e) => console.error('sync LeadAssignmentRuleL3 error', e));
-LeadSwapLog.sync({ alter: true }).catch((e) => console.error('sync LeadSwapLog error', e));
+Student.sync({ alter: true }).catch((e) => undefined);
+LeadAssignmentRuleL3.sync({ alter: true }).catch((e) => undefined);
+LeadSwapLog.sync({ alter: true }).catch((e) => undefined);

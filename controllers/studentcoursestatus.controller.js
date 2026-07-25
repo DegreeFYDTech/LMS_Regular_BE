@@ -95,7 +95,6 @@ export const updateStudentCourseStatus = async (req, res) => {
           });
         }
       } catch (audienceError) {
-        console.error("Error pushing to audience:", audienceError.message);
       }
     }
 
@@ -106,7 +105,6 @@ export const updateStudentCourseStatus = async (req, res) => {
       isNewEntry: true,
     });
   } catch (error) {
-    console.error("Error updating college status:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -154,8 +152,6 @@ export const getLeadStatusApiReport = async (req, res) => {
       type: sequelize.QueryTypes.SELECT,
     });
 
-    console.log("=== DEBUG 4: Shortlisted courses with student_id ===");
-    console.log(debugResults4);
 
     // Main query with supervisor name
     const query = `
@@ -176,17 +172,12 @@ export const getLeadStatusApiReport = async (req, res) => {
       ORDER BY c.counsellor_name, sc.college_name;
     `;
 
-    console.log("=== FINAL QUERY ===");
-    console.log("Query:", query);
-    console.log("Replacements:", replacements);
 
     const results = await sequelize.query(query, {
       replacements,
       type: sequelize.QueryTypes.SELECT,
     });
 
-    console.log("=== FINAL RESULTS ===");
-    console.log("Total records:", results.length);
 
     // Show records where college_name matches universities with shortlisted courses
     const collegesWithShortlists = [
@@ -199,10 +190,6 @@ export const getLeadStatusApiReport = async (req, res) => {
     const filteredResults = results.filter((r) =>
       collegesWithShortlists.includes(r.college_name),
     );
-    console.log(
-      "Filtered results (colleges with shortlisted courses):",
-      filteredResults,
-    );
 
     res.status(200).json({
       success: true,
@@ -214,7 +201,6 @@ export const getLeadStatusApiReport = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error in getLeadStatusApiReport:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -316,7 +302,6 @@ export const getLeadStatusApiReportDrillDown = async (req, res) => {
 
     res.json({ success: true, data: results });
   } catch (error) {
-    console.error("Error in getLeadStatusApiReportDrillDown:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -373,7 +358,6 @@ export const getCollegeStatus = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error fetching college status:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -623,7 +607,6 @@ export const getShortlistedColleges = async (req, res) => {
       data: updatedArray,
     });
   } catch (error) {
-    console.error("Error fetching shortlisted colleges:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -671,7 +654,6 @@ export const getAllCourseStatusesForStudent = async (req, res) => {
       data: courseStatuses,
     });
   } catch (error) {
-    console.error("Error fetching course statuses:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -755,7 +737,6 @@ export const bulkUpdateCourseStatuses = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error in bulk update:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -862,7 +843,6 @@ export const downloadRecordsForView = async (req, res) => {
       data: filteredFormatted,
     });
   } catch (e) {
-    console.log("Error:", e.message);
     res.status(500).send({ error: "Internal Server Error" });
   }
 };
@@ -910,7 +890,6 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
           };
         }
       } catch (error) {
-        console.error("Error fetching analyser data:", error);
       }
     }
 
@@ -1632,17 +1611,12 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
       ORDER BY ${sortColumn} ${finalSortOrder}
     `;
 
-    console.log("MAIN QUERY:", mainQuery);
 
     const groupedRows = await sequelize.query(mainQuery, {
       type: sequelize.QueryTypes.SELECT,
     });
 
-    console.log("Raw grouped rows count:", groupedRows.length);
     groupedRows.forEach((row, index) => {
-      console.log(
-        `Row ${index}: ${row.group_by} (ID: ${row.counsellor_id}, Status: ${row.counsellor_status})`,
-      );
     });
 
     if (type === "agent") {
@@ -1677,13 +1651,9 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
           seenCounsellorNames.add(counsellorName);
           uniqueGroupedRows.push(row);
         } else {
-          console.log(
-            `Skipping duplicate: ${counsellorName} (ID: ${counsellorId})`,
-          );
         }
       });
 
-      console.log("Unique grouped rows after dedup:", uniqueGroupedRows.length);
 
       // Now get all counsellors from the database
       let allCounsellorsQuery = `
@@ -1713,7 +1683,6 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
         type: sequelize.QueryTypes.SELECT,
       });
 
-      console.log("All counsellors from DB:", allCounsellors.length);
 
       // Create maps for easy lookup
       const existingResultsById = new Map();
@@ -1746,9 +1715,6 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
           usedCounsellorIds.has(counsellorId) ||
           usedCounsellorNames.has(counsellorName)
         ) {
-          console.log(
-            `Skipping duplicate counsellor from DB: ${counsellorName} (${counsellorId})`,
-          );
           return;
         }
 
@@ -1827,7 +1793,6 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
       groupedRows.length = 0;
       groupedRows.push(...mergedRows);
 
-      console.log("Final merged rows count:", groupedRows.length);
     }
 
     const getValue = (row, prop) => {
@@ -1947,7 +1912,6 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
 
         // Skip if we've already processed this group
         if (processedKeys.has(key)) {
-          console.log("Skipping duplicate in overall calc:", key);
           return;
         }
 
@@ -1992,11 +1956,6 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
 
         // Skip if this counsellor was already processed
         if (processedCounsellors.has(counsellorKey)) {
-          console.log(
-            "Skipping duplicate in supervisor grouping:",
-            row.group_by,
-            row.counsellor_id,
-          );
           return;
         }
 
@@ -2148,7 +2107,6 @@ export const getThreeRecordsOfFormFilled = async (req, res) => {
 
     res.status(200).json(response);
   } catch (error) {
-    console.error("Error in getThreeRecordsOfFormFilled:", error);
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 };
@@ -2197,7 +2155,6 @@ export const debugCounsellorAttribution = async (req, res) => {
       coalesce_lead_count: coalesceCheck[0].lead_count,
     });
   } catch (error) {
-    console.error("Error in debugCounsellorAttribution:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -2252,7 +2209,6 @@ export const getThreeRecordsOfFormFilledDrillDown = async (req, res) => {
           };
         }
       } catch (error) {
-        console.error("Error fetching analyser data:", error);
       }
     }
 
@@ -2590,7 +2546,6 @@ export const getThreeRecordsOfFormFilledDrillDown = async (req, res) => {
 
     res.json({ success: true, data: results });
   } catch (error) {
-    console.error("Error in getThreeRecordsOfFormFilledDrillDown:", error);
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 };
@@ -2750,7 +2705,6 @@ export const getNotInterestedAfterCounselingReport = async (req, res) => {
       `;
     };
 
-    console.log("NI Report Query:", buildMainQuery());
 
     // Execute queries in parallel for better performance
     const [counsellorRows, allCounsellors] = await Promise.all([
@@ -2873,7 +2827,6 @@ export const getNotInterestedAfterCounselingReport = async (req, res) => {
 
     res.status(200).json(buildResponse());
   } catch (error) {
-    console.error("Error in getNotInterestedAfterCounselingReport:", error);
 
     res.status(500).json({
       success: false,
@@ -2903,8 +2856,6 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
     const userId = req.user?.id;
     const isAnalyser = userRole === "Analyser";
 
-    console.log("DOWNLOAD - req.user:", req.user);
-    console.log("DOWNLOAD - req.user?.role:", req.user?.role);
 
     // Fetch analyser-specific filters if user is analyser
     let analyserFilters = {};
@@ -2926,10 +2877,8 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
             student_creation_date: analyser.student_creation_date || "",
             source_urls: analyser.source_urls || [],
           };
-          console.log("DOWNLOAD - Analyser filters:", analyserFilters);
         }
       } catch (error) {
-        console.error("DOWNLOAD - Error fetching analyser data:", error);
       }
     }
 
@@ -3506,7 +3455,6 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
       ORDER BY ${sortColumn} ${finalSortOrder}
     `;
 
-    console.log("Executing DOWNLOAD query:", mainQuery);
 
     const groupedRows = await sequelize.query(mainQuery, {
       type: sequelize.QueryTypes.SELECT,
@@ -3648,17 +3596,9 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
     });
 
     if (unassignedStudents.length > 0) {
-      console.log(
-        `📊 Truly Unassigned Students: ${unassignedStudents.length} students with NO counsellor in ANY field`,
-      );
-      console.log("Unassigned Student IDs:");
       unassignedStudents.forEach((student, index) => {
-        console.log(
-          `${index + 1}. ${student.student_id} - Created: ${student.created_at} - Source: ${student.source} - Source URL: ${student.first_source_url || "N/A"}`,
-        );
       });
     } else {
-      console.log("📊 No truly unassigned students found");
     }
 
     const getValue = (row, prop) => {
@@ -3948,7 +3888,6 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
 
     res.status(200).json(response);
   } catch (error) {
-    console.error("Error in getThreeRecordsOfFormFilledDownload:", error);
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 };
@@ -3961,7 +3900,6 @@ export const downloadRecordsForAnalysis = async (req, res) => {
     const skip = (page - 1) * limit;
 
     let fromDate, toDate;
-    console.log(req.query);
     if (!req.query.from && !req.query.to) {
       const today = new Date();
       const yesterday = new Date(today);
@@ -4055,7 +3993,6 @@ export const downloadRecordsForAnalysis = async (req, res) => {
       data: filteredFormatted,
     });
   } catch (err) {
-    console.error("❌ Error in downloadRecordsForAnalysis:", err);
     return res.status(500).json({
       success: false,
       message: "Server Error",
@@ -4216,7 +4153,6 @@ export const getRecordsForAnalysis = async (req, res) => {
       data: paginated,
     });
   } catch (err) {
-    console.error("❌ Error in getRecordsForAnalysis:", err);
     return res.status(500).json({
       success: false,
       message: "Server Error",
@@ -4386,7 +4322,6 @@ export const getRecordsForAnalysishelper = async (req, res) => {
       data: paginated,
     });
   } catch (err) {
-    console.error("❌ Error in getRecordsForAnalysis:", err);
     return res.status(500).json({
       success: false,
       message: "Server Error",
@@ -4592,7 +4527,6 @@ export const getTrackReport = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Track Report Error:", error);
     res.status(500).json({
       success: false,
       error: error.message || error.toString(),
@@ -4685,7 +4619,6 @@ export const getTrackReportDrillDown = async (req, res) => {
 
     res.json({ success: true, data: results });
   } catch (error) {
-    console.error("Track Report Drill-Down Error:", error);
     res.status(500).json({
       success: false,
       error: error.message || error.toString(),
@@ -4697,7 +4630,6 @@ export const getTrackerReport2 = async (req, res) => {
   try {
     const { date_start, date_end, groupBy = "slot" } = req.query;
     const userRole = req.user?.role; // Get user role from request
-    console.log(userRole);
     if (!date_start || !date_end) {
       return res
         .status(400)
@@ -4926,8 +4858,6 @@ export const getTrackerReport2 = async (req, res) => {
     });
 
     // Log for debugging
-    console.log(`Total students with ICC: ${Object.keys(firstICCMap).length}`);
-    console.log(`Sample ICC students:`, Object.keys(firstICCMap).slice(0, 5));
 
     const getGroupKey = (remark) => {
       if (groupBy === "counsellor") {
@@ -5186,7 +5116,6 @@ export const getTrackerReport2 = async (req, res) => {
 
     res.json(response);
   } catch (err) {
-    console.error("Error in getTrackerReport2:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 };
@@ -5445,7 +5374,6 @@ export const getTrackerReport2DrillDown = async (req, res) => {
 
     res.json({ success: true, data });
   } catch (err) {
-    console.error("Error in getTrackerReport2DrillDown:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 };
@@ -5463,9 +5391,6 @@ export const getTrackerReport2RawData = async (req, res) => {
         });
     }
 
-    console.log(
-      `Starting raw student data fetch for ${date_start} to ${date_end}`,
-    );
 
     // Use explicit timezone handling (IST = UTC+5:30)
     const startDate = new Date(date_start + "T00:00:00+05:30");
@@ -5536,7 +5461,6 @@ export const getTrackerReport2RawData = async (req, res) => {
       raw: true,
     });
 
-    console.log(`Found ${remarks.length} remarks in date range`);
 
     // 4. Get FIRST occurrences globally
     // First Connected - from remarks
@@ -5597,11 +5521,6 @@ export const getTrackerReport2RawData = async (req, res) => {
       firstNIMap[r.student_id] = new Date(r.first_ni_at).getTime();
     });
 
-    console.log(
-      `First connected map size: ${Object.keys(firstConnectedMap).length}`,
-    );
-    console.log(`First ICC map size (from students table): ${Object.keys(firstICCMap).length}`);
-    console.log(`First NI map size: ${Object.keys(firstNIMap).length}`);
 
     // 5. Process remarks to identify first-time occurrences in date range
     const studentFirstOccurrences = {}; // Track first-time events per student per counsellor
@@ -5675,9 +5594,6 @@ export const getTrackerReport2RawData = async (req, res) => {
 
     // 6. Convert to array and get student details
     const studentOccurrences = Object.values(studentFirstOccurrences);
-    console.log(
-      `Found ${studentOccurrences.length} student-counsellor pairs with first occurrences in date range`,
-    );
 
     // Debug: Show counts of first-time events
     const firstConnectedCount = studentOccurrences.filter(
@@ -5687,9 +5603,6 @@ export const getTrackerReport2RawData = async (req, res) => {
       (s) => s.is_first_icc,
     ).length;
     const firstNICount = studentOccurrences.filter((s) => s.is_first_ni).length;
-    console.log(
-      `First time connected: ${firstConnectedCount}, ICC: ${firstICCCount}, NI: ${firstNICount}`,
-    );
 
     // 7. Format the data
     const formattedData = studentOccurrences.map((row) => {
@@ -5815,7 +5728,6 @@ export const getTrackerReport2RawData = async (req, res) => {
 
     res.json(response);
   } catch (err) {
-    console.error("Error in getTrackerReport2RawData:", err);
     res.status(500).json({
       success: false,
       error: err.message,
@@ -6113,7 +6025,6 @@ export const getLeadAttemptTimeReport = async (req, res) => {
 
     res.json(response);
   } catch (err) {
-    console.error("Error in getLeadAttemptTimeReport:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 };
@@ -6554,7 +6465,6 @@ END as attempt_category
 
     res.json(response);
   } catch (err) {
-    console.error("Error in getLeadAttemptTimeReportRawData:", err);
     res.status(500).json({
       success: false,
       error: err.message,
@@ -6696,7 +6606,6 @@ export const getLeadAttemptTimeReportDrillDown = async (req, res) => {
 
     res.json({ success: true, data: results });
   } catch (err) {
-    console.error("Error in getLeadAttemptTimeReportDrillDown:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 };
@@ -7012,7 +6921,6 @@ export const getTrackerReportAnalysis3 = async (req, res) => {
 
     res.json(response);
   } catch (err) {
-    console.error("Error in getTrackerReportAnalysis3:", err);
     res.status(500).json({
       success: false,
       error: err.message,
@@ -7048,7 +6956,6 @@ export const bulkInsertCourseStatus = async (req, res) => {
       data: insertedRecords,
     });
   } catch (error) {
-    console.error("Bulk insert error:", error);
     return res
       .status(500)
       .json({ success: false, message: "Server Error", error: error.message });
@@ -7085,7 +6992,6 @@ export const getFormFilledFilterOptions = async (req, res) => {
       })),
     });
   } catch (error) {
-    console.error("Error in getFormFilledFilterOptions:", error);
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 };

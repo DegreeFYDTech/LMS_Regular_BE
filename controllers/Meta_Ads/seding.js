@@ -7869,13 +7869,11 @@ function chunkArray(arr, size) {
 async function sendBatchWise() {
   const batches = chunkArray(data, BATCH_SIZE);
 
-  console.log(`Total batches: ${batches.length}`);
 
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
 
     try {
-      console.log(`Sending batch ${i + 1}`);
 
       const response = await axios.post(
         API_URL,
@@ -7889,22 +7887,16 @@ async function sendBatchWise() {
         }
       );
 
-      console.log(`Batch ${i + 1} Success`);
-      console.log(response.data);
     } catch (error) {
-      console.log(`Batch ${i + 1} Failed`);
 
       if (error.response) {
-        console.log(error.response.data);
       } else {
-        console.log(error.message);
       }
     }
 
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
-  console.log('All batches completed');
 }
 
 sendBatchWise();

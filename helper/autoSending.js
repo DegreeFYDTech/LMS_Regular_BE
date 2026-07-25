@@ -84,29 +84,23 @@ const normalizeConditions = (conditions) => {
 
 export async function autoSending(students_data = []) {
   try {
-    console.log('autoSending called with data type:', typeof students_data);
 
     // Handle both single object and array inputs
     let studentsArray;
     if (Array.isArray(students_data)) {
       studentsArray = students_data;
-      // console.log(`Processing ${studentsArray.length} students as array`);
     } else if (students_data && typeof students_data === 'object') {
       // Check if it looks like a student object
       if (students_data.student_id || students_data.id || students_data.student_email || students_data.student_phone) {
         studentsArray = [students_data];
-        // console.log('Processing single student object');
       } else {
-        console.log('Invalid student object structure:', students_data);
         studentsArray = [];
       }
     } else {
-      console.log('Invalid students data type:', typeof students_data);
       studentsArray = [];
     }
 
     if (studentsArray.length === 0) {
-      console.log('No valid students to process');
       return {
         success: false,
         message: 'No valid students data provided',
@@ -119,14 +113,12 @@ export async function autoSending(students_data = []) {
       };
     }
 
-    // console.log(`Processing ${studentsArray.length} student(s)`);
 
     const rules = await ReconAssignmentRule.findAll({
       where: { is_active: true },
       order: [['priority', 'DESC']]
     });
 
-    // console.log(`Found ${rules.length} active rules`);
 
     let stats = {
       totalStudents: studentsArray.length,
@@ -138,7 +130,6 @@ export async function autoSending(students_data = []) {
     for (const studentData of studentsArray) {
       try {
         const studentId = studentData.student_id || studentData.id || 'Unknown';
-        // console.log(`Processing student: ${studentId}`);
 
         let matchedRule = null;
 
@@ -225,7 +216,6 @@ export async function autoSending(students_data = []) {
         }
 
         if (allMatchingRules.length === 0) {
-          // console.log(`No matching rules found for student ${studentId}, skipping...`);
           stats.skippedStudents++;
           continue;
         }
@@ -234,25 +224,15 @@ export async function autoSending(students_data = []) {
 
         allMatchingRules.sort((a, b) => b.score - a.score);
 
-        // console.log(`Found ${allMatchingRules.length} matching rules for student ${studentId}`);
-        // console.log('Top rules:', allMatchingRules.slice(0, 3).map(r => ({
-        //   rule: r.matchDetails.ruleName,
-        //   score: r.score,
-        //   matchedFields: r.matchDetails.matchedFields.map(f => f.field)
-        // })));
-
         matchedRule = allMatchingRules[0].rule;
 
         const assignedUniversities = matchedRule.assigned_university_names || [];
 
         if (assignedUniversities.length === 0) {
-          console.log(`Rule "${matchedRule.custom_rule_name}" has no assigned universities, skipping student ${studentId}`);
           stats.skippedStudents++;
           continue;
         }
 
-        // console.log(`Rule "${matchedRule.custom_rule_name}" has ${assignedUniversities.length} assigned universities`);
-        // console.log('Universities:', assignedUniversities);
 
         await ReconAssignmentRule.update(
           {
@@ -266,7 +246,6 @@ export async function autoSending(students_data = []) {
 
         for (const college of assignedUniversities) {
           try {
-            // console.log(`Sending student ${studentId} to college: ${college}`);
 
             // Use route parameter method (as per your route definition)
             const encodedCollege = encodeURIComponent(college);
@@ -275,12 +254,10 @@ export async function autoSending(students_data = []) {
             );
 
             // if (!courseResponse.data || !courseResponse.data.response || !courseResponse.data.response.course_id) {
-            //   console.error(`No course found for college: ${college}`);
             //   continue; // Skip this college
             // }
-            console.log("harsh is testing", courseResponse, "harsh is testing")
+            undefined
             const courseId = courseResponse.data.response.course_id;
-            console.log(`Found course ID ${courseId} for college ${college}`);
 
             // Update StudentCourseStatus
             const statusResponse = await axios.post(
@@ -293,7 +270,6 @@ export async function autoSending(students_data = []) {
               }
             );
 
-            console.log('StudentCourseStatus update response:', statusResponse.data);
 
             const logResponse = await axios.post(
               'http://localhost:3031/v1/StudentCourseStatusLogs/sentStatustoCollege',
@@ -305,43 +281,24 @@ export async function autoSending(students_data = []) {
               }
             );
 
-            console.log(`Successfully sent student ${studentId} to ${college}`);
             sentColleges++;
 
           } catch (apiError) {
-            console.error(`Error sending to college ${college} for student ${studentId}:`, apiError.message);
             if (apiError.response) {
-              console.error('API Response error:', {
-                status: apiError.response.status,
-                data: apiError.response.data
-              });
             }
           }
         }
 
         stats.totalCollegesSent += sentColleges;
 
-        console.log(`Sent student ${studentId} to ${sentColleges} out of ${assignedUniversities.length} colleges`);
 
-        console.log({
-          studentId,
-          matchedRule: matchedRule.custom_rule_name,
-          ruleScore: allMatchingRules[0].score,
-          collegesAttempted: assignedUniversities.length,
-          collegesSuccessful: sentColleges,
-          collegesFailed: assignedUniversities.length - sentColleges,
-          timestamp: new Date().toISOString()
-        });
 
       } catch (studentError) {
-        console.error(`Error processing student:`, studentData, 'Error:', studentError.message);
         stats.skippedStudents++;
         continue;
       }
     }
 
-    console.log('Auto sending completed');
-    console.log('Statistics:', stats);
 
     return {
       success: true,
@@ -350,8 +307,6 @@ export async function autoSending(students_data = []) {
     };
 
   } catch (error) {
-    console.error('Unexpected error in autoSending:', error.message);
-    console.error('Error stack:', error.stack);
     return {
       success: false,
       message: error.message,
@@ -472,7 +427,6 @@ export async function findMatchingRuleForStudent(studentData) {
     };
 
   } catch (error) {
-    console.error('Error finding matching rule:', error);
     return {
       success: false,
       message: error.message

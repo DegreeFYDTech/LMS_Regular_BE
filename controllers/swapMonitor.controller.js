@@ -24,7 +24,6 @@ export const executeSwapNow = async (req, res) => {
     await runSwap({ ...SCHEDULES[label], label });
     return res.status(200).json({ success: true, message: `Swap executed successfully for "${label}"` });
   } catch (err) {
-    console.error("[SwapExecute] Error:", err.message);
     return res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -78,7 +77,6 @@ export const executeSwapSingle = async (req, res) => {
       throw err;
     }
   } catch (err) {
-    console.error("[SwapSingle] Error:", err.message);
     return res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -95,7 +93,6 @@ export const getSwapPreview = async (req, res) => {
     const result = await runDryRun(label, config);
     return res.status(200).json(result);
   } catch (err) {
-    console.error("[SwapPreview] Error:", err.message);
     return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
@@ -112,7 +109,6 @@ export const getSwapMonitorDashboard = async (req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.status(200).send(html);
   } catch (err) {
-    console.error("[SwapMonitor] Error:", err.message);
     return res.status(500).send(`<pre style="color:red">Error: ${err.message}</pre>`);
   }
 };
@@ -722,7 +718,6 @@ export const getSwapAnalysisFilters = async (req, res) => {
     const campaigns  = [...new Set(rows.map((r) => r.utm_campaign).filter(Boolean))].sort();
     return res.status(200).json({ success: true, sources, sourceUrls, campaigns, rulesets: Object.keys(SCHEDULES) });
   } catch (err) {
-    console.error("[SwapAnalysisFilters] Error:", err.message);
     return res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -738,7 +733,6 @@ export const getSwapAnalysisData = async (req, res) => {
     const { summary, counsellorRows } = await fetchSwapAnalysisData(filters);
     return res.status(200).json({ success: true, summary, counsellorRows });
   } catch (err) {
-    console.error("[SwapAnalysisData] Error:", err.message);
     return res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -814,7 +808,6 @@ export const getSwapDrilldown = async (req, res) => {
 
     return res.status(200).json({ success: true, rows, metric });
   } catch (err) {
-    console.error("[SwapDrilldown] Error:", err.message);
     return res.status(500).json({ success: false, message: err.message });
   }
 };

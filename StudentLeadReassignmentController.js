@@ -10,7 +10,6 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 
 const getActiveAssignmentRule = async (transaction) => {
-  console.log("Fetching active assignment rule");
   return await StudentAssignmentLogic.findOne({
     where: { status: 'active' },
     transaction
@@ -19,7 +18,6 @@ const getActiveAssignmentRule = async (transaction) => {
 
 const getCounsellorsWithLimits = async (activeRule, transaction) => {
   if (!activeRule?.assignment_logic?.length) {
-    console.log("No assignment logic found");
     return [];
   }
 
@@ -55,7 +53,6 @@ const getCounsellorsWithLimits = async (activeRule, transaction) => {
     }
   }
 
-  console.log(`Found ${counsellorsWithLimits.length} counsellors`);
   return counsellorsWithLimits;
 };
 
@@ -141,7 +138,6 @@ const reassignStudents = async (students, counsellors, activeRule, transaction) 
   let totalReassigned = 0;
   let lastAssignedCounsellorIndex = activeRule.lastAssignedCounsellorIndex || 0;
 
-  console.log(`Starting reassignment with index: ${lastAssignedCounsellorIndex}`);
 
   for (const student of students) {
     if (student.disabled_remarks_count > 0) continue;
@@ -197,13 +193,11 @@ const reassignStudents = async (students, counsellors, activeRule, transaction) 
     lastAssignedCounsellorIndex = (nextCounsellorIndex + 1) % counsellors.length;
     totalReassigned++;
 
-    console.log(`Reassigned student ${student.student_id} to ${nextCounsellor.counsellor_name}`);
   }
 
   if (totalReassigned > 0) {
     activeRule.lastAssignedCounsellorIndex = lastAssignedCounsellorIndex;
     await activeRule.save({ transaction });
-    console.log(`Updated lastAssignedCounsellorIndex to ${lastAssignedCounsellorIndex}`);
   }
 
   return totalReassigned;
@@ -213,64 +207,50 @@ const mainFunction = async () => {
   const transaction = await sequelize.transaction();
 
   try {
-    console.log("=== Starting main function ===");
 
     const activeRule = await getActiveAssignmentRule(transaction);
     if (!activeRule) {
-      console.log("No active rule found");
       await transaction.commit();
       return;
     }
 
-    console.log("Active rule found");
 
     const counsellors = await getCounsellorsWithLimits(activeRule, transaction);
     if (!counsellors.length) {
-      console.log("No counsellors found");
       await transaction.commit();
       return;
     }
 
-    console.log(`Found ${counsellors.length} counsellors`);
 
     await getCounsellorAssignmentCountsThisHour(counsellors, transaction);
 
     const totalHourlyCapacity = counsellors.reduce((sum, c) => sum + c.remaining_capacity, 0);
-    console.log(`Total hourly capacity: ${totalHourlyCapacity}`);
 
     if (totalHourlyCapacity <= 0) {
-      console.log("No capacity available");
       await transaction.commit();
       return;
     }
 
     const eligibleStudents = await findEligibleStudents(activeRule, totalHourlyCapacity, transaction);
-    console.log(`Found ${eligibleStudents.length} eligible students`);
 
     if (!eligibleStudents.length) {
-      console.log("No eligible students found");
       await transaction.commit();
       return;
     }
 
     const reassignedCount = await reassignStudents(eligibleStudents, counsellors, activeRule, transaction);
-    console.log(`Total reassigned: ${reassignedCount}`);
 
     await transaction.commit();
-    console.log("=== Main function completed ===");
 
   } catch (error) {
-    console.error("Error in mainFunction:", error);
     await transaction.rollback();
   }
 };
 
 sequelize.authenticate()
   .then(() => {
-    console.log('Database connected');
 
     cron.schedule("0 9-19 * * *", () => {
-      console.log('Cron triggered at:', dayjs().tz("Asia/Kolkata").format('HH:mm:ss'));
       mainFunction();
     }, {
       timezone: "Asia/Kolkata",
@@ -278,14 +258,11 @@ sequelize.authenticate()
       runOnInit: false
     });
 
-    console.log("Cron job scheduled: 9 AM to 7 PM IST hourly");
   })
   .catch(err => {
-    console.error('Database connection failed:', err);
   });
 
 process.on('SIGINT', () => {
-  console.log('Shutting down');
   process.exit(0);
 });
 

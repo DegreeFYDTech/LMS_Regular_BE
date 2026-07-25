@@ -16,7 +16,6 @@ export const createPricingRule = async (req, res) => {
             data: rule,
         });
     } catch (error) {
-        console.error("Error creating pricing rule:", error);
         res.status(500).json({
             success: false,
             message: error.name === "SequelizeUniqueConstraintError"
@@ -61,7 +60,6 @@ export const getAllPricingRules = async (req, res) => {
             data: rules,
         });
     } catch (error) {
-        console.error("Error fetching pricing rules:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -78,7 +76,6 @@ export const getPricingRuleById = async (req, res) => {
         }
         res.status(200).json({ success: true, data: rule });
     } catch (error) {
-        console.error("Error fetching pricing rule:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -103,7 +100,6 @@ export const updatePricingRule = async (req, res) => {
             data: rule,
         });
     } catch (error) {
-        console.error("Error updating pricing rule:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -125,7 +121,6 @@ export const deletePricingRule = async (req, res) => {
             message: "Pricing rule deleted successfully",
         });
     } catch (error) {
-        console.error("Error deleting pricing rule:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };

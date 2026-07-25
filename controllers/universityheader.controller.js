@@ -15,7 +15,6 @@ export const getUniversityHeaders = async (req, res) => {
 
     return res.status(200).json(universityHeader);
   } catch (error) {
-    console.error('Error getting university headers:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -38,7 +37,6 @@ export const saveUniversityHeaders = async (req, res) => {
 
     return res.status(200).json(record);
   } catch (error) {
-    console.error('Error saving university headers:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -58,7 +56,6 @@ export const deleteUniversityHeaders = async (req, res) => {
 
     return res.status(200).json({ message: 'University headers deleted successfully' });
   } catch (error) {
-    console.error('Error deleting university headers:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -91,7 +88,6 @@ export const addHeaderValue = async (req, res) => {
 
     return res.status(200).json(universityHeader);
   } catch (error) {
-    console.error('Error adding header value:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -122,7 +118,6 @@ export const deleteHeader = async (req, res) => {
       universityHeader,
     });
   } catch (error) {
-    console.error('Error deleting header:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

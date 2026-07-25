@@ -108,7 +108,6 @@ export const getFormTypeStudentCondition = async (formType) => {
       ids: paidIds,
     };
   } catch (err) {
-    console.error("getFormTypeStudentCondition error:", err.message);
     return { condition: null, sqlFragment: "", ids: null };
   }
 };
@@ -301,7 +300,6 @@ export const getCounsellorStats = async (req, res) => {
       filters: { start_date, end_date, counsellor_id },
     });
   } catch (error) {
-    console.error("Error fetching counsellor stats:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch counsellor statistics",
@@ -458,7 +456,6 @@ export const getCounsellorStatsDrillDown = async (req, res) => {
 
     res.json({ success: true, data: rows });
   } catch (error) {
-    console.error("Error in getCounsellorStatsDrillDown:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch drill-down data",
@@ -908,7 +905,6 @@ export const getFormData = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error in getFormData:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -1231,7 +1227,6 @@ export const getFormToAdmissionsReport = async (req, res) => {
       message: "Form to Admissions report fetched successfully",
     });
   } catch (error) {
-    console.error("Error fetching form to admissions report:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch form to admissions report",
@@ -1270,7 +1265,6 @@ export const getFormToAdmissionsFilterOptions = async (req, res) => {
       })),
     });
   } catch (error) {
-    console.error("Error in getFormToAdmissionsFilterOptions:", error);
     return res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 };
@@ -1318,7 +1312,6 @@ export const getStudentJourneyDetails = async (req, res) => {
       message: "Student journey details fetched successfully",
     });
   } catch (error) {
-    console.error("Error fetching student journey details:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch student journey details",
@@ -1392,9 +1385,6 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
       );
 
       if (!fromCounsellor || fromCounsellor.length === 0) {
-        console.warn(
-          `Source counsellor ${fromCounsellorId} not found, but continuing with replacement`,
-        );
       }
     }
 
@@ -1452,10 +1442,8 @@ export const replaceL3CounsellorForStudents = async (req, res) => {
     try {
       await transaction.rollback();
     } catch (rollbackError) {
-      console.error("Error rolling back transaction:", rollbackError);
     }
 
-    console.error("Error replacing L3 counsellor:", error);
 
     // Check for connection errors
     if (error.code === "ECONNRESET" || error.parent?.code === "ECONNRESET") {
@@ -1538,10 +1526,8 @@ export const replaceL3CounsellorForSpecificJourney = async (req, res) => {
     try {
       await transaction.rollback();
     } catch (rollbackError) {
-      console.error("Error rolling back transaction:", rollbackError);
     }
 
-    console.error("Error replacing L3 counsellor for specific journey:", error);
 
     if (error.code === "ECONNRESET" || error.parent?.code === "ECONNRESET") {
       return res.status(503).json({
@@ -1614,8 +1600,6 @@ export const createStatusLog = async (req, res) => {
       { latest_course_status: status },
       { where: { course_id: courseId, student_id: studentId } },
     );
-    console.log("Journey entry created:", journeyEntry.status_history_id);
-    console.log("Journey entry created:", journeyEntry.status_history_id);
 
     if (
       status == "Form Submitted – Portal Pending" ||
@@ -1645,7 +1629,6 @@ export const createStatusLog = async (req, res) => {
           });
         }
       } catch (l3Error) {
-        console.error("L3 assignment error:", l3Error.message);
       }
     }
 
@@ -1672,7 +1655,6 @@ export const createStatusLog = async (req, res) => {
           `New Application – ${courseDetails.university_name}`,
         );
       } catch (emailErr) {
-        console.error("Application email trigger failed:", emailErr.message);
       }
     }
 
@@ -1681,7 +1663,6 @@ export const createStatusLog = async (req, res) => {
       logId: journeyEntry.status_history_id,
     });
   } catch (error) {
-    console.error("Error creating status log:", error.message);
     return res.status(500).json({
       message: "Internal server error",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
@@ -1776,7 +1757,6 @@ export const getCollegeStatusReports = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error in getCollegeStatusReports:", error);
     res.status(500).json({
       success: false,
       message: "Error generating reports",
@@ -1785,67 +1765,168 @@ export const getCollegeStatusReports = async (req, res) => {
   }
 };
 
-// Drill-down: given a list of student_ids (the ones bundled into a pivot cell via
-// getCollegesPivotReport/getCounsellorPivotReport's `drilldown` map), return display details.
-export const getCollegeStatusDrillDownStudents = async (req, res) => {
+// Drill-down: given the same filters used to build the pivot (reportType, date range, form_type)
+// plus the specific cell (groupLabel + status), re-run the underlying query scoped to that cell
+// and return a paginated, live result — mirrors how the F2A report's drilldown works.
+export const getCollegeStatusReportDrilldown = async (req, res) => {
   try {
-    const { ids } = req.query;
-    if (!ids) {
-      return res.status(400).json({ success: false, message: "ids is required" });
-    }
-    const studentIds = [...new Set(ids.split(",").map((id) => id.trim()).filter(Boolean))];
-    if (studentIds.length === 0) {
-      return res.json({ success: true, data: [] });
-    }
+    const {
+      reportType = "colleges",
+      groupLabel,
+      status,
+      startDate,
+      endDate,
+      collegeId,
+      firstTimeFrom,
+      firstTimeTo,
+      form_type,
+      page = 1,
+      limit = 20,
+    } = req.query;
 
-    const students = await Student.findAll({
-      where: { student_id: { [Op.in]: studentIds } },
-      attributes: [
-        "student_id",
-        "student_name",
-        "student_phone",
-        "student_email",
-        "source",
-        "current_student_status",
-        "assigned_counsellor_id",
-        "assigned_counsellor_l3_id",
-        "created_at",
-      ],
-      raw: true,
-    });
-
-    const counsellorIds = [
-      ...new Set(
-        students.flatMap((s) => [s.assigned_counsellor_id, s.assigned_counsellor_l3_id].filter(Boolean)),
-      ),
-    ];
-    const counsellorNameMap = {};
-    if (counsellorIds.length > 0) {
-      const counsellors = await Counsellor.findAll({
-        where: { counsellor_id: { [Op.in]: counsellorIds } },
-        attributes: ["counsellor_id", "counsellor_name"],
-        raw: true,
-      });
-      counsellors.forEach((c) => {
-        counsellorNameMap[c.counsellor_id] = c.counsellor_name;
-      });
+    if (!groupLabel || !status) {
+      return res.status(400).json({ success: false, message: "groupLabel and status are required" });
     }
 
-    const data = students.map((s) => ({
-      student_id: s.student_id,
-      student_name: s.student_name,
-      phone: s.student_phone,
-      email: s.student_email,
-      source: s.source,
-      current_student_status: s.current_student_status,
-      counsellor_name_l2: counsellorNameMap[s.assigned_counsellor_id] || "Unassigned",
-      counsellor_name_l3: counsellorNameMap[s.assigned_counsellor_l3_id] || "Unassigned",
-      created_at: s.created_at,
-    }));
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, parseInt(limit) || 20);
+    const offset = (pageNum - 1) * limitNum;
 
-    res.json({ success: true, data });
+    const { sqlFragment: formTypeSql } = await getFormTypeStudentCondition(form_type);
+
+    const isFirstTimeFilter = !!(firstTimeFrom || firstTimeTo);
+    const isDateFilter = !!(startDate || endDate);
+
+    const replacements = { status, groupLabel, limit: limitNum, offset };
+
+    // Same "first-entry" / "latest-entry" / "no filter" semantics as getCollegesPivotReport / getCounsellorPivotReport.
+    let baseSql;
+    if (isFirstTimeFilter) {
+      baseSql = `
+        SELECT csh.student_id, csh.course_id, csh.course_status, csh.created_at, csh.assigned_l3_counsellor_id
+        FROM course_status_journeys csh
+        INNER JOIN (
+          SELECT student_id, course_id, MIN(created_at) AS first_entry_date
+          FROM course_status_journeys
+          WHERE 1=1 ${formTypeSql}
+          GROUP BY student_id, course_id
+        ) first_entry ON csh.student_id = first_entry.student_id
+                      AND csh.course_id = first_entry.course_id
+                      AND csh.created_at = first_entry.first_entry_date
+        WHERE csh.course_status != 'Walkin Marked'
+        ${firstTimeFrom ? `AND (csh.created_at AT TIME ZONE 'Asia/Kolkata')::date >= :firstTimeFrom` : ''}
+        ${firstTimeTo ? `AND (csh.created_at AT TIME ZONE 'Asia/Kolkata')::date <= :firstTimeTo` : ''}
+      `;
+      if (firstTimeFrom) replacements.firstTimeFrom = firstTimeFrom;
+      if (firstTimeTo) replacements.firstTimeTo = firstTimeTo;
+    } else if (isDateFilter) {
+      baseSql = `
+        SELECT csh.student_id, csh.course_id, csh.course_status, csh.created_at, csh.assigned_l3_counsellor_id
+        FROM course_status_journeys csh
+        INNER JOIN (
+          SELECT csh_inner.student_id, csh_inner.course_id, MAX(csh_inner.created_at) AS latest_date
+          FROM course_status_journeys csh_inner
+          WHERE csh_inner.course_status != 'Walkin Marked'
+          ${startDate ? `AND (csh_inner.created_at AT TIME ZONE 'Asia/Kolkata')::date >= :startDate` : ''}
+          ${endDate ? `AND (csh_inner.created_at AT TIME ZONE 'Asia/Kolkata')::date <= :endDate` : ''}
+          ${formTypeSql}
+          GROUP BY csh_inner.student_id, csh_inner.course_id
+        ) latest ON csh.student_id = latest.student_id
+                 AND csh.course_id = latest.course_id
+                 AND csh.created_at = latest.latest_date
+        WHERE csh.course_status != 'Walkin Marked'
+      `;
+      if (startDate) replacements.startDate = startDate;
+      if (endDate) replacements.endDate = endDate;
+    } else {
+      baseSql = `
+        SELECT csh.student_id, csh.course_id, csh.course_status, csh.created_at, csh.assigned_l3_counsellor_id
+        FROM course_status_journeys csh
+        INNER JOIN (
+          SELECT student_id, course_id, MAX(created_at) AS latest_date
+          FROM course_status_journeys
+          WHERE course_status != 'Walkin Marked'
+          ${formTypeSql}
+          GROUP BY student_id, course_id
+        ) latest ON csh.student_id = latest.student_id
+                 AND csh.course_id = latest.course_id
+                 AND csh.created_at = latest.latest_date
+        WHERE csh.course_status != 'Walkin Marked'
+      `;
+    }
+
+    let outerSql;
+    if (reportType === "l2") {
+      // groupLabel is a counsellor name (or "Unassigned"); assigned_counsellor_id lives on `students`.
+      // L3, however, is only reliably populated per-course on the journey row (students.assigned_counsellor_l3_id is unused/null).
+      outerSql = `
+        SELECT filtered.student_id, filtered.course_id, filtered.created_at,
+               st.student_name, st.student_phone, st.student_email, st.source,
+               filtered.course_status AS current_student_status,
+               uc.course_name, uc.university_name,
+               COALESCE(cl2.counsellor_name, 'Unassigned') AS counsellor_name_l2,
+               COALESCE(cl3j.counsellor_name, 'Unassigned') AS counsellor_name_l3,
+               COUNT(*) OVER() AS _total_count
+        FROM (${baseSql}) filtered
+        JOIN students st ON st.student_id = filtered.student_id
+        LEFT JOIN counsellors cl2 ON st.assigned_counsellor_id = cl2.counsellor_id
+        LEFT JOIN counsellors cl3j ON filtered.assigned_l3_counsellor_id = cl3j.counsellor_id
+        LEFT JOIN university_courses uc ON uc.course_id = filtered.course_id
+        WHERE filtered.course_status = :status
+          AND COALESCE(cl2.counsellor_name, 'Unassigned') = :groupLabel
+        ORDER BY filtered.created_at DESC
+        LIMIT :limit OFFSET :offset
+      `;
+    } else if (reportType === "l3") {
+      // assigned_l3_counsellor_id lives directly on the journey row (per student+course).
+      outerSql = `
+        SELECT filtered.student_id, filtered.course_id, filtered.created_at,
+               st.student_name, st.student_phone, st.student_email, st.source,
+               filtered.course_status AS current_student_status,
+               uc.course_name, uc.university_name,
+               COALESCE(cl2.counsellor_name, 'Unassigned') AS counsellor_name_l2,
+               COALESCE(cl3j.counsellor_name, 'Unassigned') AS counsellor_name_l3,
+               COUNT(*) OVER() AS _total_count
+        FROM (${baseSql}) filtered
+        LEFT JOIN students st ON st.student_id = filtered.student_id
+        LEFT JOIN counsellors cl2 ON st.assigned_counsellor_id = cl2.counsellor_id
+        LEFT JOIN counsellors cl3j ON filtered.assigned_l3_counsellor_id = cl3j.counsellor_id
+        LEFT JOIN university_courses uc ON uc.course_id = filtered.course_id
+        WHERE filtered.course_status = :status
+          AND COALESCE(cl3j.counsellor_name, 'Unassigned') = :groupLabel
+        ORDER BY filtered.created_at DESC
+        LIMIT :limit OFFSET :offset
+      `;
+    } else {
+      // colleges — L3 comes from the journey row, same reasoning as the l2 branch above.
+      outerSql = `
+        SELECT filtered.student_id, filtered.course_id, filtered.created_at,
+               st.student_name, st.student_phone, st.student_email, st.source,
+               filtered.course_status AS current_student_status,
+               uc.course_name, uc.university_name,
+               COALESCE(cl2.counsellor_name, 'Unassigned') AS counsellor_name_l2,
+               COALESCE(cl3j.counsellor_name, 'Unassigned') AS counsellor_name_l3,
+               COUNT(*) OVER() AS _total_count
+        FROM (${baseSql}) filtered
+        JOIN university_courses uc ON uc.course_id = filtered.course_id
+        LEFT JOIN students st ON st.student_id = filtered.student_id
+        LEFT JOIN counsellors cl2 ON st.assigned_counsellor_id = cl2.counsellor_id
+        LEFT JOIN counsellors cl3j ON filtered.assigned_l3_counsellor_id = cl3j.counsellor_id
+        WHERE filtered.course_status = :status
+          AND uc.university_name = :groupLabel
+          ${collegeId ? `AND uc.course_id = :collegeId` : ''}
+        ORDER BY filtered.created_at DESC
+        LIMIT :limit OFFSET :offset
+      `;
+      if (collegeId) replacements.collegeId = collegeId;
+    }
+
+    const rows = await sequelize.query(outerSql, { replacements, type: QueryTypes.SELECT });
+    const total = rows.length > 0 ? parseInt(rows[0]._total_count) : 0;
+    const data = rows.map(({ _total_count, ...r }) => r);
+
+    res.json({ success: true, data, total, page: pageNum, limit: limitNum });
   } catch (error) {
-    console.error("Error in getCollegeStatusDrillDownStudents:", error);
     res.status(500).json({ success: false, message: "Error fetching drill-down students" });
   }
 };
@@ -1983,15 +2064,12 @@ const getCollegesPivotReport = async (
     }
   }
 
-  console.log("Executing SQL:", sql);
-  console.log("Replacements:", replacements);
 
   const records = await sequelize.query(sql, {
     replacements,
     type: QueryTypes.SELECT,
   });
 
-  console.log(`Found ${records.length} records`);
 
   if (records.length === 0) {
     return {
@@ -2006,10 +2084,9 @@ const getCollegesPivotReport = async (
   // Aggregate by college
   const collegeMap = new Map();
   const statusTotals = {};
-  const drilldown = {}; // { [college]: { [status]: [student_id, ...] } }
 
   records.forEach((record) => {
-    const { college, course_status: status, student_id } = record;
+    const { college, course_status: status } = record;
 
     if (!collegeMap.has(college)) {
       collegeMap.set(college, { college, total: 0, statuses: {} });
@@ -2019,10 +2096,6 @@ const getCollegesPivotReport = async (
     data.statuses[status] = (data.statuses[status] || 0) + 1;
     data.total++;
     statusTotals[status] = (statusTotals[status] || 0) + 1;
-
-    if (!drilldown[college]) drilldown[college] = {};
-    if (!drilldown[college][status]) drilldown[college][status] = [];
-    drilldown[college][status].push(student_id);
   });
 
   const allStatuses = Object.keys(statusTotals);
@@ -2043,7 +2116,6 @@ const getCollegesPivotReport = async (
     columns: ["college", ...allStatuses, "total"],
     statuses: allStatuses,
     totals: { statusTotals, grandTotal },
-    drilldown,
   };
 };
 
@@ -2237,7 +2309,6 @@ const getCounsellorPivotReport = async (
   // Aggregate by counsellor
   const counsellorMap = new Map();
   const statusTotals = {};
-  const drilldownByCounsellorId = {}; // { [counsellorId]: { [status]: [student_id, ...] } }
 
   records.forEach((record) => {
     let counsellorId;
@@ -2259,10 +2330,6 @@ const getCounsellorPivotReport = async (
     data.statuses[status] = (data.statuses[status] || 0) + 1;
     data.total++;
     statusTotals[status] = (statusTotals[status] || 0) + 1;
-
-    if (!drilldownByCounsellorId[counsellorId]) drilldownByCounsellorId[counsellorId] = {};
-    if (!drilldownByCounsellorId[counsellorId][status]) drilldownByCounsellorId[counsellorId][status] = [];
-    drilldownByCounsellorId[counsellorId][status].push(record.student_id);
   });
 
   // Get counsellor names
@@ -2305,12 +2372,6 @@ const getCounsellorPivotReport = async (
 
   const grandTotal = rows.reduce((sum, row) => sum + row.total, 0);
 
-  // Re-key drilldown by counsellor NAME (matches row.counsellor) instead of internal id
-  const drilldown = {};
-  Object.entries(drilldownByCounsellorId).forEach(([counsellorId, statusMap]) => {
-    drilldown[getCounsellorName(counsellorId)] = statusMap;
-  });
-
   return {
     view: `${level}-pivot`,
     rows,
@@ -2318,7 +2379,6 @@ const getCounsellorPivotReport = async (
     statuses: allStatuses,
     level,
     totals: { statusTotals, grandTotal },
-    drilldown,
   };
 };
 // export const getCollegesList = async (req, res) => {
@@ -2334,7 +2394,6 @@ const getCounsellorPivotReport = async (
 //       data: colleges,
 //     });
 //   } catch (error) {
-//     console.error("Error fetching colleges:", error);
 //     res.status(500).json({
 //       success: false,
 //       message: "Error fetching colleges list",
@@ -2345,10 +2404,6 @@ const getCounsellorPivotReport = async (
 export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
   try {
     const { studentIds } = req.body;
-    console.log(
-      "Received student IDs for distinct L3 counsellors:",
-      studentIds,
-    );
 
     if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
       return res.status(400).json({
@@ -2523,7 +2578,6 @@ export const getDistinctL3CounsellorsByStudentIds = async (req, res) => {
       message: "L3 counsellors and latest journey details fetched successfully",
     });
   } catch (error) {
-    console.error("Error fetching distinct L3 counsellors:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch L3 counsellors data",
@@ -2810,7 +2864,6 @@ export const exportCollegeStatusReports = async (req, res) => {
 
     res.send(csvData);
   } catch (error) {
-    console.error("Error exporting college status reports:", error);
     res.status(500).json({
       success: false,
       message: "Error exporting reports",
@@ -2826,7 +2879,6 @@ export const getCollegesList = async (req, res) => {
     );
     return res.json({ success: true, data: results.map(r => r.university_name) });
   } catch (error) {
-    console.error('Error in getCollegesList:', error.message);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -2949,7 +3001,6 @@ export const getCourseGraphReport = async (req, res) => {
 
     return res.json({ success: true, data: { dates, series } });
   } catch (error) {
-    console.error('Error in getCourseGraphReport:', error.message);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -2982,7 +3033,6 @@ export const getPaidPhones = async (req, res) => {
 
     return res.json({ success: true, data });
   } catch (err) {
-    console.error("getPaidPhones error:", err.message);
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
@@ -3040,7 +3090,6 @@ export const checkRegistrationFormType = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("checkRegistrationFormType error:", error.message);
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
@@ -3104,8 +3153,8 @@ export const getF2AReport = async (req, res) => {
 
     const groupExprs = {
       agent:      { label: `COALESCE(c.counsellor_name, 'Unassigned')`, join: `LEFT JOIN counsellors c ON csj.assigned_l3_counsellor_id = c.counsellor_id` },
-      source:     { label: `COALESCE(s.source, 'Unknown')`,            join: `JOIN students s ON csj.student_id = s.student_id` },
-      source_url: { label: `COALESCE(SPLIT_PART(s.first_source_url, '?', 1), 'Unknown')`, join: `JOIN students s ON csj.student_id = s.student_id` },
+      source:     { label: `COALESCE(s.source, 'Unknown')`,            join: `LEFT JOIN students s ON csj.student_id = s.student_id` },
+      source_url: { label: `COALESCE(SPLIT_PART(s.first_source_url, '?', 1), 'Unknown')`, join: `LEFT JOIN students s ON csj.student_id = s.student_id` },
       campaign:   { label: `COALESCE(la.utm_campaign, 'Direct')`,      join: `LEFT JOIN first_la la ON la.student_id = csj.student_id` },
       created_at: { label: `TO_CHAR((csj.created_at + interval '5 hours 30 minutes'), 'YYYY-MM-DD')`, join: `` },
     };
@@ -3169,6 +3218,7 @@ export const getF2AReport = async (req, res) => {
       student_journey_flags AS (
         SELECT
           student_id,
+          course_id,
           BOOL_OR(course_status = 'Form Submitted – Portal Pending')                                          AS form_pp,
           BOOL_OR(course_status = 'Form Submitted – Completed')                                               AS form_completed,
           BOOL_OR(course_status = 'Walkin Completed')                                                         AS walkin_completed,
@@ -3176,10 +3226,16 @@ export const getF2AReport = async (req, res) => {
           BOOL_OR(course_status IN ('Exam/Interview Scheduled','Exam Interview Scheduled'))                    AS exam_scheduled,
           BOOL_OR(course_status = 'Offer Letter/Results Pending')                                             AS offer_pending,
           BOOL_OR(course_status = 'Offer Letter/Results Released')                                            AS offer_released,
-          BOOL_OR(course_status = 'Ready For Admission')                                                      AS ready_for_admission,
-          BOOL_OR(course_status = 'Admission') AS ever_admitted
+          BOOL_OR(course_status = 'Ready For Admission')                                                      AS ready_for_admission
         FROM course_status_journeys
-        GROUP BY student_id
+        GROUP BY student_id, course_id
+      ),
+      first_admission AS (
+        SELECT DISTINCT ON (student_id, course_id)
+          student_id, course_id, created_at AS admission_date
+        FROM course_status_journeys
+        WHERE course_status = 'Admission'
+        ORDER BY student_id, course_id, created_at ASC
       ),
       l3_remark_stats AS (
         SELECT sr.student_id,
@@ -3200,22 +3256,23 @@ export const getF2AReport = async (req, res) => {
       )
       SELECT
         bs.group_label,
-        COUNT(DISTINCT bs.student_id)                                                                                       AS leads,
-        COUNT(DISTINCT CASE WHEN lrs.has_remark    THEN bs.student_id END)                                                 AS attempted,
-        COUNT(DISTINCT CASE WHEN sjf.form_pp              THEN bs.student_id END)                                                 AS form_submitted_pp,
-        COUNT(DISTINCT CASE WHEN sjf.form_completed       THEN bs.student_id END)                                                 AS form_submitted_completed,
-        COUNT(DISTINCT CASE WHEN sjf.walkin_completed     THEN bs.student_id END)                                                 AS walkin_completed,
-        COUNT(DISTINCT CASE WHEN sjf.exam_pending         THEN bs.student_id END)                                                 AS exam_pending,
-        COUNT(DISTINCT CASE WHEN sjf.exam_scheduled       THEN bs.student_id END)                                                 AS exam_scheduled,
-        COUNT(DISTINCT CASE WHEN sjf.offer_pending        THEN bs.student_id END)                                                 AS offer_pending,
-        COUNT(DISTINCT CASE WHEN sjf.offer_released       THEN bs.student_id END)                                                 AS offer_released,
-        COUNT(DISTINCT CASE WHEN sjf.ready_for_admission  THEN bs.student_id END)                                                 AS ready_for_admission,
-        COUNT(DISTINCT CASE WHEN sjf.ever_admitted        THEN bs.student_id END)                                                 AS admission,
-        COUNT(DISTINCT CASE WHEN ni.student_id IS NOT NULL THEN bs.student_id END)                                                AS ni_count,
-        ROUND(100.0 * COUNT(DISTINCT CASE WHEN sjf.ever_admitted THEN bs.student_id END)
-              / NULLIF(COUNT(DISTINCT bs.student_id),0), 1)          AS f2a_pct
+        COUNT(DISTINCT bs.student_id || '-' || bs.course_id)                                                                       AS leads,
+        COUNT(DISTINCT CASE WHEN lrs.has_remark    THEN bs.student_id || '-' || bs.course_id END)                                                 AS attempted,
+        COUNT(DISTINCT CASE WHEN sjf.form_pp              THEN bs.student_id || '-' || bs.course_id END)                                                 AS form_submitted_pp,
+        COUNT(DISTINCT CASE WHEN sjf.form_completed       THEN bs.student_id || '-' || bs.course_id END)                                                 AS form_submitted_completed,
+        COUNT(DISTINCT CASE WHEN sjf.walkin_completed     THEN bs.student_id || '-' || bs.course_id END)                                                 AS walkin_completed,
+        COUNT(DISTINCT CASE WHEN sjf.exam_pending         THEN bs.student_id || '-' || bs.course_id END)                                                 AS exam_pending,
+        COUNT(DISTINCT CASE WHEN sjf.exam_scheduled       THEN bs.student_id || '-' || bs.course_id END)                                                 AS exam_scheduled,
+        COUNT(DISTINCT CASE WHEN sjf.offer_pending        THEN bs.student_id || '-' || bs.course_id END)                                                 AS offer_pending,
+        COUNT(DISTINCT CASE WHEN sjf.offer_released       THEN bs.student_id || '-' || bs.course_id END)                                                 AS offer_released,
+        COUNT(DISTINCT CASE WHEN sjf.ready_for_admission  THEN bs.student_id || '-' || bs.course_id END)                                                 AS ready_for_admission,
+        COUNT(DISTINCT CASE WHEN fa.student_id IS NOT NULL THEN bs.student_id || '-' || bs.course_id END)                                                 AS admission,
+        COUNT(DISTINCT CASE WHEN ni.student_id IS NOT NULL THEN bs.student_id || '-' || bs.course_id END)                                                AS ni_count,
+        ROUND(100.0 * COUNT(DISTINCT CASE WHEN fa.student_id IS NOT NULL THEN bs.student_id || '-' || bs.course_id END)
+              / NULLIF(COUNT(DISTINCT bs.student_id || '-' || bs.course_id),0), 1)          AS f2a_pct
       FROM base_students bs
-      LEFT JOIN student_journey_flags sjf ON bs.student_id = sjf.student_id
+      LEFT JOIN student_journey_flags sjf ON bs.student_id = sjf.student_id AND bs.course_id = sjf.course_id
+      LEFT JOIN first_admission fa         ON bs.student_id = fa.student_id AND bs.course_id = fa.course_id
       LEFT JOIN l3_remark_stats lrs        ON bs.student_id = lrs.student_id
       LEFT JOIN ni_students ni             ON bs.student_id = ni.student_id
       GROUP BY bs.group_label
@@ -3248,7 +3305,7 @@ export const getF2AReport = async (req, res) => {
           ${(start_date && end_date) ? `WHERE first_date >= '${start_date}' AND first_date <= '${end_date}'` : ''}
         ),
         sjf AS (
-          SELECT student_id,
+          SELECT student_id, course_id,
             BOOL_OR(course_status = 'Form Submitted – Portal Pending')                          AS form_pp,
             BOOL_OR(course_status = 'Form Submitted – Completed')                               AS form_completed,
             BOOL_OR(course_status = 'Walkin Completed')                                         AS walkin_completed,
@@ -3256,9 +3313,15 @@ export const getF2AReport = async (req, res) => {
             BOOL_OR(course_status IN ('Exam/Interview Scheduled','Exam Interview Scheduled'))    AS exam_scheduled,
             BOOL_OR(course_status = 'Offer Letter/Results Pending')                             AS offer_pending,
             BOOL_OR(course_status = 'Offer Letter/Results Released')                            AS offer_released,
-            BOOL_OR(course_status = 'Ready For Admission')                                      AS ready_for_admission,
-            BOOL_OR(course_status = 'Admission')                                                AS ever_admitted
-          FROM course_status_journeys GROUP BY student_id
+            BOOL_OR(course_status = 'Ready For Admission')                                      AS ready_for_admission
+          FROM course_status_journeys GROUP BY student_id, course_id
+        ),
+        fa AS (
+          SELECT DISTINCT ON (student_id, course_id)
+            student_id, course_id, created_at AS admission_date
+          FROM course_status_journeys
+          WHERE course_status = 'Admission'
+          ORDER BY student_id, course_id, created_at ASC
         ),
         lrs AS (
           SELECT sr.student_id, TRUE AS has_remark
@@ -3276,20 +3339,21 @@ export const getF2AReport = async (req, res) => {
           WHERE course_status = 'NotInterested'
         )
         SELECT
-          COUNT(DISTINCT b.student_id)                                                          AS leads,
-          COUNT(DISTINCT CASE WHEN lrs.has_remark    THEN b.student_id END)                    AS attempted,
-          COUNT(DISTINCT CASE WHEN sjf.form_pp              THEN b.student_id END)             AS form_submitted_pp,
-          COUNT(DISTINCT CASE WHEN sjf.form_completed       THEN b.student_id END)             AS form_submitted_completed,
-          COUNT(DISTINCT CASE WHEN sjf.walkin_completed     THEN b.student_id END)             AS walkin_completed,
-          COUNT(DISTINCT CASE WHEN sjf.exam_pending         THEN b.student_id END)             AS exam_pending,
-          COUNT(DISTINCT CASE WHEN sjf.exam_scheduled       THEN b.student_id END)             AS exam_scheduled,
-          COUNT(DISTINCT CASE WHEN sjf.offer_pending        THEN b.student_id END)             AS offer_pending,
-          COUNT(DISTINCT CASE WHEN sjf.offer_released       THEN b.student_id END)             AS offer_released,
-          COUNT(DISTINCT CASE WHEN sjf.ready_for_admission  THEN b.student_id END)             AS ready_for_admission,
-          COUNT(DISTINCT CASE WHEN sjf.ever_admitted        THEN b.student_id END)             AS admission,
-          COUNT(DISTINCT CASE WHEN ni.student_id IS NOT NULL THEN b.student_id END)            AS ni_count
+          COUNT(DISTINCT b.student_id || '-' || b.course_id)                                                          AS leads,
+          COUNT(DISTINCT CASE WHEN lrs.has_remark    THEN b.student_id || '-' || b.course_id END)                    AS attempted,
+          COUNT(DISTINCT CASE WHEN sjf.form_pp              THEN b.student_id || '-' || b.course_id END)             AS form_submitted_pp,
+          COUNT(DISTINCT CASE WHEN sjf.form_completed       THEN b.student_id || '-' || b.course_id END)             AS form_submitted_completed,
+          COUNT(DISTINCT CASE WHEN sjf.walkin_completed     THEN b.student_id || '-' || b.course_id END)             AS walkin_completed,
+          COUNT(DISTINCT CASE WHEN sjf.exam_pending         THEN b.student_id || '-' || b.course_id END)             AS exam_pending,
+          COUNT(DISTINCT CASE WHEN sjf.exam_scheduled       THEN b.student_id || '-' || b.course_id END)             AS exam_scheduled,
+          COUNT(DISTINCT CASE WHEN sjf.offer_pending        THEN b.student_id || '-' || b.course_id END)             AS offer_pending,
+          COUNT(DISTINCT CASE WHEN sjf.offer_released       THEN b.student_id || '-' || b.course_id END)             AS offer_released,
+          COUNT(DISTINCT CASE WHEN sjf.ready_for_admission  THEN b.student_id || '-' || b.course_id END)             AS ready_for_admission,
+          COUNT(DISTINCT CASE WHEN fa.student_id IS NOT NULL THEN b.student_id || '-' || b.course_id END)            AS admission,
+          COUNT(DISTINCT CASE WHEN ni.student_id IS NOT NULL THEN b.student_id || '-' || b.course_id END)            AS ni_count
         FROM base b
-        LEFT JOIN sjf  ON b.student_id = sjf.student_id
+        LEFT JOIN sjf  ON b.student_id = sjf.student_id AND b.course_id = sjf.course_id
+        LEFT JOIN fa   ON b.student_id = fa.student_id AND b.course_id = fa.course_id
         LEFT JOIN lrs  ON b.student_id = lrs.student_id
         LEFT JOIN ni   ON b.student_id = ni.student_id
       `;
@@ -3319,7 +3383,6 @@ export const getF2AReport = async (req, res) => {
 
     return res.status(200).json({ success: true, data: [...rows, totals] });
   } catch (error) {
-    console.error('getF2AReport error:', error.message);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -3390,8 +3453,8 @@ export const getF2AReportDrilldown = async (req, res) => {
 
     const groupExprs = {
       agent:      { label: `COALESCE(c.counsellor_name, 'Unassigned')`,                              join: `LEFT JOIN counsellors c ON csj.assigned_l3_counsellor_id = c.counsellor_id` },
-      source:     { label: `COALESCE(s.source, 'Unknown')`,                                          join: `JOIN students s ON csj.student_id = s.student_id` },
-      source_url: { label: `COALESCE(SPLIT_PART(s.first_source_url, '?', 1), 'Unknown')`,           join: `JOIN students s ON csj.student_id = s.student_id` },
+      source:     { label: `COALESCE(s.source, 'Unknown')`,                                          join: `LEFT JOIN students s ON csj.student_id = s.student_id` },
+      source_url: { label: `COALESCE(SPLIT_PART(s.first_source_url, '?', 1), 'Unknown')`,           join: `LEFT JOIN students s ON csj.student_id = s.student_id` },
       campaign:   { label: `COALESCE(la.utm_campaign, 'Direct')`,                                    join: `LEFT JOIN first_la la ON la.student_id = csj.student_id` },
       created_at: { label: `TO_CHAR((csj.created_at + interval '5 hours 30 minutes'), 'YYYY-MM-DD')`, join: `` },
     };
@@ -3411,7 +3474,7 @@ export const getF2AReportDrilldown = async (req, res) => {
       offer_pending:            `sjf.offer_pending IS TRUE`,
       offer_released:           `sjf.offer_released IS TRUE`,
       ready_for_admission:      `sjf.ready_for_admission IS TRUE`,
-      admission:                `sjf.ever_admitted IS TRUE`,
+      admission:                `fa.student_id IS NOT NULL`,
       ni_count:                 `ni.student_id IS NOT NULL`,
     };
 
@@ -3457,6 +3520,7 @@ export const getF2AReportDrilldown = async (req, res) => {
       student_journey_flags AS (
         SELECT
           student_id,
+          course_id,
           BOOL_OR(course_status = 'Form Submitted – Portal Pending')                                AS form_pp,
           BOOL_OR(course_status = 'Form Submitted – Completed')                                     AS form_completed,
           BOOL_OR(course_status = 'Walkin Completed')                                               AS walkin_completed,
@@ -3464,10 +3528,16 @@ export const getF2AReportDrilldown = async (req, res) => {
           BOOL_OR(course_status IN ('Exam/Interview Scheduled','Exam Interview Scheduled'))          AS exam_scheduled,
           BOOL_OR(course_status = 'Offer Letter/Results Pending')                                   AS offer_pending,
           BOOL_OR(course_status = 'Offer Letter/Results Released')                                  AS offer_released,
-          BOOL_OR(course_status = 'Ready For Admission')                                            AS ready_for_admission,
-          BOOL_OR(course_status = 'Admission')                                                      AS ever_admitted
+          BOOL_OR(course_status = 'Ready For Admission')                                            AS ready_for_admission
         FROM course_status_journeys
-        GROUP BY student_id
+        GROUP BY student_id, course_id
+      ),
+      first_admission AS (
+        SELECT DISTINCT ON (student_id, course_id)
+          student_id, course_id, created_at AS admission_date
+        FROM course_status_journeys
+        WHERE course_status = 'Admission'
+        ORDER BY student_id, course_id, created_at ASC
       ),
       l3_remark_stats AS (
         SELECT sr.student_id,
@@ -3488,6 +3558,7 @@ export const getF2AReportDrilldown = async (req, res) => {
       )
       SELECT *, COUNT(*) OVER() AS _total_count FROM (SELECT DISTINCT
         bs.student_id,
+        bs.course_id,
         st.student_name,
         st.student_phone,
         st.student_email,
@@ -3498,7 +3569,8 @@ export const getF2AReportDrilldown = async (req, res) => {
         COALESCE(cl.counsellor_name, 'Unassigned') AS counsellor_name,
         st.created_at
       FROM base_students bs
-      LEFT JOIN student_journey_flags sjf ON bs.student_id = sjf.student_id
+      LEFT JOIN student_journey_flags sjf ON bs.student_id = sjf.student_id AND bs.course_id = sjf.course_id
+      LEFT JOIN first_admission fa         ON bs.student_id = fa.student_id AND bs.course_id = fa.course_id
       LEFT JOIN l3_remark_stats lrs        ON bs.student_id = lrs.student_id
       LEFT JOIN ni_students ni             ON bs.student_id = ni.student_id
       LEFT JOIN students st                ON st.student_id = bs.student_id
@@ -3519,7 +3591,6 @@ export const getF2AReportDrilldown = async (req, res) => {
     const data  = rows.map(({ _total_count, ...r }) => r);
     return res.status(200).json({ success: true, data, total, page, limit });
   } catch (err) {
-    console.error('getF2AReportDrilldown error:', err.message);
     return res.status(500).json({ success: false, message: err.message });
   }
 };

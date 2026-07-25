@@ -5,7 +5,6 @@ import { processStandardUniversity } from "../controllers/Colleges_sending_logic
 
 const startLpuPhagwaraRegularCron = () => {
   cron.schedule("50 * * * *", async () => {
-    console.log(" [CRON] Starting Lovely Professional University lead sync...");
 
     try {
       const collegeName = "Lovely Professional University";
@@ -41,11 +40,9 @@ const startLpuPhagwaraRegularCron = () => {
       });
 
       if (leadsToProcess.length === 0) {
-        console.log(" [CRON] No eligible Lovely Professional University leads found to sync.");
         return;
       }
 
-      console.log(`[CRON] Processing ${leadsToProcess.length} leads for Lovely Professional University...`);
 
       for (const student of leadsToProcess) {
         try {
@@ -69,19 +66,14 @@ const startLpuPhagwaraRegularCron = () => {
             false
           );
           
-          console.log(` [CRON] Processed student ID: ${student.student_id}`);
         } catch (err) {
-          console.error(` [CRON] Error processing student ${student.student_id}:`, err.message);
         }
       }
       
-      console.log("🏁 [CRON] Finished Lovely Professional University lead sync.");
     } catch (error) {
-      console.error("❌ [CRON] Error in LPU Phagwara Regular cron:", error);
     }
   });
 
-  console.log("[CRON] Lovely Professional University cron registered (Hourly).");
 };
 
 export default startLpuPhagwaraRegularCron;

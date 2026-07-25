@@ -140,7 +140,6 @@ export const getLeadOptions = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error in getLeadOptions:', error);
     return res.status(500).json({
       success: false,
       message: 'Error fetching filter options',

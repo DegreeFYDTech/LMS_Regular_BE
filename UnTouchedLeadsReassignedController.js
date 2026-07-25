@@ -16,7 +16,6 @@ const getFifteenMinutesAgoIST = () => {
 const retryAttempts = new Map();
 
 const reassignInactiveLeadsCron = async () => {
-    console.log(`⏰ [${dayjs().tz('Asia/Kolkata').format('HH:mm:ss')}] Checking inactive leads...`);
 
     const fifteenMinutesAgoIST = getFifteenMinutesAgoIST();
     const fifteenMinutesAgoUTC = fifteenMinutesAgoIST.utc();
@@ -45,7 +44,6 @@ const reassignInactiveLeadsCron = async () => {
             }
         });
 
-        console.log(`Found ${eligibleLeads.length} inactive leads`);
 
         let reassignedCount = 0;
         let failedCount = 0;
@@ -54,12 +52,10 @@ const reassignInactiveLeadsCron = async () => {
 
         for (const lead of eligibleLeads) {
             try {
-                console.log(`Processing: ${lead.student_id}`);
                 
                 const currentRetryCount = retryAttempts.get(lead.student_id) || 0;
                 
                 if (currentRetryCount >= 2) {
-                    console.log(`⏭️ Skipping ${lead.student_id} - retry limit reached`);
                     retryLimitReachedCount++;
                     continue;
                 }
@@ -69,7 +65,6 @@ const reassignInactiveLeadsCron = async () => {
                 });
 
                 if (!leadActivity) {
-                    console.log(`⏭️ Skipping ${lead.student_id} - no lead activity`);
                     failedCount++;
                     continue;
                 }
@@ -95,7 +90,6 @@ const reassignInactiveLeadsCron = async () => {
                 const assignmentResult = await assignLeadHelper(leadData);
 
                 if (!assignmentResult.success) {
-                    console.log(`❌ Failed: ${assignmentResult.message}`);
                     failedCount++;
                     continue;
                 }
@@ -103,7 +97,6 @@ const reassignInactiveLeadsCron = async () => {
                 const newCounsellor = assignmentResult.assignedCounsellor;
 
                 if (!newCounsellor || !newCounsellor.counsellor_id) {
-                    console.log(`❌ No new counsellor`);
                     failedCount++;
                     continue;
                 }
@@ -112,10 +105,8 @@ const reassignInactiveLeadsCron = async () => {
                     const newRetryCount = currentRetryCount + 1;
                     retryAttempts.set(lead.student_id, newRetryCount);
                     
-                    console.log(`🔄 Same counsellor for ${lead.student_id} - retry ${newRetryCount}/2`);
                     
                     if (newRetryCount >= 2) {
-                        console.log(`⏭️ Skipping ${lead.student_id} - same counsellor after ${newRetryCount} attempts`);
                         retryLimitReachedCount++;
                     }
                     
@@ -143,43 +134,29 @@ const reassignInactiveLeadsCron = async () => {
                 });
 
                 reassignedCount++;
-                console.log(`✅ Reassigned ${lead.student_id} from ${oldCounsellorId} to ${newCounsellor.counsellor_id}`);
 
             } catch (error) {
-                console.error(`Error: ${lead.student_id}`, error.message);
                 failedCount++;
             }
         }
 
-        console.log(`\n📊 Summary:`);
-        console.log(`   Total processed: ${eligibleLeads.length}`);
-        console.log(`   ✅ Reassigned: ${reassignedCount}`);
-        console.log(`   ⏭️ Same counsellor: ${skippedSameCounsellorCount}`);
-        console.log(`   ⏹️ Retry limit reached: ${retryLimitReachedCount}`);
-        console.log(`   ❌ Failed: ${failedCount}`);
 
     } catch (error) {
-        console.error('Cron error:', error);
     }
 };
 
 sequelize.authenticate()
     .then(() => {
-        console.log('Database connected');
 
         cron.schedule('* 11-20 * * 1-6', reassignInactiveLeadsCron, {
             timezone: 'Asia/Kolkata'
         });
 
-        console.log("✅ Inactive leads cron: Every minute from 11 AM to 8 PM, Monday to Saturday");
-        console.log("🕐 Time range: 11:00 AM to 8:59 PM IST");
     })
     .catch(err => {
-        console.error('Database connection failed:', err);
     });
 
 process.on('SIGINT', () => {
-    console.log('Shutting down');
     process.exit(0);
 });
 

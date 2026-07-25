@@ -302,18 +302,22 @@ export const assignLeadHelper = async (leadData) => {
 
           if (activeCounsellors.length === 0) return null;
 
-          // Sort activeCounsellors to respect the order in 'ids' array
-          const sortedActive = activeCounsellors.sort((a, b) => {
-            return ids.indexOf(a.counsellor_id) - ids.indexOf(b.counsellor_id);
-          });
+          const n = ids.length;
+          const startIdx = (freshRule.round_robin_index || 0) % n;
+          let selected = null;
+          let nextIndex = startIdx;
 
-          let currentIndex = freshRule.round_robin_index || 0;
-          if (currentIndex >= sortedActive.length) currentIndex = 0;
+          for (let attempt = 0; attempt < n; attempt++) {
+            const idx = (startIdx + attempt) % n;
+            const cid = ids[idx];
+            const counsellor = activeCounsellors.find(c => c.counsellor_id === cid);
+            if (counsellor) {
+              selected = counsellor;
+              nextIndex = (idx + 1) % n;
+              break;
+            }
+          }
 
-          const selected = sortedActive[currentIndex];
-          const nextIndex = (currentIndex + 1) % sortedActive.length;
-
-          // Update round robin index
           await freshRule.update(
             { round_robin_index: nextIndex },
             { transaction: t },
@@ -322,7 +326,6 @@ export const assignLeadHelper = async (leadData) => {
           return selected;
         });
       } catch (error) {
-        console.error("Error in findNextActiveCounsellor transaction:", error);
         // Fallback to non-transactional if something fails (optional, but transaction is safer)
         return null;
       }
@@ -337,18 +340,12 @@ export const assignLeadHelper = async (leadData) => {
         bestMatchDetails = matchingRule.matchDetails;
         bestMatchScore = matchingRule.score;
         assignmentType = "rule-based";
-        console.log(
-          `Assigned via rule: ${matchingRule.matchDetails.ruleName}, Score: ${matchingRule.score}`,
-        );
         break;
       }
     }
 
     // Fallback to default counsellor if no rule matches or no available counsellors
     if (!assignedCounsellor) {
-      console.log(
-        "No matching rules or available counsellors, falling back to default",
-      );
 
       // First try CNS-DEFAULT01
       assignedCounsellor = await Counsellor.findOne({
@@ -409,7 +406,6 @@ export const assignLeadHelper = async (leadData) => {
       })),
     };
   } catch (error) {
-    console.error("Error in assignLeadHelper:", error);
     return {
       success: false,
       message: error.message,
@@ -459,7 +455,6 @@ export const createChatAndMessagesFromLead = async (studentPhone, leadData) => {
     // If still no business number found, use default FROM_NUMBER
     if (!businessNumber) {
       businessNumber = FROM_NUMBER; // From your config
-      console.log(`Using default business number: ${businessNumber}`);
     }
 
     // Check if chat already exists
@@ -475,7 +470,6 @@ export const createChatAndMessagesFromLead = async (studentPhone, leadData) => {
 
     if (existingChat) {
       chat = existingChat;
-      console.log(`Chat already exists for student ${studentPhone}`);
     } else {
       // Create new chat
       chat = await Chat.create({
@@ -484,9 +478,6 @@ export const createChatAndMessagesFromLead = async (studentPhone, leadData) => {
         is_locked: false,
         created_at: new Date(),
       });
-      console.log(
-        `Created new chat for student ${studentPhone}, chat_id: ${chat.chat_id}`,
-      );
     }
 
     // Import messages
@@ -567,12 +558,8 @@ export const createChatAndMessagesFromLead = async (studentPhone, leadData) => {
             latestTimestamp = timestamp;
           }
         } else {
-          console.log(
-            `Message already exists, skipping: ${msgData.message?.substring(0, 50)}...`,
-          );
         }
       } catch (msgError) {
-        console.error(`Error importing message:`, msgError);
       }
     }
 
@@ -583,9 +570,6 @@ export const createChatAndMessagesFromLead = async (studentPhone, leadData) => {
       });
     }
 
-    console.log(
-      `Successfully imported ${importedCount}/${whatsappMessages.length} messages for student ${studentPhone}`,
-    );
 
     return {
       success: true,
@@ -596,7 +580,6 @@ export const createChatAndMessagesFromLead = async (studentPhone, leadData) => {
       businessNumber: businessNumber,
     };
   } catch (error) {
-    console.error("Error creating chat/messages from lead:", error);
     return {
       success: false,
       error: error.message,
@@ -605,7 +588,6 @@ export const createChatAndMessagesFromLead = async (studentPhone, leadData) => {
 };
 export const ProceessLeads = async (leads) => {};
 export const processStudentLead = async (leadData) => {
-  console.log("Processing lead with data:", leadData);
   if (
     !leadData.email ||
     (!leadData.phoneNumber && !leadData.phone_number && !leadData.mobile)
@@ -632,7 +614,6 @@ export const processStudentLead = async (leadData) => {
 
       return params;
     } catch (error) {
-      console.error("Error extracting query params:", error);
       return {};
     }
   };
@@ -652,9 +633,7 @@ export const processStudentLead = async (leadData) => {
     leadData.landing_page_url ||
     "";
 
-  // console.log('Source URL:', sourceUrl);
   const queryParams = extractQueryParams(sourceUrl);
-  // console.log('Extracted Query Params:', queryParams);
   let utmCampaign =
     leadData.utmCampaign ||
     leadData.UtmCampaign ||
@@ -1018,7 +997,6 @@ export const processStudentLead = async (leadData) => {
     studentStatus = "created";
 
     if (global.sendLeadNotification && assignedCounsellor.counsellor_id) {
-      console.log("sending Notification");
       global.sendLeadNotification(
         assignedCounsellor.counsellor_id,
         student,
@@ -1031,7 +1009,6 @@ export const processStudentLead = async (leadData) => {
         where: { counsellor_id: assignedCounsellor.counsellor_id },
       });
     } catch (e) {
-      console.log("counsellor_auto increment error ", e.message);
     }
 
     try {
@@ -1042,7 +1019,6 @@ export const processStudentLead = async (leadData) => {
         assignedBy: "Ruleset Based",
       });
     } catch (e) {
-      console.log("error while creating the log", e.message);
     }
   }
   const leadActivityResult = await createLeadActivity(
@@ -1106,20 +1082,12 @@ export const processStudentLead = async (leadData) => {
                   });
                 }
               } catch (err) {
-                console.error(
-                  `Error processing shortlisted college "${collegeName}":`,
-                  err.message,
-                );
               }
             }
           }
         }
       }
     } catch (responseError) {
-      console.error(
-        "Error storing individual question responses:",
-        responseError.message,
-      );
     }
   }
 
@@ -1202,6 +1170,5 @@ export async function SocketEmitter(student, assignedCounsellor) {
       }
     }
   } catch (wsErr) {
-    console.error("WebSocket error:", wsErr.message);
   }
 }

@@ -16,7 +16,7 @@ export default (io) => {
     if (operatorId) {
       socket.join(operatorId);
     }
-    console.log("socket?.rooms",socket?.rooms)
+    undefined
    
     socket.on('join_chat', async ({ chatId, userType }) => {
       if (!chatId) return;
@@ -61,7 +61,7 @@ export default (io) => {
         operatorId: u.operatorId,
         sockets: u.sockets.size
       }));
-       console.log("logical user are connected in a same chat ",usersSnapshot)
+       undefined
        const isStudentAlreadyJoined=usersSnapshot.some((val)=>val.userType=='Student')
       chatNamespace.to(chatId).emit('user_joined', {
         joinedUser: userKey,
@@ -113,7 +113,6 @@ export default (io) => {
 
         socket.emit('chat_list_update', enrichedChats);
       } catch (error) {
-        console.error('Dashboard Fetch Error:', error);
       }
     });
 
@@ -156,7 +155,6 @@ export default (io) => {
           isDelivered
         });
       } catch (error) {
-        console.error('Socket Message Error:', error);
         socket.emit('error', { message: 'Failed to send message' });
       }
     });
@@ -169,10 +167,8 @@ export default (io) => {
 
     socket.on('mark_read', async ({ chatId, userType }) => {
       try {
-        console.log(`Received mark_read for chatId: ${chatId}, userType: ${userType}`);
         await WebsiteChatService.markMessagesAsRead(chatId, userType);
       } catch (error) {
-        console.error('Mark Read Error:', error);
       }
     });
 

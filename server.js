@@ -57,7 +57,6 @@ const pubClient = redis.duplicate();
 const subClient = redis.duplicate();
 
 io.adapter(createAdapter(pubClient, subClient));
-console.log('Socket.IO Redis adapter enabled');
 global.io = io;
 
 global.connectedCounsellors = new Map();
@@ -72,7 +71,6 @@ class WhatsAppNotificationService {
   }
 
   async init() {
-    console.log('WhatsApp Notification Service initialized');
     manageWebsiteChat(this.io);
     return this;
   }
@@ -647,5 +645,4 @@ io.engine.on('connection_error', (err) => {});
 
 const PORT = process.env.PORT || 3031;
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
 });

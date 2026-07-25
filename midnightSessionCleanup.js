@@ -8,7 +8,6 @@ import path from 'path';
 
 export async function runMidnightCleanup() {
     try {
-        console.log('[CRON Worker] Starting daily midnight session + status cleanup...');
 
         // --- Step 1: Reset session/device/timing settings for ALL counsellors ---
         const [resetCount] = await Counsellor.update({
@@ -17,11 +16,10 @@ export async function runMidnightCleanup() {
             max_active_sessions: 1,
             allowed_devices: ['desktop'],
             login_start_time: '09:00:00',
-            login_end_time: '20:00:00',
+            login_end_time: '21:00:00',
         }, {
             where: {}
         });
-        console.log(`[CRON Worker] Reset sessions/settings for ${resetCount} counsellors.`);
 
         // --- Step 2: Status / block updates — L2 and L3 only based on last remark ---
         const now = new Date();
@@ -77,7 +75,6 @@ export async function runMidnightCleanup() {
                 { is_blocked: true, status: 'inactive' },
                 { where: { counsellor_id: { [Op.in]: toBlock } } }
             );
-            console.log(`[CRON Worker] Blocked ${toBlock.length} counsellors (no remark > 3 days).`);
         }
 
         if (toInactive.length) {
@@ -85,7 +82,6 @@ export async function runMidnightCleanup() {
                 { is_blocked: false, status: 'inactive' },
                 { where: { counsellor_id: { [Op.in]: toInactive } } }
             );
-            console.log(`[CRON Worker] Set ${toInactive.length} counsellors to inactive (no remark > 24h).`);
         }
 
         if (toResetActive.length) {
@@ -93,12 +89,9 @@ export async function runMidnightCleanup() {
                 { is_blocked: false, status: 'active' },
                 { where: { counsellor_id: { [Op.in]: toResetActive } } }
             );
-            console.log(`[CRON Worker] Kept ${toResetActive.length} counsellors active (remarked within 24h).`);
         }
 
-        console.log('[CRON Worker] Midnight cleanup complete.');
     } catch (err) {
-        console.error('[CRON Worker] Error running midnight cleanup:', err);
     }
 }
 
@@ -113,6 +106,5 @@ if (isDirectRun) {
         scheduled: true,
         timezone: "Asia/Kolkata"
     });
-    console.log('Midnight Auto-Logout + Status CRON Worker initialized. Waiting for 12:00 AM IST...');
 }
 

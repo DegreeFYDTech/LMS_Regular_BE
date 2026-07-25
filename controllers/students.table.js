@@ -612,7 +612,7 @@ export const getStudentshelper = async (filters) => {
         order: orderClause,
         distinct: true,
         subQuery: freshLeads === "Fresh" ? false : undefined,
-        logging: console.log,
+        logging: false,
         benchmark: true,
       }),
 
@@ -644,7 +644,6 @@ export const getStudentshelper = async (filters) => {
     };
     return response;
   } catch (error) {
-    console.error("Error in getStudentshelper:", error.message);
     throw error;
   }
 };
@@ -652,7 +651,6 @@ export const getStudentshelper = async (filters) => {
 export const getStudents = async (req, res) => {
   try {
     const { role, id } = req.user;
-    console.log("User role in getStudents:", role, "User ID:", id);
     let analyserData = {};
     if (role === "Analyser") {
       try {
@@ -673,10 +671,8 @@ export const getStudents = async (req, res) => {
           };
         }
       } catch (error) {
-        console.error("Error fetching analyser data:", error);
       }
     }
-    console.log(analyserData);
     // Pass analyser data to filter helper
     const filters = mapFiltersForGetStudentsHelper(
       req.query,
@@ -699,7 +695,6 @@ export const getStudents = async (req, res) => {
 
     res.status(200).json(data);
   } catch (error) {
-    console.error("Error in getStudents:", error.message);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -718,15 +713,8 @@ export const mapFiltersForGetStudentsHelper = (
       : null;
   const limitNum = params.export ? 50000 : params?.limit || 10;
 
-  console.log("mapFiltersForGetStudentsHelper called with:");
-  console.log("insertrole:", insertrole);
-  console.log("typeof insertrole:", typeof insertrole);
-  console.log('insertrole === "Analyser":', insertrole === "Analyser");
-  console.log('insertrole === "analyser":', insertrole === "analyser");
-  console.log("params.userrole (if exists):", params.userrole);
 
   const isAnalyser = insertrole === "Analyser";
-  console.log("isAnalyser:", isAnalyser);
 
   // Get analyser-specific filters (passed from getStudents function)
   const {

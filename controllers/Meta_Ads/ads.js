@@ -11,7 +11,6 @@ export const Webhook = (req, res) => {
 
   if (mode && token) {
     if (mode === 'subscribe' && token === process.env.meta_token) {
-      console.log('Webhook verified');
       return res.status(200).send(challenge);
     }
   }
@@ -33,7 +32,6 @@ export const PostWebhook = async (req, res) => {
             try {
               const data = await fetchLeadDataWithCampaign(lead_id);
               if (!data) {
-                console.error('Failed to fetch lead and campaign details');
                 continue;
               }
 
@@ -45,7 +43,6 @@ export const PostWebhook = async (req, res) => {
               });
 
               if (existing) {
-                console.log('Duplicate lead, skipping...');
                 continue;
               }
 
@@ -103,9 +100,7 @@ export const PostWebhook = async (req, res) => {
                 ...student_extra_details
               });
 
-              console.log('Lead saved and forwarded successfully');
             } catch (err) {
-              console.error('Error processing lead:', err.message);
             }
           }
         }
@@ -131,7 +126,6 @@ async function fetchLeadDataWithCampaign(id) {
     const adId = leadData.ad_id;
 
     if (!adId) {
-      console.log('No ad_id found in lead data');
       return { lead: leadData, campaign: null };
     }
 
@@ -140,7 +134,6 @@ async function fetchLeadDataWithCampaign(id) {
     const campaignId = adResponse.data.campaign_id;
 
     if (!campaignId) {
-      console.log('No campaign_id found for ad:', adId);
       return { lead: leadData, campaign: null };
     }
 
@@ -150,7 +143,6 @@ async function fetchLeadDataWithCampaign(id) {
 
     return { lead: leadData, campaign: campaignData };
   } catch (err) {
-    console.error('Error fetching lead or campaign data:', err.message);
     return null;
   }
 }
@@ -192,7 +184,6 @@ export const Manual = async (req, res) => {
       length: response.length,
     });
   } catch (error) {
-    console.error('Error inserting leads:', error.message);
     return res.status(500).json({ error: 'Something went wrong.' });
   }
 };
@@ -220,7 +211,6 @@ export const Manual1 = async (req, res) => {
 
     response.push(`Lead ${lead.form_id} posted successfully`);
   } catch (err) {
-    console.error(`Error posting lead ${lead?.form_id}:`, err.message);
     response.push(`Failed to post lead ${lead?.form_id}: ${err.message}`);
   }
 
@@ -242,7 +232,7 @@ function formatToQuestionAnswerArray(obj) {
 
 export async function POSTTOKEN(params) {
   try {
-    console.log("triggered")
+    undefined
     const response = await MetaAdsToken.create({ page_id: "718284908040065", page_access_token:"EAAVslbdXTqoBPM1psr8rSZAvU1PrtajSq5lQOEAxBRmr8c356QZBGYlYKqZCG2A4fhDc9wW1wwSfojbzL2TeGMv07M4AZBuem6SU2ZALZAK1Hs7HCle1gihDwvTk8K8hKrFYVXRFFIzZAZADJH4ecPxKs63UAaSoGLcaPnSx9F00hDxOweDqt3cQUH72hx1q", long_lived_user_token: "EAAH2cyxBNIMBOxmre32XxQKFMFnHVLZAgKtfKkzpvKXAJOVjarP9eVc2QoD3ZA9PqPThip1ZA9ZC9yOrGy8319AJsErlNZBJoPKIWa7FZCwvM7jF7eE7YspPH0l9tz0uBqXdf9Q3IZAJfl6VBHGbD9R8WiHkBG0XnppK2md3ZCR6fWrpqZCUvMFTzZA5lV" })
 
   } catch (error) {

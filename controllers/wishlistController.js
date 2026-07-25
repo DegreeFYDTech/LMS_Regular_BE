@@ -5,7 +5,7 @@ export const addToWishlist = async (req, res) => {
   try {
     const counsellorId = req.user.id || req.user.counsellorId ;
     const { studentId } = req.body;
-    console.log(studentId,req.body,req.user)
+    undefined
     const existing = await WishListStudent.findOne({where:{ student_id:studentId, counsellor_id: counsellorId} });
     if (existing) {
       return res.status(400).json({ message: 'Student already in wishlist' });
@@ -16,7 +16,7 @@ export const addToWishlist = async (req, res) => {
 
     res.status(201).json({ message: 'Student added to wishlist', data: newEntry });
   } catch (err) {
-        console.log(err.message)
+        undefined
 
     res.status(500).json({ message: 'Failed to add to wishlist', error: err.message });
   }
@@ -41,7 +41,6 @@ export const removeFromWishlist = async (req, res) => {
 
     return res.status(200).json({ message: 'Student removed from wishlist' });
   } catch (err) {
-    console.error("Error removing student from wishlist:", err);
     return res.status(500).json({ message: 'Failed to remove from wishlist', error: err.message });
   }
 };
@@ -65,7 +64,6 @@ export const checkShortListById = async (req, res) => {
       isShortList
     });
   } catch (error) {
-    console.error('Error checking shortlist:', error);
     return res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 };
@@ -186,7 +184,6 @@ export const exportWishlistStudents = async (req, res) => {
 
     res.status(200).send(csvContent);
   } catch (error) {
-    console.error('Error exporting wishlist students:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',

@@ -14,7 +14,6 @@ async function enforceCounsellorRestrictions(userId, userRole, req) {
   try {
     const counsellor = await Counsellor.findByPk(userId);
     if (!counsellor) {
-      console.warn(`[Middleware] Counsellor not found by ID: ${userId}`);
       return null;
     }
 
@@ -53,7 +52,6 @@ async function enforceCounsellorRestrictions(userId, userRole, req) {
 
     if (Array.isArray(allowedIps) && allowedIps.length > 0) {
       if (!isIPAllowed(finalIp, allowedIps)) {
-        console.warn(`[Middleware Blocked] IP Not Allowed: ${finalIp}`);
         await LoginAttempt.create({
           user_type: 'counsellor',
           user_id: counsellor.counsellor_id,
@@ -87,7 +85,6 @@ async function enforceCounsellorRestrictions(userId, userRole, req) {
       const isAllowed = lowerWhitelist.includes(currentDeviceType) || (deviceId && lowerWhitelist.includes(String(deviceId).toLowerCase()));
 
       if (!isAllowed) {
-        console.warn(`[Device Denied] User: ${counsellor.counsellor_name}, Detected: ${currentDeviceType}, Whitelist: ${lowerWhitelist}`);
 
         await LoginAttempt.create({
           user_type: 'counsellor',
@@ -106,12 +103,11 @@ async function enforceCounsellorRestrictions(userId, userRole, req) {
             allowed: devices,
             user_agent: uaStr
           }
-        }).catch((e) => { console.error('LoginAttempt creation failed in middleware', e.message); });
+        }).catch((e) => {  });
         return 'Access not permitted from this device';
       }
     }
   } catch (err) {
-    console.error('CRITICAL: enforceCounsellorRestrictions error:', err);
     return null;
   }
 
@@ -175,7 +171,6 @@ export const authorize = (allowedRoles) => {
 
       next();
     } catch (err) {
-      console.error("Auth error:", err.message);
       return res.status(401).json({ message: 'Invalid or expired token' });
     }
   };

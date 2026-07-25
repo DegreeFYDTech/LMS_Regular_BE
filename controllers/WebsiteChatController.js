@@ -29,7 +29,6 @@ class WebsiteChatController {
         message: isNew ? 'Chat initiated' : 'Chat resumed' 
       });
     } catch (error) {
-      console.error('Controller Error:', error);
       res.status(500).json({ success: false, message: 'Failed to initiate chat' });
     }
   }
@@ -41,7 +40,6 @@ class WebsiteChatController {
       const history = await WebsiteChatService.getChatHistory(chatId, 1000, 0, aggregated);
       res.status(200).json({ success: true, data: history });
     } catch (error) {
-      console.error('Controller Error:', error);
       res.status(500).json({ success: false, message: 'Failed to fetch history' });
     }
   }
@@ -53,7 +51,6 @@ class WebsiteChatController {
           await WebsiteChatService.closeChat(chatId, operatorId, role, reason);
           res.status(200).json({ success: true, message: 'Chat closed successfully' });
       } catch (error) {
-          console.error('Controller Error:', error);
           res.status(500).json({ success: false, message: 'Failed to close chat' });
       }
   }
@@ -67,7 +64,6 @@ class WebsiteChatController {
           const count = await WebsiteChatService.getUnreadCount(operatorId, role);
           res.status(200).json({ success: true, data: { count } });
       } catch (error) {
-          console.error('Controller Error:', error);
           res.status(500).json({ success: false, message: 'Failed to get unread count' });
       }
   }

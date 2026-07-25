@@ -495,7 +495,6 @@
 //     res.status(200).json(response);
 
 //   } catch (error) {
-//     console.error('Error in getStudents:', error);
 //     res.status(500).json({
 //       success: false,
 //       message: 'Internal server error',
@@ -549,7 +548,6 @@
 //     return flattenedStats;
 
 //   } catch (error) {
-//     console.error('Error in getOverallStats:', error);
 //     return null;
 //   }
 // };
@@ -709,7 +707,6 @@
 //     };
 
 //   } catch (error) {
-//     console.error('Error in calculateStats:', error);
 //     return null;
 //   }
 // };
@@ -851,7 +848,7 @@
 //       // Filter based on data type for all agents
 //       if (data === 'l2') {
 //         agentConditions.assigned_counsellor_id = { [Op.ne]: null };
-//         console.log(agentConditions)
+//         undefined
 //       } else if (data === 'l3') {
 //         agentConditions.assigned_counsellor_l3_id = { [Op.ne]: null };
 //       }
@@ -899,7 +896,7 @@
 //     // 4. Intent-based stats (Hot, Warm, Cold leads)
   
 //    const intentStats = await getIntentStats(agentConditions);
-//   console.log(intentStats)
+//   undefined
 // // const { hot_leads: hotLeads, warm_leads: warmLeads, cold_leads: coldLeads, not_connected: notConnectedYet } = intentStats;
     
 //     // 6. Total unread messages count
@@ -925,7 +922,6 @@
 //     };
 
 //   } catch (error) {
-//     console.error('Error in getOverallStats:', error);
 //     throw new Error('Failed to fetch overall stats');
 //   }
 // };
@@ -1072,7 +1068,7 @@
 //     // FIXED: Source filter - Proper handling
 //     if (source) {
 //       const sourceFilter = handleMultiSelectFilter(source);
-//       console.log('Source filter processed:', sourceFilter); // Debug log
+//        // Debug log
 //       if (sourceFilter && sourceFilter.length > 0) {
 //         if (sourceFilter.length === 1) {
 //           whereConditions.source = { [Op.iLike]: `%${sourceFilter[0]}%` };
@@ -1262,7 +1258,7 @@
 
 //   if (callingStatus) {
 //     const callingStatusArray = handleMultiSelectFilter(callingStatus);
-//     console.log('callingStatusArray',callingStatusArray)
+//     undefined
 //     if (callingStatusArray.length > 0) {
 //       filters.push(
 //         `sr.calling_status IN (${callingStatusArray.map(s => `'${s}'`).join(',')})`
@@ -1273,7 +1269,7 @@
 //   if (subCallingStatus) {
     
 //     const subCallingStatusArray = handleMultiSelectFilter(subCallingStatus);
-//     console.log('subCallingStatus',subCallingStatusArray)
+//     undefined
 //     if (subCallingStatusArray.length > 0) {
 //       filters.push(
 //         `sr.sub_calling_status IN (${subCallingStatusArray.map(s => `'${s}'`).join(',')})`
@@ -1310,18 +1306,18 @@
 //         whereConditions[Op.and] = andConditions;
 //       }
 //     }
-//   console.log(whereConditions)
+//   undefined
 //     // Enhanced debug logging
-//     // console.log('=== FILTER DEBUG INFO ===');
-//     // console.log('Raw filters received:', filters);
-//     // console.log('Search term:', searchTerm);
-//     // console.log('Mode:', mode);
-//     // console.log('Source:', source);
-//     // console.log('Data type:', data);
-//     // console.log('Selected agent:', selectedagent);
+//     // 
+//     // 
+//     // 
+//     // 
+//     // 
+//     // 
+//     // 
     
-//     // console.log('Final whereConditions:', JSON.stringify(whereConditions, null, 2));
-//     // console.log('=========================');
+//     // 
+//     // 
 
 //     // Build include array for associations
 //     const include = [
@@ -1389,7 +1385,6 @@
 //       subQuery: false
 //     });
 
-//     console.log('Students found:', students.length);
 
 //     // Calculate pagination info
 //     const totalPages = Math.ceil(totalCount / limitNum);
@@ -1414,20 +1409,18 @@
 //     };
 
 //   } catch (error) {
-//     console.error('Error in getStudentsWithRemarks:', error.message);
 //     throw new Error('Failed to fetch students with remarks');
 //   }
 // };
 // export const getStudents = async (req, res) => {
 //   try{
-//      console.log(req.query)
+//      undefined
 //       const data=await getStudentsWithRemarks(req.query)
 
 //       res.status(200).json(data);
 //   }
 //    catch(error)
 //    {
-//     console.error('Error in getStudents:', error);
 //     res.status(500).json({
 //       success: false,
 //       message: 'Internal server error',
@@ -1886,13 +1879,13 @@ export const getStudents = async (req, res) => {
     
     if (utmCampaign) {
       const utmCampaignFilter = handleMultiSelectFilter(utmCampaign);
-      console.log('utm',utmCampaignFilter)
+      undefined
       if (utmCampaignFilter) {
         utmWhereConditions.utm_campaign = utmCampaignFilter.length === 1
           ? handleTextFilter(utmCampaignFilter[0])
           : { [Op.or]: utmCampaignFilter.map(u => ({ [Op.iLike]: `%${u}%` })) };
       }
-      console.log(utmWhereConditions)
+      undefined
     }
     if (utmSource) {
       const utmSourceFilter = handleMultiSelectFilter(utmSource);
@@ -1945,11 +1938,8 @@ export const getStudents = async (req, res) => {
 
     // Build sort order
     const orderClause = [[sortBy, sortOrder.toUpperCase()]];
-     console.log('utmWhereConditions',utmWhereConditions)
+     undefined
 
-    console.log('Where Conditions:', JSON.stringify(whereConditions, null, 2));
-    console.log('Remark Where Conditions:', JSON.stringify(remarkWhereConditions, null, 2));
-    console.log('UTM Where Conditions:', JSON.stringify(utmWhereConditions, null, 2));
 
 // Alternative approach using subqueries to get latest records
 
@@ -1968,7 +1958,7 @@ if (Object.keys(remarkWhereConditions).length > 0) {
   LIMIT ${limit}
 `, { type: Sequelize.QueryTypes.SELECT });
 
-console.log(remarkWhereConditions)
+undefined
   // Apply limit in JS (if needed)
   const limitedRemarkIds = remarkResult.slice(0, limit).map(r => r.student_id);
   remarkStudentIdsSet = new Set(limitedRemarkIds);
@@ -2137,7 +2127,6 @@ const { count: totalCount, rows: students } = await Student.findAndCountAll({
     res.status(200).json(response);
 
   } catch (error) {
-    console.error('Error in getStudents:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',

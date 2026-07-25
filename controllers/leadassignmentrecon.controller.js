@@ -56,7 +56,6 @@ const cleanConditions = (conditions) => {
 
     return cleaned;
   } catch (e) {
-    console.error('Error in cleanConditions:', e.message);
     return {};
   }
 };
@@ -141,7 +140,6 @@ export const createLeadAssignmentforRecon = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -318,7 +316,6 @@ export const incrementRuleMatchCount = async (ruleId) => {
     };
 
   } catch (error) {
-    console.error('Error incrementing rule match count:', error);
     return { success: false, message: error.message };
   }
 };

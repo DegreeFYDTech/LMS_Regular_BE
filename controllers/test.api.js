@@ -36,7 +36,7 @@ export const getShortlistedColleges = async (req, res) => {
         type: sequelize.QueryTypes.SELECT
       }
     );
-  console.log(shortlistedStatuses)
+  undefined
     if (!shortlistedStatuses.length) {
       return res.status(200).json({
         success: true,
@@ -68,7 +68,6 @@ export const getShortlistedColleges = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching shortlisted colleges:', error);
     return res.status(500).json({
       success: false,
       message: 'Internal server error',

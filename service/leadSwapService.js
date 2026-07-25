@@ -103,7 +103,6 @@ const buildSwapPlan = (grouped, activeCounsellors) => {
     if (eligible.length === 0) {
       const fallback = activeCounsellors.filter((cid) => cid !== ownerCid);
       if (fallback.length === 0) {
-        console.warn(`[SWAP] No eligible receiver for ${student_id}, skipping.`);
         continue;
       }
       const toCid = fallback.reduce((max, cid) => slotsLeft[cid] > slotsLeft[max] ? cid : max);
@@ -124,7 +123,6 @@ const esc = (val) => String(val).replace(/'/g, "''");
 
 const executeSwap = async (plan, hideRemarks, config) => {
   if (plan.length === 0) {
-    console.log("[SWAP] No leads to swap.");
     return;
   }
 
@@ -151,7 +149,6 @@ const executeSwap = async (plan, hideRemarks, config) => {
         `,
         { replacements: { swapTime }, transaction: t }
       );
-      console.log(`[SWAP] Hid previous remarks for ${studentIds.length} leads.`);
 
       await sequelize.query(
         `
@@ -182,7 +179,6 @@ const executeSwap = async (plan, hideRemarks, config) => {
       );
     }
 
-    console.log(`[SWAP] Reassigned ${plan.length} leads.`);
 
     const logRows = plan.map((p) => ({
       student_id:          p.student_id,
@@ -202,17 +198,14 @@ const executeSwap = async (plan, hideRemarks, config) => {
     }
 
     await t.commit();
-    console.log(`[SWAP] Logged ${logRows.length} swap entries. Transaction committed.`);
   } catch (err) {
     await t.rollback();
-    console.error(`[SWAP] Transaction rolled back:`, err.message);
     throw err;
   }
 };
 
 export const runSwap = async (config) => {
   const { label = "Swap" } = config;
-  console.log(`[SWAP][${label}] Starting...`);
 
   try {
     // Double-fire guard: abort if this label already ran in the last 30 minutes
@@ -225,33 +218,25 @@ export const runSwap = async (config) => {
     if (recentRun) {
       const msSince = Date.now() - new Date(recentRun.swapped_at).getTime();
       if (msSince < 30 * 60 * 1000) {
-        console.warn(`[SWAP][${label}] Already ran ${Math.round(msSince / 60000)}m ago — skipping to prevent double-fire.`);
         return;
       }
     }
 
     const leads = await fetchQualifyingLeads(config);
-    console.log(`[SWAP][${label}] ${leads.length} qualifying leads found.`);
 
     if (leads.length === 0) return;
 
     const grouped = groupByCounsellor(leads);
-    console.log(`[SWAP][${label}] Spread across ${Object.keys(grouped).length} counsellors.`);
 
     const activeCounsellors = await fetchActiveCounsellors();
-    console.log(`[SWAP][${label}] ${activeCounsellors.length} active L2 counsellors available.`);
 
     if (activeCounsellors.length < 2) {
-      console.warn(`[SWAP][${label}] Not enough active counsellors to swap. Aborting.`);
       return;
     }
 
     const plan = buildSwapPlan(grouped, activeCounsellors);
-    console.log(`[SWAP][${label}] Swap plan built: ${plan.length} assignments.`);
 
     await executeSwap(plan, config.hideRemarks, config);
-    console.log(`[SWAP][${label}] Done.`);
   } catch (err) {
-    console.error(`[SWAP][${label}] Error:`, err.message);
   }
 };

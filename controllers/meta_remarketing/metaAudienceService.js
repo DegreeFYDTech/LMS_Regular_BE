@@ -32,10 +32,6 @@ export const ensureAudience = async (groupName) => {
     });
 
   } catch (error) {
-    console.error("ensureAudience error:", {
-      groupName,
-      message: error.message
-    });
     throw error;
   }
 };
@@ -65,10 +61,6 @@ export const pushLeadToAudience = async ({ groupName, lead }) => {
     };
 
   } catch (error) {
-    console.error(" pushLeadToAudience error:", {
-      groupName,
-      message: error.message
-    });
 
     return {
       success: false,

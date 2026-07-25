@@ -77,7 +77,7 @@ export const addUserToAudience = async ({ audienceId, lead }) => {
       payload,
       access_token: ACCESS_TOKEN
     });
-    console.log('resposne data',res.data)
+    undefined
     return res.data;
   } catch (error) {
     

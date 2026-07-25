@@ -51,7 +51,6 @@ export const registerSupervisor = async (req, res) => {
       token
     });
   } catch (error) {
-    console.error('Register Supervisor Error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -67,14 +66,12 @@ export const loginSupervisor = async (req, res) => {
     const isLoopback = (ip) => !ip || ip === '::1' || ip === '127.0.0.1' || ip.startsWith('192.168.') || ip.startsWith('10.') || ip === 'Unknown';
     const finalIp = (!isLoopback(frontendIp)) ? frontendIp : serverIp;
 
-    console.log(`[Supervisor Login] User: ${email}, Frontend IP: ${frontendIp}, Server IP: ${serverIp}, Final IP: ${finalIp}`);
 
     let geoData = meta?.geo || req.body.geo || null;
 
     const uaStr = req.headers['user-agent'] || meta?.userAgent || '';
     const deviceDetails = extractDeviceDetails(uaStr);
 
-    console.log(`[Supervisor Device] Detected: ${deviceDetails.type}, Vendor: ${deviceDetails.vendor}, Model: ${deviceDetails.model}, OS: ${extractOS(uaStr)}`);
 
     const combinedMeta = {
       ...meta,
@@ -119,7 +116,6 @@ export const loginSupervisor = async (req, res) => {
       }).catch(() => { });
       return res.status(403).json({ message: `Account is ${supervisor.status}. Please contact administrator.` });
     }
-   console.log("supervisor",supervisor,password);
     const isMatch = await bcrypt.compare(password, supervisor.supervisor_password);
     if (!isMatch) {
       await LoginAttempt.create({
@@ -172,7 +168,6 @@ export const loginSupervisor = async (req, res) => {
       token,
     });
   } catch (error) {
-    console.error('Login Supervisor Error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -199,7 +194,6 @@ export const changePassword = async (req, res) => {
 
     res.status(200).json({ message: 'Password updated successfully' });
   } catch (error) {
-    console.error('Change Password Error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -224,7 +218,6 @@ export const logoutSupervisor = async (req, res) => {
 
     res.status(200).json({ message: 'Logout successful' });
   } catch (error) {
-    console.error('Logout Error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -242,7 +235,6 @@ export const getUserDetails = async (req, res) => {
 
     res.json({ user });
   } catch (error) {
-    console.error('Get User Details Error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 };
@@ -259,7 +251,6 @@ export const logoutFromAllDevices = async (req, res) => {
 
     res.status(200).json({ message: 'Logged out successfully' });
   } catch (error) {
-    console.error('Error in logoutFromAllDevices:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -276,7 +267,6 @@ export const makeSupervisorLogout = async (req, res) => {
     res.status(200).json({ message: 'Supervisor logged out successfully' });
 
   } catch (error) {
-    console.error('Error in making Logout :', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',

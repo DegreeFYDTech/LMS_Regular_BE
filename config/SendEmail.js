@@ -201,7 +201,6 @@ const sendMail = async (data, to) => {
         const emailFunction = await EmailFunction(emailContent, 'New Lead is Generated', to,process.env.email,process.env.passkey);
         return emailFunction;
     } catch (error) {
-        console.error(error);
         throw new Error('Error generating email');
     }
 };

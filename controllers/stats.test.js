@@ -10,11 +10,7 @@ export const getOptimizedOverallStats = async (filters) => {
       utmIncludeWhere,
     } = filters;
 
-    console.log('DEBUG - Input conditions:');
-    console.log(filters,'applied filters')
-    console.log('whereConditions:', JSON.stringify(whereConditions, null, 2));
-    console.log('remarkIncludeWhere:', JSON.stringify(remarkIncludeWhere, null, 2));
-    console.log('utmIncludeWhere:', JSON.stringify(utmIncludeWhere, null, 2));
+    undefined
 
     // Convert Sequelize conditions to raw SQL with proper parameter handling
     const { sqlWhere: studentSqlWhere, replacements: studentReplacements } = 
@@ -47,11 +43,6 @@ export const getOptimizedOverallStats = async (filters) => {
     allReplacements.todayStart = today;
     allReplacements.todayEnd = tomorrow;
 
-    console.log('DEBUG - Generated SQL conditions:');
-    console.log('Student WHERE:', prefixedStudentSqlWhere);
-    console.log('Remark WHERE:', prefixedRemarkSqlWhere);
-    console.log('UTM WHERE:', prefixedUtmSqlWhere);
-    console.log('All Replacements:', allReplacements);
 
     // Build the comprehensive raw SQL query with proper table/column names
     const query = `
@@ -122,17 +113,12 @@ export const getOptimizedOverallStats = async (filters) => {
       CROSS JOIN unread_messages um;
     `;
 
-    console.log('Final Query:', query);
-    console.log('Final Replacements:', allReplacements);
 
-    console.time('optimizedStatsQuery');
     const results = await sequelize.query(query, { 
       replacements: allReplacements,
       type: sequelize.QueryTypes.SELECT 
     });
-    console.timeEnd('optimizedStatsQuery');
 
-    console.log('Raw query results:', results);
     const result = results[0] || {};
 
     const response = {
@@ -146,12 +132,9 @@ export const getOptimizedOverallStats = async (filters) => {
       allUnreadMessagesCount: parseInt(result.all_unread_messages_count) || 0
     };
 
-    console.log('Final stats result:', response);
     return response;
 
   } catch (error) {
-    console.error('Failed to fetch optimized overall stats:', error);
-    console.error('Error stack:', error.stack);
     throw new Error(`Failed to fetch optimized overall stats: ${error.message}`);
   }
 };
@@ -203,7 +186,6 @@ const buildRawSqlConditions = (conditions, tableAlias = '') => {
     
     // Skip Sequelize.literal conditions
     if (value && typeof value === 'object' && value.val && typeof value.val === 'string') {
-      console.warn(`Skipping Sequelize.literal condition for key: ${key}`);
       return '1=1';
     }
     
@@ -426,7 +408,6 @@ const buildRawSqlConditions = (conditions, tableAlias = '') => {
       const betweenValue = getOperatorValue(value, Op.between, 'between');
       if (betweenValue !== undefined) {
         if (!Array.isArray(betweenValue) || betweenValue.length !== 2) {
-          console.error(`Invalid BETWEEN values for ${key}:`, betweenValue);
           return '1=1';
         }
         const paramName1 = getParamName();
@@ -440,7 +421,6 @@ const buildRawSqlConditions = (conditions, tableAlias = '') => {
       const notBetweenValue = getOperatorValue(value, Op.notBetween, 'notBetween');
       if (notBetweenValue !== undefined) {
         if (!Array.isArray(notBetweenValue) || notBetweenValue.length !== 2) {
-          console.error(`Invalid NOT BETWEEN values for ${key}:`, notBetweenValue);
           return '1=1';
         }
         const paramName1 = getParamName();
@@ -587,7 +567,6 @@ const buildRawSqlConditions = (conditions, tableAlias = '') => {
           if (typeof andCondition === 'object' && andCondition !== null) {
             // Check if this is a Sequelize.literal
             if (andCondition.val && typeof andCondition.val === 'string') {
-              console.warn('Skipping Sequelize.literal in AND condition');
               continue;
             }
             
@@ -627,7 +606,6 @@ const buildRawSqlConditions = (conditions, tableAlias = '') => {
             sqlParts.push(condition);
           }
         } catch (error) {
-          console.error(`Error processing condition for key ${key}:`, error);
           // Continue processing other conditions
         }
       }

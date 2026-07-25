@@ -31,13 +31,7 @@ export const generateTokenAndSetCookie = (
     process.env.JWT_SECRET,
     { expiresIn }
   );
-  console.log({
-      id: payload.id,
-      name: payload.name, 
-      role: payload.role,
-      counsellorId:payload.counsellorId || "" ,
-      counsellorPreferredMode:payload.counsellorPreferredMode || ""
-    })
+  undefined
   res.cookie(cookieName, token, {
     httpOnly: true,
     secure: false, 

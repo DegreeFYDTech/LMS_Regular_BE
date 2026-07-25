@@ -7,19 +7,11 @@ async function main() {
   const args = process.argv.slice(2);
   
   if (args.length < 1) {
-    console.log("\n❌ Missing arguments!");
-    console.log("👉 Usage: node --experimental-vm-modules scripts/assign_l3_bulk.js <path_to_json_file>\n");
-    console.log("Example format for the JSON file:");
-    console.log(`[
-  { "student_id": "STD-123456", "status_history_id": 11821 },
-  { "student_id": "STD-789012", "status_history_id": 11822 }
-]`);
     process.exit(1);
   }
 
   const filePath = args[0];
   if (!fs.existsSync(filePath)) {
-    console.error(`❌ File not found at path: ${filePath}`);
     process.exit(1);
   }
 
@@ -31,14 +23,9 @@ async function main() {
       throw new Error("JSON must be an array of objects.");
     }
   } catch (err) {
-    console.error("❌ Error reading or parsing JSON file:", err.message);
     process.exit(1);
   }
 
-  console.log(`\n======================================================`);
-  console.log(`🔄 BULK L3 Assignment Started`);
-  console.log(`Total records to process: ${data.length}`);
-  console.log(`======================================================\n`);
 
   let successCount = 0;
   let skippedCount = 0;
@@ -49,10 +36,8 @@ async function main() {
     const studentId = record.student_id;
     const statusHistoryId = record.status_history_id;
 
-    console.log(`[${i + 1}/${data.length}] Processing Student: ${studentId}, Journey: ${statusHistoryId}...`);
 
     if (!studentId || !statusHistoryId) {
-      console.log(`   ❌ Missing student_id or status_history_id. Skipping.`);
       failedCount++;
       continue;
     }
@@ -60,7 +45,6 @@ async function main() {
     try {
       const student = await Student.findOne({ where: { student_id: studentId } });
       if (!student) {
-        console.log(`   ❌ Student not found.`);
         failedCount++;
         continue;
       }
@@ -73,13 +57,11 @@ async function main() {
       });
 
       if (!journey) {
-        console.log(`   ❌ Journey entry not found.`);
         failedCount++;
         continue;
       }
 
       if (journey.assigned_l3_counsellor_id) {
-        console.log(`   ⚠️ Already assigned to: ${journey.assigned_l3_counsellor_id}. Skipping.`);
         skippedCount++;
         continue;
       }
@@ -89,7 +71,6 @@ async function main() {
       });
 
       if (!courseDetails) {
-        console.log(`   ❌ Course details not found.`);
         failedCount++;
         continue;
       }
@@ -112,26 +93,16 @@ async function main() {
           { assigned_l3_counsellor_id },
           { where: { status_history_id: statusHistoryId } }
         );
-        console.log(`   ✅ Assigned to: ${assigned_l3_counsellor_id}`);
         successCount++;
       } else {
-        console.log(`   ❌ No rule matched.`);
         failedCount++;
       }
 
     } catch (error) {
-      console.log(`   ❌ Error: ${error.message}`);
       failedCount++;
     }
   }
 
-  console.log(`\n======================================================`);
-  console.log(`✅ BULK PROCESSING COMPLETED`);
-  console.log(`======================================================`);
-  console.log(`🟢 Successfully Assigned: ${successCount}`);
-  console.log(`🟡 Skipped (Already Assigned): ${skippedCount}`);
-  console.log(`🔴 Failed / No Match: ${failedCount}`);
-  console.log(`======================================================\n`);
   
   process.exit(0);
 }

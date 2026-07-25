@@ -7,7 +7,6 @@ let browserInstance = null;
 
 export const getBrowser = async () => {
   if (!browserInstance || !browserInstance.isConnected()) {
-    console.log('[Playwright] Launching shared Chromium instance...');
     browserInstance = await chromium.launch({
       headless: true,
       args: [
@@ -24,7 +23,6 @@ export const getBrowser = async () => {
 
 export const closeBrowser = async () => {
   if (browserInstance) {
-    console.log('[Playwright] Closing shared browser instance...');
     await browserInstance.close();
     browserInstance = null;
   }
@@ -42,41 +40,33 @@ export const submitCucetLead = async (lead, randomData) => {
   const page = await context.newPage();
   
   try {
-    console.log(`[Playwright] Navigating to CUCET public form for student ${lead.studentId}...`);
     await page.goto('https://cucet.cuchd.in/?utm_source=nuvora', { 
       waitUntil: 'networkidle', 
       timeout: 45000 
     });
 
-    console.log('[Playwright] Identifying iframe scope...');
     const iframeSelector = 'iframe.lsq-portal-widget-iframe';
     
     await page.waitForSelector(iframeSelector, { timeout: 15000 }).catch(() => {
-      console.log('[Playwright] Iframe selector not found immediately, checking main page context...');
     });
     
     const iframeElement = await page.$(iframeSelector);
     const formScope = iframeElement ? page.frameLocator(iframeSelector) : page;
 
     // 2. Wait for the core form field to become interactive in the resolved scope
-    console.log('[Playwright] Waiting for form fields to load...');
     const nameInputSelector = 'input[id$="__tab1__section1__FirstName__Lead__0"]';
     await formScope.locator(nameInputSelector).waitFor({ timeout: 20000 });
 
-    console.log('[Playwright] Entering Student Name...');
     await formScope.locator(nameInputSelector).pressSequentially(lead.studentName, { delay: 60 + Math.random() * 60 });
     await page.waitForTimeout(300 + Math.random() * 300);
 
-    console.log('[Playwright] Entering Student Email...');
     await formScope.locator('input[id$="__tab1__section1__EmailAddress__Lead__0"]').pressSequentially(lead.email, { delay: 60 + Math.random() * 60 });
     await page.waitForTimeout(300 + Math.random() * 300);
 
-    console.log('[Playwright] Entering Student Mobile No...');
     await formScope.locator('input.number-input').pressSequentially(lead.phone, { delay: 60 + Math.random() * 60 });
     await page.waitForTimeout(300 + Math.random() * 300);
 
     // 4. Programmatically set Date of Birth to bypass Flatpickr readonly calendar limitations
-    console.log(`[Playwright] Selecting DOB: ${randomData.dob}`);
     await formScope.locator('input[id$="__tab1__section1__mx_Date_Of_Birth__Lead__0"]').evaluate((el, dobVal) => {
       if (el) {
         el.removeAttribute('readonly');
@@ -109,7 +99,6 @@ export const submitCucetLead = async (lead, randomData) => {
     ];
 
     for (const dropdown of dropdowns) {
-      console.log(`[Playwright] Triggering select2 for value: "${dropdown.val}"`);
       await formScope.locator(dropdown.trigger).click();
       await page.waitForTimeout(300 + Math.random() * 200);
 
@@ -128,13 +117,11 @@ export const submitCucetLead = async (lead, randomData) => {
     }
 
     // 6. Submit the form and monitor redirection
-    console.log('[Playwright] Submitting lead application form...');
     const submitBtn = formScope.locator('button.lsq-form-action-btn:has-text("Apply Now")');
     
     // Fire submission click and wait for navigation synchronously
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'networkidle', timeout: 35000 }).catch(() => {
-        console.log('[Playwright] Navigation wait timeout. Continuing check...');
       }),
       submitBtn.click()
     ]);
@@ -143,14 +130,12 @@ export const submitCucetLead = async (lead, randomData) => {
     await page.waitForTimeout(2000);
 
     const finalRedirectUrl = page.url();
-    console.log(`[Playwright] Form successfully submitted. Redirect URL: ${finalRedirectUrl}`);
 
     let leadId = null;
     try {
       const urlObj = new URL(finalRedirectUrl);
       leadId = urlObj.searchParams.get('leadId');
     } catch (urlErr) {
-      console.error('[Playwright] Failed to parse redirect URL searchParams:', urlErr.message);
       const match = finalRedirectUrl.match(/[?&]leadId=([^&]+)/i);
       if (match) leadId = match[1];
     }
@@ -170,7 +155,6 @@ export const submitCucetLead = async (lead, randomData) => {
     };
 
   } catch (error) {
-    console.error(`[Playwright] Error in automation run: ${error.message}`);
 
     // Capture failure screenshot for analysis
     try {
@@ -182,9 +166,7 @@ export const submitCucetLead = async (lead, randomData) => {
       const screenshotPath = path.join(screenshotDir, screenshotFile);
       
       await page.screenshot({ path: screenshotPath, fullPage: true });
-      console.log(`[Playwright] Captured diagnostic failure screenshot at: ${screenshotPath}`);
     } catch (shotError) {
-      console.error(`[Playwright] Failed to capture error screenshot: ${shotError.message}`);
     }
 
     // Ensure resources are cleaned up

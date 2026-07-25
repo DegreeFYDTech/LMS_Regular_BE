@@ -32,15 +32,11 @@ function getNextStartTimeIST() {
 async function main() {
   const args = process.argv.slice(2);
   if (args.length < 1) {
-    console.log("❌ Usage: node --experimental-vm-modules scripts/schedule_cu_bot_bulk.js <path_to_leads_json> [gap_minutes] [--immediate]");
-    console.log("Example: node --experimental-vm-modules scripts/schedule_cu_bot_bulk.js leads.json 2 --immediate");
-    console.log("Example JSON format: [\"STD-123\", \"STD-456\"] OR [{\"student_id\": \"STD-123\"}]");
     process.exit(1);
   }
 
   const filePath = args[0];
   if (!fs.existsSync(filePath)) {
-    console.error(`❌ File not found at path: ${filePath}`);
     process.exit(1);
   }
 
@@ -48,7 +44,6 @@ async function main() {
   const data = JSON.parse(rawData);
   
   if (!Array.isArray(data)) {
-    console.error("❌ JSON must be an array of student IDs (strings) or objects.");
     process.exit(1);
   }
 
@@ -69,11 +64,6 @@ async function main() {
   const activeLeadsPerDay = immediate ? data.length : LEADS_PER_DAY;
   const currentStartUTC = immediate ? new Date() : getNextStartTimeIST();
 
-  console.log(`\n======================================================`);
-  console.log(`🤖 CU BOT BULK SCHEDULER STARTED`);
-  console.log(`Total Leads to Schedule: ${data.length}`);
-  console.log(`Configuration: ${immediate ? 'Immediate (no daily limit)' : `${activeLeadsPerDay} leads/day`} | ${gapMinutes} min gap | Starting: ${immediate ? 'Now' : `at ${START_HOUR_IST}:00 AM IST`}`);
-  console.log(`======================================================\n`);
 
   let scheduledCount = 0;
   let dayCounter = 1;
@@ -84,14 +74,12 @@ async function main() {
     const studentId = typeof item === 'string' ? item : (item.student_id || item.studentId);
 
     if (!studentId) {
-      console.log(`   ❌ Skipping invalid entry at index ${i}`);
       continue;
     }
 
     // Fetch the student details required by the worker
     const student = await Student.findOne({ where: { student_id: studentId } });
     if (!student) {
-      console.log(`   ❌ Skipping ${studentId} - Student not found in database.`);
       continue;
     }
 
@@ -134,20 +122,14 @@ async function main() {
       });
 
       const executeTimeIST = new Date(executeAtUTC.getTime() + (5.5 * 60 * 60 * 1000)).toISOString().replace('T', ' ').substring(0, 16) + ' IST';
-      console.log(`   ✅ [Day ${dayCounter}] Queued ${studentId} (Record: ${dbRecord.id}) -> Will execute at ${executeTimeIST}`);
       
       scheduledCount++;
       leadInDayCounter++;
 
     } catch (error) {
-      console.log(`   ❌ Error queuing ${studentId}: ${error.message}`);
     }
   }
 
-  console.log(`\n======================================================`);
-  console.log(`🎉 Scheduling Complete! Successfully queued ${scheduledCount} leads.`);
-  console.log(`The BullMQ workers will now automatically pick them up at the scheduled times.`);
-  console.log(`======================================================\n`);
   
   process.exit(0);
 }

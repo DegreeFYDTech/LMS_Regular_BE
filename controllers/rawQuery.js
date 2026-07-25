@@ -266,7 +266,6 @@ export async function getStudentsRaw(filters) {
     };
 
   } catch (e) {
-    console.log('error', e);
     throw e;
   }
 }

@@ -46,7 +46,6 @@ export default (io) => {
             
             socket.emit('chat_list_update', chats);
         } catch (error) {
-            console.error('Dashboard Fetch Error:', error);
         }
     });
 
@@ -73,7 +72,6 @@ export default (io) => {
         });
 
       } catch (error) {
-        console.error('Socket Message Error:', error);
         socket.emit('error', { message: 'Failed to send message' });
       }
     });
@@ -86,7 +84,6 @@ export default (io) => {
         try {
             await WebsiteChatService.markMessagesAsRead(chatId, userType);
         } catch (error) {
-            console.error('Mark Read Error:', error);
         }
     });
 

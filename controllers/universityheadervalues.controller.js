@@ -71,7 +71,6 @@ export const getAllUniversities = async (req, res) => {
       data: universitiesWithData,
     });
   } catch (error) {
-    console.error('Error fetching universities:', error);
     return res.status(500).json({
       success: false,
       message: 'Server error',
@@ -151,7 +150,6 @@ export const getUniversityCourseMappings = async (req, res) => {
       data: coursesWithMappings,
     });
   } catch (error) {
-    console.error('Error fetching university courses:', error);
     return res.status(500).json({
       success: false,
       message: 'Server error',
@@ -179,7 +177,6 @@ export const getCourseHeaderValues = async (req, res) => {
 
     return res.status(200).json(record?.values || {});
   } catch (error) {
-    console.error('Error fetching course header values:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -279,7 +276,6 @@ export const saveCourseHeaderValues = async (req, res) => {
     return res.status(statusCode).json(response);
 
   } catch (error) {
-    console.error('Error saving course header values:', error);
     return res.status(500).json({
       message: 'Server error',
       error: error.message
@@ -327,7 +323,6 @@ export const deleteCourseHeaderValues = async (req, res) => {
 
     return res.status(200).json({ message: 'Course header values deleted successfully' });
   } catch (error) {
-    console.error('Error deleting course header values:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -346,7 +341,6 @@ export const deleteUniversityAllCourses = async (req, res) => {
       deletedCount: deleted,
     });
   } catch (error) {
-    console.error('Error deleting all courses:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -432,7 +426,6 @@ export const bulkUploadCourseHeaderValues = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error in bulk upload:', error);
     return res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -486,7 +479,6 @@ export const updateSpecificField = async (req, res) => {
       updatedCount
     });
   } catch (error) {
-    console.error('Error updating field:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -523,16 +515,16 @@ export const updateCampusToLucknow = async (req, res) => {
 
 export const bulkUpsertUniversityHeaderValues = async (req, res) => {
   try {
-    console.log("hel")
+    undefined
     const payload = Array.isArray(req.body) ? req.body : [req.body];
-    // console.log(payload)
+    // undefined
     let inserted = 0;
     let updated = 0;
     let skipped = [];
 
     for (const item of payload) {
       try {
-        // console.log(item,"harsh")
+        // undefined
         if (!item.course_id || !item.university_name || !item.values) {
           skipped.push({
             reason: 'Missing course_id / university_name / values',
@@ -541,11 +533,11 @@ export const bulkUpsertUniversityHeaderValues = async (req, res) => {
           continue;
         }
 
-        console.log(item.course_id)
+        undefined
         const courseExists = await UniversityCourse.findOne({
           where: { course_id: item.course_id }
         });
-console.log(courseExists)
+undefined
         if (!courseExists) {
           skipped.push({
             reason: 'course_id not found in university_courses',

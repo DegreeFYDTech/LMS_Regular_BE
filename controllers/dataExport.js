@@ -488,12 +488,8 @@ export const getStudentshelper = async (filters) => {
       });
     }
 
-    console.log('include query', remarkIncludeWhere);
 
     // DETAILED TIMING STARTS HERE
-    console.time('mainQuery');
-    console.time('overallStats');
-    console.time('innerQuery');
 
     const [{ count: totalCount, rows: students }, overallStats] = await Promise.all([
       Student.findAndCountAll({
@@ -527,18 +523,14 @@ export const getStudentshelper = async (filters) => {
   distinct: true,
   subQuery: false
         }).then(result => {
-        console.timeEnd('mainQuery');
         return result;
         })
     ]);
 
-    console.timeEnd('innerQuery');
-
-   console.timeEnd('innerQuery');
 
 
 
-console.time('responseBuilding');
+
 const totalPages = Math.ceil(totalCount / limitNum);
 
 const response = {
@@ -560,12 +552,10 @@ const response = {
     utm: utmIncludeWhere
   }
 };
-console.timeEnd('responseBuilding');
 
 return response;
 
   } catch (error) {
-    console.log(error.message);
    
     throw error;
   }
@@ -618,16 +608,15 @@ function buildWhereSQL(whereObj) {
 
 export const getStudents = async (req, res) => {
   try{
-      console.time('hello hi')
+      undefined
       const filters=mapFiltersForGetStudentsHelper(req.query)
       const data=await getStudentshelper(filters)
-       console.timeEnd('hello hi')
+       undefined
       res.status(200).json(data);
       
   }
    catch(error)
    {
-    console.error('Error in getStudents:', error.message);
     res.status(500).json({
       success: false,
       message: 'Internal server error',

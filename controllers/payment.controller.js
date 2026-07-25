@@ -100,7 +100,6 @@ export const initiateLead = async (req, res) => {
       message: `New ${onModel || "lead"} initiated`,
     });
   } catch (error) {
-    console.error("Lead Initiation Error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -184,7 +183,6 @@ export const updateLead = async (req, res) => {
 
     res.json({ success: true, message: "Lead updated" });
   } catch (error) {
-    console.error("Lead Update Error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -218,7 +216,6 @@ export const abandonLead = async (req, res) => {
 
     res.json({ success: true, message: "Lead marked as abandoned" });
   } catch (error) {
-    console.error("Lead Abandon Error:", error);
     res.status(200).json({ success: false, message: error.message });
   }
 };
@@ -281,7 +278,6 @@ export const createAdmissionOrder = async (req, res) => {
           coupon.applicableCampuses.length > 0
         ) {
           if (!coupon.applicableCampuses.includes(campusLocation)) {
-            console.log("Coupon not applicable for this campus");
           } else {
             applyCouponLogic(coupon);
           }
@@ -427,7 +423,6 @@ export const createAdmissionOrder = async (req, res) => {
     });
   } catch (error) {
     if (transaction) await transaction.rollback();
-    console.error("Order Creation Error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -436,7 +431,6 @@ export const handleWebhook = async (req, res) => {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
   const signature = req.headers["x-razorpay-signature"];
   const body = JSON.stringify(req.body);
-  console.log("triggered webhook with body:", body);
   if (secret) {
     const expectedSignature = crypto
       .createHmac("sha256", secret)
@@ -532,9 +526,8 @@ export const handleWebhook = async (req, res) => {
                 if (linkedStudent) targetStudentId = linkedStudent.student_id;
               }
             }
-            console.log(snapshot.collegeName, "snapshot.collegeName",snapshot, "snapshot",targetStudentId, "targetStudentId",lead, "lead");
             if (snapshot.collegeName.includes("Amity")) {
-              console.log("triggered")
+              undefined
               await axios.post(
                 `https://regular-amity-api.degreefyd.com/v1/payment/updatePaymentRemarks`,
                 {
@@ -641,7 +634,6 @@ export const handleWebhook = async (req, res) => {
     res.status(200).json({ status: "success" });
   } catch (error) {
     if (transaction) await transaction.rollback();
-    console.error("Webhook processing error:", error);
     webhookEvent.status = "FAILED";
     webhookEvent.errorLog = error.message;
     await webhookEvent.save();
@@ -1012,7 +1004,6 @@ export const getPaymentReports = async (req, res) => {
 
     return res.status(200).json({ success: true, analytics, data: formattedData });
   } catch (error) {
-    console.error("Report Error:", error);
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
@@ -1033,7 +1024,6 @@ export const updatePaymentRemarks = async (req, res) => {
       where: { student_phone: phoneToSearch },
       transaction,
     });
-    console.log(student);
     await StudentRemark.create(
       {
         student_id: student.student_id,
@@ -1075,7 +1065,6 @@ export const updatePaymentRemarks = async (req, res) => {
   } catch (error) {
     await transaction.rollback();
 
-    console.error("❌ updatePaymentRemarks error:", error);
 
     return res.status(500).json({
       success: false,

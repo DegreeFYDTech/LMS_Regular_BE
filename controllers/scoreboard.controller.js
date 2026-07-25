@@ -14,21 +14,16 @@ export const getWeeklyLeaderboard = async (req, res) => {
   try {
     // Add database connection check
     await sequelize.authenticate();
-    console.log('Database connection established successfully.');
 
     const { level, week, year } = req.query;
-    console.log('=== LEADERBOARD API DEBUG START ===');
-    console.log('Query params received:', { level, week, year });
 
     const weekDates = getWeekDateRange(week, year);
     const { startDate, endDate } = weekDates;
-    console.log('Calculated date range:', { startDate, endDate });
 
     const counsellorFilter = {};
     if (level && ['l2', 'l3'].includes(level.toLowerCase())) {
       counsellorFilter.role = level.toLowerCase();
     }
-    console.log('Counsellor filter:', counsellorFilter);
 
     // Add timeout and better error handling for Sequelize queries
     const counsellors = await Promise.race([
@@ -42,7 +37,6 @@ export const getWeeklyLeaderboard = async (req, res) => {
       )
     ]);
 
-    console.log(`Found ${counsellors.length} counsellors`);
 
     if (counsellors.length === 0) {
       return res.status(404).json({
@@ -52,7 +46,6 @@ export const getWeeklyLeaderboard = async (req, res) => {
     }
 
     const counsellorIds = counsellors.map(c => c.counsellor_id);
-    console.log('Counsellor IDs:', counsellorIds);
 
     const allRemarks = await Promise.race([
       StudentRemark.findAll({
@@ -75,7 +68,6 @@ export const getWeeklyLeaderboard = async (req, res) => {
       )
     ]);
 
-    console.log(`Found ${allRemarks.length} remarks`);
 
     const counsellorData = {};
 
@@ -226,11 +218,9 @@ export const getWeeklyLeaderboard = async (req, res) => {
       }
     };
 
-    console.log('=== LEADERBOARD API SUCCESS ===');
     res.status(200).json(response);
 
   } catch (error) {
-    console.error('❌ Error fetching leaderboard data:', error);
     
     // Provide more specific error messages
     let errorMessage = 'Failed to fetch leaderboard data';

@@ -24,7 +24,6 @@ export const getLocationFromIP = async (ip) => {
     const data = response.data;
     
     if (data.error) {
-      console.warn('IP API returned error:', data.reason);
       return {
         country: 'Unknown',
         state: 'Unknown', 
@@ -50,10 +49,8 @@ export const getLocationFromIP = async (ip) => {
       continent_code: data.continent_code || 'Unknown'
     };
   } catch (error) {
-    console.error('Error fetching location:', error.message);
     
     if (error.response && error.response.status === 429) {
-      console.error('IP API rate limit exceeded');
       return {
         country: 'Unknown',
         state: 'Unknown',
@@ -100,7 +97,6 @@ export const getLocationFromCoordinates = async (lat, lng) => {
     
     throw new Error('No results found');
   } catch (error) {
-    console.error('Error in reverse geocoding:', error.message);
     return {
       country: 'Unknown',
       state: 'Unknown',

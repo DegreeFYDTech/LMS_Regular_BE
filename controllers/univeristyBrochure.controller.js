@@ -57,7 +57,6 @@ export const uploadUniversityBrochure = async (req, res) => {
       data: brochure,
     });
   } catch (error) {
-    console.error("uploadUniversityBrochure error:", error);
     return res.status(500).json({
       success: false,
       message: "Server error while uploading brochure",
@@ -95,7 +94,6 @@ export const getUniversityBrochure = async (req, res) => {
       data: brochure,
     });
   } catch (error) {
-    console.error("getUniversityBrochure error:", error);
     return res.status(500).json({
       success: false,
       message: "Server error while fetching brochure",

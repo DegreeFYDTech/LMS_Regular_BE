@@ -12,5 +12,4 @@ databaseConnection();
 
 import { startCuBotWorker } from './workers/cuBotWorker.js';
 
-console.log('🤖 Starting CUCET Lead submission worker process...');
 startCuBotWorker();

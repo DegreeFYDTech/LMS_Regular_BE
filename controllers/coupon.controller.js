@@ -14,7 +14,6 @@ export const createCoupon = async (req, res) => {
             data: coupon,
         });
     } catch (error) {
-        console.error("Error creating coupon:", error);
         res.status(500).json({
             success: false,
             message: error.name === "SequelizeUniqueConstraintError"
@@ -51,7 +50,6 @@ export const getAllCoupons = async (req, res) => {
             data: coupons,
         });
     } catch (error) {
-        console.error("Error fetching coupons:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -68,7 +66,6 @@ export const getCouponById = async (req, res) => {
         }
         res.status(200).json({ success: true, data: coupon });
     } catch (error) {
-        console.error("Error fetching coupon:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -91,7 +88,6 @@ export const updateCoupon = async (req, res) => {
             data: coupon,
         });
     } catch (error) {
-        console.error("Error updating coupon:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -113,7 +109,6 @@ export const deleteCoupon = async (req, res) => {
             message: "Coupon deleted successfully",
         });
     } catch (error) {
-        console.error("Error deleting coupon:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };

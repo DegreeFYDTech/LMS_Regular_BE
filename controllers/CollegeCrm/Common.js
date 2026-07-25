@@ -77,7 +77,6 @@ export const Common = async (req, res) => {
             };
 
             const response = await sendLeadToLPuCRM(resdata);
-            console.log(response);
 
             const newLead = await collegeLpuCRM.create({
               student_name: resdata.name,
@@ -97,7 +96,6 @@ export const Common = async (req, res) => {
             await newLead.save();
             updatedResponse.LPU_Status = response.message || 'Success';
           } catch (lpuError) {
-            console.error("LPU Error:", lpuError);
             updatedResponse.LPU_Status = lpuError.message || 'Error Sending Lead';
           }
         }
@@ -163,7 +161,6 @@ export const Common = async (req, res) => {
             updatedResponse.CU_Status = responseStatus;
 
           } catch (cuError) {
-            console.error("CU Error:", cuError);
             updatedResponse.CU_Status = 'Error Sending Lead';
           }
         }
@@ -192,7 +189,6 @@ export const Common = async (req, res) => {
         responseArray.push(updatedResponse);
 
       } catch (innerError) {
-        console.error("Error processing record:", innerError);
         responseArray.push({
           row: rowNumber,
           LPU_Status: 'Processing Error',
@@ -207,7 +203,6 @@ export const Common = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Main error:", error);
     res.status(500).json({
       message: "Error sending lead",
       error: error.response ? error.response.data : error.message

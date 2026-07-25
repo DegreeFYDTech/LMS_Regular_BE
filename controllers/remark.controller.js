@@ -54,7 +54,7 @@ export const getConnectedCallsAnalysis = async (req, res) => {
     // Build base WHERE conditions
     let baseWhereCondition = 'WHERE sr.created_at BETWEEN :fromDate AND :toDateEnd';
     let connectedWhereCondition = 'WHERE sr.calling_status = \'Connected\' AND sr.created_at BETWEEN :fromDate AND :toDateEnd';
-    console.log("isAnalyser", isAnalyser)
+    undefined
     // Add Facebook filter for analysers
     if (isAnalyser) {
       baseWhereCondition += ` AND s.source = 'FaceBook'`;
@@ -279,7 +279,6 @@ export const getConnectedCallsAnalysis = async (req, res) => {
 
     res.status(200).json(response);
   } catch (error) {
-    console.error('Error fetching connected calls analysis:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -360,7 +359,6 @@ export const getConnectedCallsDrillDown = async (req, res) => {
 
     res.json({ success: true, data: rows });
   } catch (error) {
-    console.error('Error in getConnectedCallsDrillDown:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -396,7 +394,6 @@ export const getRemarkByStudentId = async (req, res) => {
       data: remarks
     });
   } catch (error) {
-    console.error('Error fetching student remarks:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -410,7 +407,7 @@ export const getRemarkByStudentId = async (req, res) => {
 export const createRemarkController = async (req, res) => {
   try {
     const remarkData = req.body;
-    console.log(remarkData)
+    undefined
     const newRemark = await createRemark(remarkData);
 
     res.status(201).json({
@@ -419,7 +416,6 @@ export const createRemarkController = async (req, res) => {
       data: newRemark
     });
   } catch (error) {
-    console.error('Error creating remark:', error);
     res.status(400).json({
       success: false,
       message: error.message
@@ -466,7 +462,6 @@ export const getAllRemarks = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching all remarks:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -504,7 +499,6 @@ export const getRemarkById = async (req, res) => {
       data: remark
     });
   } catch (error) {
-    console.error('Error fetching remark by ID:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -547,7 +541,6 @@ export const updateRemark = async (req, res) => {
       data: remark
     });
   } catch (error) {
-    console.error('Error updating remark:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -576,7 +569,6 @@ export const deleteRemark = async (req, res) => {
       message: 'Remark deleted successfully'
     });
   } catch (error) {
-    console.error('Error deleting remark:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -620,7 +612,6 @@ export const getRemarksByDateRange = async (req, res) => {
       data: remarks
     });
   } catch (error) {
-    console.error('Error getting remarks by date range:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -657,7 +648,6 @@ export const getRemarksByStatus = async (req, res) => {
       data: remarks
     });
   } catch (error) {
-    console.error('Error getting remarks by status:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -697,7 +687,6 @@ export const getLatestRemarkByStudent = async (req, res) => {
       data: latestRemark
     });
   } catch (error) {
-    console.error('Error getting latest remark:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -807,7 +796,6 @@ export const getAnalysisReportSQL = async (req, res) => {
 
     res.status(200).json(response);
   } catch (error) {
-    console.error('Error generating SQL analysis report:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -908,7 +896,6 @@ export const getAnalysisReportDrillDown = async (req, res) => {
 
     res.json({ success: true, data: rows });
   } catch (error) {
-    console.error('Error in getAnalysisReportDrillDown:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -983,7 +970,6 @@ export const getAnalysisReporthelper = async (query, isAnalyser = false) => {
 
     return { success: true, data: rows };
   } catch (error) {
-    console.error('Download analysis report SQL error:', error);
     return { success: false, message: 'Internal server error' };
   }
 };
@@ -1030,7 +1016,6 @@ export const getAllRemarksofData = async (req, res) => {
 
     res.status(200).json(formattedRemarks);
   } catch (error) {
-    console.error("Error in getAllRemarksofData:", error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 };
@@ -1113,7 +1098,6 @@ export const downloadAnalysisReport = async (req, res) => {
 
     res.status(200).json({ success: true, data: formatted });
   } catch (error) {
-    console.error("Error downloading analysis report:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -1184,7 +1168,6 @@ export const bulkCreateStudentRemarks = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Bulk remark create error:', error);
     return res.status(500).json({
       success: false,
       message: error.message

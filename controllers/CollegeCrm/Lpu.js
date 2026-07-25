@@ -14,8 +14,6 @@ export const sendLeadToLPuCRM = async (leadData) => {
     );
     return response.data;
   } catch (error) {
-    console.error(error);
-    console.error('Error sending data:', error.response ? error.response.data : error.message);
     return {
       status: 'Failed',
       message: error.response?.data?.message || error.message || 'Unknown error',

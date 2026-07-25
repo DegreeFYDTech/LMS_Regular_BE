@@ -73,7 +73,6 @@ export const addSecondaryDetails = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Error adding secondary details:", error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -192,7 +191,6 @@ export const getStudentInfo = async (req, res) => {
         res.json({ message: "Success", data: responseData });
 
     } catch (error) {
-        console.error("Error fetching student info:", error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -275,7 +273,6 @@ export const getStudentSecondaryContactsWithStatus = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Error fetching secondary contacts with status:", error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -339,7 +336,6 @@ export const getContactStatusForUniversity = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Error fetching contact status:", error);
         res.status(500).json({ message: error.message });
     }
 };

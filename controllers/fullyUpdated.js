@@ -106,7 +106,6 @@ const todayCallbacks = await StudentRemark.count({
     };
 
   } catch (error) {
-    console.error('Error in getOverallStats:', error);
     throw new Error('Failed to fetch overall stats');
   }
 };
@@ -834,15 +833,14 @@ function buildWhereSQL(whereObj) {
 export const getStudents = async (req, res) => {
   try{
     
-      console.time('timeExcuring')
+      undefined
       const filters=mapFiltersForGetStudentsHelper(req.query)
       const data=await getStudentshelper(filters)
-       console.timeEnd('timeExcuring')
+       undefined
       res.status(200).json(data);
   }
    catch(error)
    {
-    console.error('Error in getStudents:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',

@@ -19,7 +19,6 @@ export const sendMetaEventOnce = async ({
   customData = {}
 }) => {
   if (!eventName || !eventId) {
-    console.warn(" Meta event skipped: missing identifiers");
     return null;
   }
 const PIXEL_ID = source=='Facebook' ? process.env.META_PIXEL_ID : process.env.UA_META_PIXEL_ID;
@@ -70,10 +69,6 @@ const ENDPOINT = `${MetaConfig.GRAPH_API}/${PIXEL_ID}/events`;
         }
       });
 
-      console.error(
-        "Meta API error:",
-        err.response?.data || err.message
-      );
     }
 
     throw err;

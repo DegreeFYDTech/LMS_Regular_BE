@@ -1,5 +1,5 @@
-import { LeadAssignmentRuleL2, Counsellor } from '../models/index.js';
-import { Op } from 'sequelize';
+import { LeadAssignmentRuleL2, Counsellor, LeadAssignmentLogs } from '../models/index.js';
+import { Op, fn, col, literal } from 'sequelize';
 
 // Helper function to clean conditions
 const cleanConditions = (conditions) => {
@@ -58,7 +58,6 @@ const cleanConditions = (conditions) => {
 
     return cleaned;
   } catch (e) {
-    console.error('Error in cleanConditions:', e.message);
     return {};
   }
 };
@@ -144,7 +143,6 @@ export const createLeadAssignmentforL2 = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -314,6 +312,92 @@ export const toggleLeadAssignmentforL2Status = async (req, res) => {
   }
 };
 
+export const getRuleAssignmentLogs = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 20, from, to } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const rule = await LeadAssignmentRuleL2.findByPk(id);
+    if (!rule) return res.status(404).json({ success: false, message: 'Rule not found' });
+
+    const ids = rule.assigned_counsellor_ids || [];
+    const n = ids.length;
+
+    // Fetch counsellors with status
+    const counsellors = await Counsellor.findAll({
+      where: { counsellor_id: { [Op.in]: ids } },
+      attributes: ['counsellor_id', 'counsellor_name', 'status'],
+    });
+
+    // Build ordered counsellor list with is_next marker
+    const nextIdx = n > 0 ? (rule.round_robin_index || 0) % n : 0;
+    const orderedCounsellors = ids.map((cid, idx) => {
+      const c = counsellors.find(x => x.counsellor_id === cid);
+      return {
+        counsellor_id: cid,
+        counsellor_name: c?.counsellor_name || cid,
+        status: c?.status || 'unknown',
+        is_blocked: false,
+        is_next: idx === nextIdx,
+      };
+    });
+
+    // Date filter
+    const dateFilter = {};
+    if (from) dateFilter[Op.gte] = new Date(from);
+    if (to) {
+      const toDate = new Date(to);
+      toDate.setHours(23, 59, 59, 999);
+      dateFilter[Op.lte] = toDate;
+    }
+    const where = { assigned_counsellor_id: { [Op.in]: ids } };
+    if (Object.keys(dateFilter).length) where.created_at = dateFilter;
+
+    // Logs with counsellor name join
+    const { count, rows } = await LeadAssignmentLogs.findAndCountAll({
+      where,
+      include: [{ model: Counsellor, attributes: ['counsellor_name'], required: false }],
+      order: [['created_at', 'DESC']],
+      limit: parseInt(limit),
+      offset,
+    });
+
+    const logs = rows.map(l => ({
+      id: l.id,
+      student_id: l.student_id,
+      counsellor_name: l.Counsellor?.counsellor_name || l.assigned_counsellor_id,
+      lead_assigned_at: l.created_at,
+    }));
+
+    // Distribution
+    const distRows = await LeadAssignmentLogs.findAll({
+      where,
+      attributes: ['assigned_counsellor_id', [fn('COUNT', col('id')), 'total_assigned']],
+      group: ['assigned_counsellor_id'],
+      raw: true,
+    });
+
+    const distribution = distRows.map(d => {
+      const c = counsellors.find(x => x.counsellor_id === d.assigned_counsellor_id);
+      return {
+        assigned_counsellor_id: d.assigned_counsellor_id,
+        counsellor_name: c?.counsellor_name || d.assigned_counsellor_id,
+        total_assigned: parseInt(d.total_assigned),
+        status: c?.status || 'unknown',
+        is_blocked: false,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: { logs, distribution, orderedCounsellors, total: count },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // Helper function to be used in assignLeadHelper
 export const incrementRuleMatchCount = async (ruleId) => {
   try {
@@ -335,7 +419,6 @@ export const incrementRuleMatchCount = async (ruleId) => {
     };
 
   } catch (error) {
-    console.error('Error incrementing rule match count:', error);
     return { success: false, message: error.message };
   }
 };

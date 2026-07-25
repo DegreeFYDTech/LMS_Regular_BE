@@ -69,7 +69,6 @@ app.use("/v1", v1_api);
 app.use("/api", LookerRoute);
 
 app.use((err, req, res, next) => {
-  console.error("❌ API ERROR:", err);
   res.status(500).json({
     success: false,
     message: "Internal Server Error",

@@ -65,7 +65,7 @@ export const getWhishListStudentHelper = async (filters) => {
     
    const pageNum = parseInt(page, 10) || 1;
 const limitNum = (limit && parseInt(limit, 10)) || undefined;
-console.log(limitNum,'limitnum  ')
+undefined
 const offset = limitNum ? (pageNum - 1) * limitNum : undefined;    
     const handleMultiSelectFilter = (value) => {
       if (!value) return null;
@@ -159,11 +159,11 @@ const offset = limitNum ? (pageNum - 1) * limitNum : undefined;
     // Source filter
    
     // Boolean filters
-    console.log(filters,'Params filters ')
+    undefined
     const isConnectedYetFilter = handleBooleanFilter(isConnectedYet);
     if (isConnectedYetFilter !== null) {
       whereConditions.is_connected_yet = isConnectedYetFilter;
-      console.log('336',whereConditions)
+      undefined
     }
 
     const isConnectedYetL3Filter = handleBooleanFilter(isConnectedYetL3);
@@ -533,7 +533,6 @@ const offset = limitNum ? (pageNum - 1) * limitNum : undefined;
     return response;
 
   } catch (error) {
-    console.log(error.message);
     await transaction.rollback();
     throw error;
   }
@@ -548,7 +547,6 @@ export const getWishListStudents = async (req, res) => {
   }
    catch(error)
    {
-    console.error('Error in getStudents:', error.message);
     res.status(500).json({
       success: false,
       message: 'Internal server error',

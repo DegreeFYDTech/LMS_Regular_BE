@@ -223,7 +223,6 @@ export const getFirstRemarkTimeReport = async (req, res) => {
 
     res.status(200).json(data);
   } catch (error) {
-    console.error("Error in getFirstRemarkTimeReport:", error);
     res
       .status(500)
       .json({ message: "Internal server error", error: error.message });

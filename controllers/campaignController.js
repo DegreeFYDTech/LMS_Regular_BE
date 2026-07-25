@@ -33,7 +33,6 @@ export const getCampaigns = async (req, res) => {
       pages: Math.ceil(total / limit),
     });
   } catch (err) {
-    console.error("Error fetching campaigns:", err);
     res.status(500).json({ message: "Server Error" });
   }
 };
@@ -50,7 +49,7 @@ export const upsertCampaign = async (req, res) => {
       degree,
       mode,
     } = req.body;
-    console.log(req.body)
+    undefined
     if (!campign_id || !state || !stream || !degree || !mode) {
       return res.status(400).json({ message: "Missing required fields" });
     }
@@ -74,7 +73,6 @@ export const upsertCampaign = async (req, res) => {
       data: campaign,
     });
   } catch (err) {
-    console.error("Error upserting campaign:", err);
     res.status(500).json({ message: "Server Error" });
   }
 };
@@ -91,7 +89,6 @@ export const deleteCampaign = async (req, res) => {
 
     res.json({ message: "Campaign deleted successfully" });
   } catch (err) {
-    console.error("Error deleting campaign:", err);
     res.status(500).json({ message: "Server Error" });
   }
 };

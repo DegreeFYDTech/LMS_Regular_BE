@@ -40,9 +40,7 @@ export const createStudent = async (req, res) => {
     const processedLeads = [];
     const errors = [];
     for (const leadData of leads) {
-      console.log("Received lead data:", leadData);
       const result = await processStudentLead(leadData);
-      console.log("Lead processed with result:", result);
       const studentWithUTM = {
         ...result?.student?.dataValues,
         utmCampaign:
@@ -53,10 +51,8 @@ export const createStudent = async (req, res) => {
         source: result.student?.source || leadData.source,
       };
       processedLeads.push(result);
-      console.log("Sending to autoSending with data:", studentWithUTM);
       await autoSending(studentWithUTM);
     }
-    console.log(processedLeads, "processedLeads in controller");
     res.status(201).json({
       message: "Leads processed",
       leads: processedLeads,
@@ -69,7 +65,6 @@ export const createStudent = async (req, res) => {
       errors,
     });
   } catch (err) {
-    console.error("❌ createStudent error:", err);
     res.status(500).json({
       message: "Internal server error",
       error: err.message,
@@ -100,7 +95,6 @@ export const markWalkin = async (req, res) => {
       studentJourney,
     });
   } catch (err) {
-    console.error("❌ markWalkin error:", err);
     res.status(500).json({
       message: "Internal server error",
       error: err.message,
@@ -477,7 +471,6 @@ export const updateStudentStatus = async (req, res) => {
             const courseDetails = await UniversityCourse.findOne({
               where: { course_id: selectedCourse },
             });
-            console.log("Triggering internal L3 assignment function...");
 
             const l3data = await internalAssignL3({
               studentId,
@@ -490,9 +483,7 @@ export const updateStudentStatus = async (req, res) => {
               stream: courseDetails?.stream,
             });
             assigned_l3_counsellor_id = l3data?.assigned_l3_counsellor_id;
-            console.log("L3 Assignment successful:", assigned_l3_counsellor_id);
           } catch (l3error) {
-            console.error("L3 Assignment failed:", l3error.message);
           }
         }
         const latestCourse = await CourseStatusJourney.findOne({
@@ -595,10 +586,6 @@ export const updateStudentStatus = async (req, res) => {
               `New Application – ${courseDetailsEmail?.university_name}`,
             );
           } catch (emailErr) {
-            console.error(
-              "Application email trigger failed:",
-              emailErr.message,
-            );
           }
         }
       } else {
@@ -642,7 +629,6 @@ export const updateStudentStatus = async (req, res) => {
         leadStatus === "Application" ||
         leadStatus === "Admission")
     ) {
-      console.log("hello");
       const response = await Student.update(
         {
           assigned_counsellor_id: counsellorId,
@@ -659,7 +645,6 @@ export const updateStudentStatus = async (req, res) => {
       );
     }
     const studentcounsellorcheck = await Student.findByPk(studentId);
-    console.log(studentcounsellorcheck.dataValues);
     const remarkData = {
       student_id: studentId,
       counsellor_id: counsellorRole !== "Supervisor" ? counsellorId : null,
@@ -699,9 +684,7 @@ export const updateStudentStatus = async (req, res) => {
         );
       }
     } catch (e) {
-      console.log("erro", e);
     }
-    console.log(leadStatus, "leadStatus in controller");
 
     if (!student.assigned_counsellor_id && callingStatus !== "Not Connected") {
       const notConnectedScore = student.per_remark_score || 0;
@@ -730,7 +713,6 @@ export const updateStudentStatus = async (req, res) => {
       leadStatus === "NotInterested" &&
       leadSubStatus === "Only_Online course"
     ) {
-      console.log("Only_Online course");
       const studentDetails = await Student.findByPk(studentId);
       const studentleadActivityDetails = await StudentLeadActivity.findOne({
         where: { student_id: studentId },
@@ -794,13 +776,11 @@ export const updateStudentStatus = async (req, res) => {
         "https://lms-api-test.degreefyd.com/v1/student/create",
         payload,
       );
-      console.log(response.data);
     }
     if (
       leadStatus === "NotInterested" &&
       leadSubStatus === "Only_Amity Regular course"
     ) {
-      console.log("Only_Amity Regular course");
       const studentDetails = await Student.findByPk(studentId);
       const studentleadActivityDetails = await StudentLeadActivity.findOne({
         where: { student_id: studentId },
@@ -846,18 +826,15 @@ export const updateStudentStatus = async (req, res) => {
         lead_type,
         preferred_college_cll,
       };
-      console.log(payload);
       const response = await axios.post(
         "https://regular-amity-api.degreefyd.com/v1/student/create",
         payload,
       );
-      console.log(response.data);
     }
     if (
       leadStatus === "NotInterested" &&
       leadSubStatus === "Only_CGC Regular course"
     ) {
-      console.log("Only_CGC Regular course");
       const studentDetails = await Student.findByPk(studentId);
       const studentleadActivityDetails = await StudentLeadActivity.findOne({
         where: { student_id: studentId },
@@ -905,18 +882,15 @@ export const updateStudentStatus = async (req, res) => {
         lead_type: lead_type_cgc,
         preferred_college_cll: preferred_college_cll_cgc,
       };
-      console.log(payload);
       const response = await axios.post(
         "https://regular-cgc-api.degreefyd.com/v1/student/create",
         payload,
       );
-      console.log(response.data);
     }
     if (
       leadStatus === "NotInterested" &&
       leadSubStatus === "Only_LPU/CU Regular course"
     ) {
-      console.log("Only_LPU/CU Regular course");
       const studentDetails = await Student.findByPk(studentId);
       const studentleadActivityDetails = await StudentLeadActivity.findOne({
         where: { student_id: studentId },
@@ -967,12 +941,10 @@ export const updateStudentStatus = async (req, res) => {
         lead_type: lead_type_lpu,
         preferred_college_cll: preferred_college_cll_lpu,
       };
-      console.log(payload);
       const response = await axios.post(
         "https://lms-regular.degreefyd.com/v1/student/create",
         payload,
       );
-      console.log(response.data);
     }
 
     if (
@@ -1017,7 +989,6 @@ export const updateStudentStatus = async (req, res) => {
       const normalizePhone = (phone) =>
         phone ? phone.replace(/\D/g, "").slice(-10) : null;
 
-      console.log("student?.student_email", student?.student_email);
 
       let metaData = null;
 
@@ -1056,10 +1027,8 @@ export const updateStudentStatus = async (req, res) => {
         lead_sub_status: leadSubStatus,
         source: student_source,
       });
-      console.log(response_data);
     }
   } catch (error) {
-    console.error("Error processing student update:", error);
     res.status(500).json({
       success: false,
       message: "Error processing student update",
@@ -1112,7 +1081,6 @@ export const findByContact = async (req, res) => {
       students: students,
     });
   } catch (error) {
-    console.error("Error in findByContact:", error);
 
     return res.status(500).json({
       success: false,
@@ -1126,7 +1094,6 @@ export const getStudentById = async (req, res) => {
     const { id } = req.params;
     const counsellorId = req.user.id;
     const counsellorRole = req.user.role;
-    console.log(counsellorRole);
     let whereConditions = {};
 
     if (counsellorRole === "l2") {
@@ -1357,9 +1324,7 @@ export const getStudentById = async (req, res) => {
         allL3Journeys.map((j) => j.assigned_l3_counsellor_id).filter(Boolean),
       ),
     ];
-    console.log("Counsellor Role:", counsellorRole);
     if (counsellorRole === "l2" || counsellorRole === "to") {
-      console.log("counsellorId", counsellorId);
       const latestJourney = await CourseStatusJourney.findOne({
         where: {
           student_id: id,
@@ -1762,7 +1727,6 @@ export const getStudentById = async (req, res) => {
 
     return res.status(200).json(studentData);
   } catch (error) {
-    console.error("Error fetching student:", error);
     return res
       .status(500)
       .json({ message: "Server error", error: error.message });
@@ -1772,7 +1736,6 @@ export const updateStudentDetails = async (req, res) => {
   try {
     const { studentId } = req.params;
     const { payload } = req.body;
-    console.log(payload, "Received payload for updateStudentDetails");
 
     if (!payload || typeof payload !== "object") {
       return res
@@ -1791,12 +1754,6 @@ export const updateStudentDetails = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
 
-    console.log("Current student state:", {
-      source: student.source,
-      is_edited: student.is_edited,
-      edited_by: student.edited_by,
-      current_email: student.student_email,
-    });
 
     const oneTimeEditSources = ["IVR", "WhatsApp", "IVR ", "Whatsapp"];
 
@@ -1814,7 +1771,6 @@ export const updateStudentDetails = async (req, res) => {
       });
 
       if (existingStudentWithEmail) {
-        console.log("Email already exists in another student");
         return res.status(409).json({
           message: "Email already in use by another student",
           error: "DUPLICATE_EMAIL",
@@ -1825,7 +1781,6 @@ export const updateStudentDetails = async (req, res) => {
 
     if (oneTimeEditSources.includes(student.source) && isEmailEdit) {
       if (student.is_edited) {
-        console.log("Blocking edit - already edited");
         return res.status(403).json({
           message: "Email can only be edited once for IVR/WhatsApp sources",
           previouslyEditedBy: student.edited_by,
@@ -1902,17 +1857,11 @@ export const updateStudentDetails = async (req, res) => {
 
     // Only set is_edited and edited_by if this is an email edit for restricted sources
     if (oneTimeEditSources.includes(student.source) && isEmailEdit) {
-      console.log("Setting edit tracking fields:", {
-        wasAlreadyEdited: student.is_edited,
-        settingTo: true,
-        editedBy: req.user.id,
-      });
 
       updateData.is_edited = true;
       updateData.edited_by = req.user.id;
     }
 
-    console.log("Final update data:", updateData);
 
     if (Object.keys(updateData).length === 0) {
       return res.status(200).json({
@@ -1926,10 +1875,6 @@ export const updateStudentDetails = async (req, res) => {
       returning: true,
     });
 
-    console.log("Update result:", {
-      affectedCount,
-      updatedStudent: updatedStudents?.[0]?.dataValues,
-    });
 
     let message = "Student details processed successfully";
     if (oneTimeEditSources.includes(student.source) && isEmailEdit) {
@@ -1942,7 +1887,6 @@ export const updateStudentDetails = async (req, res) => {
       fieldsUpdated: Object.keys(updateData).length,
     });
   } catch (error) {
-    console.error("❌ ERROR updating student:", error);
 
     // Handle Sequelize unique constraint error
     if (
@@ -2042,7 +1986,6 @@ export const bulkCreateLeads = async (req, res) => {
             studentData.primary_db_id = results[0].lead_id;
           }
         } catch (e) {
-          console.log("error", e);
         }
         const savedStudent = await Student.create(studentData);
         try {
@@ -2053,7 +1996,6 @@ export const bulkCreateLeads = async (req, res) => {
             reference_from: "bulk students created by Supervisor" || null,
           });
         } catch (err) {
-          console.error("❌ Failed to create LeadAssignmentLog:", err);
         }
 
         results.push({
@@ -2068,7 +2010,6 @@ export const bulkCreateLeads = async (req, res) => {
           status: "created",
         });
       } catch (error) {
-        console.error(`Error processing lead at index ${i + 1}:`, error);
         errors.push({
           index: i + 1,
           data: leadData,
@@ -2095,7 +2036,6 @@ export const bulkCreateLeads = async (req, res) => {
     res.status(200).json(response);
     activityLogger(req, response);
   } catch (error) {
-    console.error("Bulk create leads error:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -2111,7 +2051,6 @@ export const bulkReassignLeads = async (req, res) => {
     const supervisorId = req?.user?.id;
     const { data, level } = req.body.data;
     if (!data || !Array.isArray(data) || data.length === 0) {
-      console.log("Invalid data format:", data);
       return res.status(400).json({
         success: false,
         message: "Invalid data format. Expected array of reassignment objects.",
@@ -2192,7 +2131,6 @@ export const bulkReassignLeads = async (req, res) => {
             reference_from: `bulk students re assignment by Supervisor (${level})`,
           });
         } catch (err) {
-          console.error("❌ Failed to create LeadAssignmentLog:", err);
         }
 
         results.push({
@@ -2227,7 +2165,6 @@ export const bulkReassignLeads = async (req, res) => {
     res.status(200).json(responsePayload);
     await activityLogger(req, responsePayload);
   } catch (error) {
-    console.error("Bulk reassign leads error:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -2385,7 +2322,6 @@ export const addLeadDirect = async (req, res) => {
         student_data.primary_db_id = results[0].lead_id;
       }
     } catch (e) {
-      console.log("error", e);
     }
     // Create lead
     const lead = await Student.create(student_data);
@@ -2408,7 +2344,6 @@ export const addLeadDirect = async (req, res) => {
         reference_from: referenceFrom || null,
       });
     } catch (err) {
-      console.error("❌ Failed to create LeadAssignmentLog:", err);
     }
 
     return res.status(201).json({
@@ -2426,7 +2361,6 @@ export const addLeadDirect = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error adding lead:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Something went wrong while creating lead.",
@@ -2563,7 +2497,6 @@ export const addLeadDirect = async (req, res) => {
 
 //     res.status(200).json(leads[0]);
 //   } catch (error) {
-//     console.error(error);
 //     res.status(500).json({ error: 'Internal Server Error' });
 //   }
 // };;
@@ -2608,9 +2541,7 @@ export const getAllLeadsofData = async (req, res) => {
         ORDER BY s.created_at DESC
        
       `;
-    console.time("query time");
     const batch = await sequelize.query(query, { type: QueryTypes.SELECT });
-    console.timeEnd("query time");
 
     const mappedBatch = await pMap(
       batch,
@@ -2648,7 +2579,6 @@ export const getAllLeadsofData = async (req, res) => {
     offset += limit;
     res.status(200).json(allStudents);
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
@@ -2738,9 +2668,7 @@ export const getAllLeadsofDatatest = async (req, res) => {
       LEFT JOIN first_lead_activity fla ON s.student_id = fla.student_id
       
     `;
-    console.time("query time");
     const batch = await sequelize.query(mainQuery, { type: QueryTypes.SELECT });
-    console.timeEnd("query time");
 
     const mappedBatch = await pMap(
       batch,
@@ -2780,7 +2708,6 @@ export const getAllLeadsofDatatest = async (req, res) => {
 
     res.status(200).json(allStudents);
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: error });
   }
 };
@@ -2788,9 +2715,7 @@ async () => {
   const metaData = await MetaAdsLead.findOne({
     where: { email: "singhlalmuni164@gmail.com" },
   });
-  console.log(metaData);
   if (!metaData) {
-    console.warn(`Meta lead not found for email: abigailcdesouza@gmail.com`);
     return;
   }
 
@@ -2799,7 +2724,6 @@ async () => {
     lead_status: "Pre Application",
     lead_sub_status: "Initial Counseling Completed",
   });
-  console.log("responseData", response_data);
 };
 
 import ExcelJS from "exceljs";
@@ -3505,7 +3429,6 @@ export const getniReports = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error("Error in getniReports:", error);
 
     if (req.query.isExport) {
       // For export errors, try to send error in Excel format
@@ -3566,7 +3489,6 @@ export const studentWindowOpenByCounsellor = async (req, res) => {
       message: "Student window updated successfully",
     });
   } catch (error) {
-    console.error(error);
     return res.status(500).json({
       message: "Internal server error",
       error: error.message,
@@ -3717,7 +3639,6 @@ export const bulkCreateStudents = async (req, res) => {
       inserted: created.length,
     });
   } catch (error) {
-    console.error("❌ Bulk Create Error:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -3764,7 +3685,6 @@ export const initiateClick2Call = async (req, res) => {
 
     return res.status(200).json(response.data);
   } catch (error) {
-    console.error("Click2Call error:", error?.response?.data || error.message);
     return res.status(500).json({ message: "Click2Call failed", error: error.message });
   }
 };

@@ -12,7 +12,6 @@ async function refreshPageToken() {
   try {
     const tokenData = await Token.findOne({ where: { page_id: PAGE_ID } });
     if (!tokenData) {
-      console.log('No existing token found in DB');
       return;
     }
 
@@ -30,9 +29,7 @@ async function refreshPageToken() {
     tokenData.updated_at = new Date();
     await tokenData.save();
 
-    console.log('✅ Page token refreshed and saved to DB');
   } catch (error) {
-    console.error('❌ Error refreshing page token:', error.response?.data || error.message);
   }
 }
 
@@ -42,7 +39,6 @@ export async function checkToken() {
   const tokenDoc = await Token.findOne({ where: { page_id: '718284908040065' } });
 
   if (!tokenDoc) {
-    console.log('Token not found!');
     return;
   }
 
@@ -50,9 +46,7 @@ export async function checkToken() {
 
   try {
     const response = await axios.get(getMetaUrl(`me?access_token=${pageAccessToken}`));
-    console.log('✅ Token is valid:', response.data);
   } catch (err) {
-    console.error('❌ Token failed:', err.response?.data?.error || err.message);
   }
 }
 
@@ -62,7 +56,6 @@ export async function getUserLeads() {
     const tokenDoc = await Token.findOne({ where: { page_id: '718284908040065' } });
 
     if (!tokenDoc) {
-      console.log('Page Token not found!');
       return;
     }
 
@@ -80,7 +73,6 @@ export async function getUserLeads() {
           const leads = leadsResponse.data.data;
 
           count += leads.length;
-          console.log(`${form.name} - Fetched leads: ${leads.length}`);
 
           for (let lead of leads) {
             const leadData = {
@@ -121,7 +113,6 @@ export async function getUserLeads() {
                   leadData.campaign_name = campaignRes.data.name;
                 }
               } catch (error) {
-                console.error(`Failed to fetch campaign for ad ${adId}:`, error.response?.data || error.message);
               }
             }
 
@@ -136,18 +127,15 @@ export async function getUserLeads() {
         // if (!existingLead) {
         //   await Lead.create(leadData);
         // }
-        console.log(leadData);
           }
 
           leadsUrl = leadsResponse.data.paging?.next || null;
         }
       }
     } else {
-      console.log('No lead forms found.');
     }
 
   } catch (err) {
-    console.error('Error fetching leads:', err.response?.data?.error || err.message);
   }
 }
 // getUserLeads();

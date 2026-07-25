@@ -24,7 +24,6 @@ export const getAdvancedFilterSchema = async (req, res) => {
           });
         }
       } catch (e) {
-        console.warn('Redis Cache Get Failed or Timed out:', e.message);
       }
     }
 
@@ -95,7 +94,6 @@ export const getAdvancedFilterSchema = async (req, res) => {
       try {
         await redis.setex(CACHE_KEY, CACHE_TTL, JSON.stringify(fields));
       } catch (e) {
-        console.warn('Redis Cache Set Failed:', e.message);
       }
     }
 
@@ -104,7 +102,6 @@ export const getAdvancedFilterSchema = async (req, res) => {
       fields
     });
   } catch (error) {
-    console.error('Advanced Filter Schema Error:', error);
     res.status(500).json({ error: 'Failed to fetch advanced filter schema' });
   }
 };

@@ -68,7 +68,6 @@ export const upsertCounsellor = async (req, res) => {
       counsellor_id: counsellor.counsellor_id 
     });
   } catch (err) {
-    console.error('Central Upsert error:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
@@ -159,7 +158,6 @@ export const getAllCounsellors = async (req, res) => {
     });
     res.json(counsellors);
   } catch (err) {
-    console.error('Central GetAll error:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };

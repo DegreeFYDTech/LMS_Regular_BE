@@ -218,7 +218,7 @@ async function GenerateEmailFunction(data, to) {
         return emailFunction
     }
     catch (error) {
-        console.error(error)
+        undefined
         throw new Error('Error generating email')
     }
 }

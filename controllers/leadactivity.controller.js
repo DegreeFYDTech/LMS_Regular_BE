@@ -37,12 +37,6 @@ export const normalizeLeadAnswers = (input) => {
 
 export const createLeadActivity = async (leadData, studentId) => {
   try {
-    console.log(
-      "Creating lead activity with data:",
-      leadData,
-      "for student ID:",
-      studentId,
-    );
     const sourceurl =
       leadData.first_source_url ||
       leadData.sourceUrl ||
@@ -101,9 +95,6 @@ export const createLeadActivity = async (leadData, studentId) => {
     const shortlistColleges = leadData.preferred_college_cll || [];
     if (shortlistColleges.length > 0) {
       for (const collegeName of shortlistColleges) {
-        console.log(
-          `Processing college: ${collegeName} for student ID: ${studentId}`,
-        );
         const courses = await UniversityCourse.findAll({
           where: {
             university_name: { [Op.iLike]: `%${collegeName}%` },
@@ -121,17 +112,12 @@ export const createLeadActivity = async (leadData, studentId) => {
             course_id: courseIds,
           },
         });
-        console.log(
-          `Existing course status for student ${studentId} and courses ${courseIds}:`,
-          existingStatus,
-        );
        
       }
     }
 
     return { success: true, leadActivity: newLeadActivity };
   } catch (error) {
-    console.error("Error creating lead activity:", error);
     return { success: false, error: error.message };
   }
 };
@@ -150,7 +136,6 @@ export const getLeadActivitiesByStudent = async (req, res) => {
       leadActivities,
     });
   } catch (error) {
-    console.error("Error fetching lead activities:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching lead activities",
@@ -192,7 +177,6 @@ export const updateLeadActivityStatus = async (req, res) => {
       leadActivity,
     });
   } catch (error) {
-    console.error("Error updating lead activity:", error);
     res.status(500).json({
       success: false,
       message: "Error updating lead activity",
@@ -214,7 +198,6 @@ export const getActivityByStudentId = async (req, res) => {
       data: leadActivities,
     });
   } catch (error) {
-    console.error("Error getting lead activity:", error);
     res.status(500).json({
       success: false,
       message: "Error getting lead activity",
@@ -254,7 +237,6 @@ export const getAllLeadActivities = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error getting all lead activities:", error);
     res.status(500).json({
       success: false,
       message: "Error getting all lead activities",
@@ -294,7 +276,6 @@ export const getLeadActivityById = async (req, res) => {
       data: leadActivity,
     });
   } catch (error) {
-    console.error("Error getting lead activity by ID:", error);
     res.status(500).json({
       success: false,
       message: "Error getting lead activity",
@@ -323,7 +304,6 @@ export const deleteLeadActivity = async (req, res) => {
       message: "Lead activity deleted successfully",
     });
   } catch (error) {
-    console.error("Error deleting lead activity:", error);
     res.status(500).json({
       success: false,
       message: "Error deleting lead activity",
@@ -358,7 +338,6 @@ export const getLeadActivitiesByDateRange = async (req, res) => {
       data: leadActivities,
     });
   } catch (error) {
-    console.error("Error getting lead activities by date range:", error);
     res.status(500).json({
       success: false,
       message: "Error getting lead activities by date range",
@@ -375,7 +354,6 @@ export const updateCommentsFromFile = async (req, res) => {
     // File is named data.json in root directory
     const filePath = path.join(process.cwd(), "data.json");
 
-    console.log("Reading file from:", filePath);
 
     // Check if file exists
     if (!fs.existsSync(filePath)) {
@@ -389,7 +367,6 @@ export const updateCommentsFromFile = async (req, res) => {
     const fileContent = fs.readFileSync(filePath, "utf8");
     const jsonData = JSON.parse(fileContent);
 
-    console.log(`Found ${jsonData.length} records in data.json`);
 
     let updatedCount = 0;
     let failedCount = 0;
@@ -444,11 +421,7 @@ export const updateCommentsFromFile = async (req, res) => {
           );
 
           updatedCount++;
-          console.log(
-            `✓ Updated: ${cleanEmail} (${existingComments.length} → ${updatedComments.length} comments)`,
-          );
         } else {
-          console.log(`✗ Not found in DB: ${cleanEmail}`);
           notFoundEmails.push(cleanEmail);
           failedCount++;
         }
@@ -457,7 +430,6 @@ export const updateCommentsFromFile = async (req, res) => {
         errors.push(
           `Error processing ${record.email || "unknown"}: ${error.message}`,
         );
-        console.error(`Error with ${record.email}:`, error.message);
       }
     }
 
@@ -479,7 +451,6 @@ export const updateCommentsFromFile = async (req, res) => {
       filePath: filePath,
     });
   } catch (error) {
-    console.error("Error updating from file:", error);
     return res.status(500).json({
       success: false,
       message: "Error processing data.json file",
@@ -541,7 +512,6 @@ export const bulkInsertStudentLeadActivities = async (req, res) => {
       skippedRecords: skippedActivities,
     });
   } catch (error) {
-    console.error("Bulk Lead Activity Error:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",

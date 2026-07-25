@@ -22,7 +22,6 @@ const logActivity = async (req, res, extra = {}) => {
       duration_ms: duration,
     });
   } catch (err) {
-    console.error('Log insert error:', err);
   }
 };
 export  default logActivity; 

@@ -188,4 +188,3 @@ export function mapAnswersByKeyword(questionAnswerArray) {
 
 // const input =[{"answer":"2023","question":"select_the_year_you_completed_your_graduation."},{"answer":"yes","question":"are_you_working_professional?"}]
 
-// console.log(mapAnswersByKeyword(input));

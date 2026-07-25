@@ -180,7 +180,7 @@ export const createTemplates = async (req, res) => {
 
     const processed = [];
     const errors = [];
-   console.log(templates)
+   undefined
     for (let i = 0; i < templates.length; i++) {
       try {
         const templateData = await processTemplate(templates[i]);
@@ -195,7 +195,7 @@ export const createTemplates = async (req, res) => {
     }
 
     const created = await Template.bulkCreate(processed);
-    console.log(`Created ${created.length} template${created.length > 1 ? 's' : ''}`)
+    undefined
     res.status(201).json({
       success: true,
       message: `Created ${created.length} template${created.length > 1 ? 's' : ''}`,
@@ -229,12 +229,12 @@ export const updateTemplate = async (req, res) => {
 export const deleteTemplate = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log('deleted templete',id)
+    undefined
     const deleted = await Template.destroy({ where: { template_name:id } });
     if (!deleted) return res.status(404).json({ success: false, message: 'Template not found' });
     res.json({ success: true, message: 'Template deleted', id });
   } catch (error) {
-    console.log('delete',error.message)
+    undefined
     res.status(500).json({ success: false, message: 'Delete failed', error: error.message });
   }
 };
@@ -281,7 +281,7 @@ export const getAllTemplates = async (req, res) => {
     });
 
   } catch (error) {
-    console.log(error.message)
+    undefined
     res.status(500).json({ success: false, message: 'Fetch failed', error: error.message });
   }
 };

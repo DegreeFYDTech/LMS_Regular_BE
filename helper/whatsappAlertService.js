@@ -26,7 +26,6 @@ export async function sendCollegeTechFailureAlert(studentId, collegeName, status
   const alertKey = `${studentId}:${collegeName}`;
   const now = Date.now();
   if (recentAlerts.has(alertKey) && now - recentAlerts.get(alertKey) < DEDUP_WINDOW_MS) {
-    console.log(`[WhatsApp Alert] Skipping duplicate alert for ${alertKey}`);
     return;
   }
   recentAlerts.set(alertKey, now);
@@ -56,6 +55,5 @@ export async function sendCollegeTechFailureAlert(studentId, collegeName, status
       },
     );
   } catch (err) {
-    console.error('[WhatsApp Alert] Failed to send tech failure alert:', err.message);
   }
 }

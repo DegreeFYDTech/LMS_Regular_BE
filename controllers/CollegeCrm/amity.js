@@ -15,10 +15,6 @@ export const sendLeadToCuCRM = async (leadData) => {
     );
     return response.data;
   } catch (error) {
-    console.error(
-      'Error sending data:',
-      error.response ? error.response.data : error.message
-    );
     return {
       error: error.response ? error.response.data?.error : error.message,
     };
@@ -84,7 +80,6 @@ export const AmityCrm = async (req, res) => {
     return res.status(201).json({ message: 'Lead data sending completed', status: true });
 
   } catch (e) {
-    console.error('Amity CRM Error:', e);
     return res.status(500).json({ message: 'An error occurred', status: false });
   }
 };

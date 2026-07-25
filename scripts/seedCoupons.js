@@ -57,18 +57,12 @@ const couponData = [
 ];
 
 async function seed() {
-    console.log("🚀 SCRIPT STARTED: seedCoupons.js");
     try {
-        console.log("🔗 Connecting to database...");
         await sequelize.authenticate();
-        console.log("✅ Connection established successfully!");
 
         // Specifically sync ONLY the Coupon model table
-        console.log("🔄 Syncing Coupons table...");
         await Coupon.sync({ alter: true });
-        console.log("✅ Coupons table ready.");
 
-        console.log("🌱 Inserting/Updating data...");
 
         for (const data of couponData) {
             const [coupon, created] = await Coupon.findOrCreate({
@@ -77,17 +71,13 @@ async function seed() {
             });
 
             if (created) {
-                console.log(`+ Created: ${data.code}`);
             } else {
                 await coupon.update(data);
-                console.log(`~ Updated: ${data.code}`);
             }
         }
 
-        console.log("✨ ALL DONE!");
         process.exit(0);
     } catch (error) {
-        console.error("❌ ERROR DURING SEEDING:", error);
         process.exit(1);
     }
 }

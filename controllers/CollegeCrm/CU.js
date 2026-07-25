@@ -15,10 +15,6 @@ export const sendLeadToCuCRM = async (leadData) => {
     );
     return response.data;
   } catch (error) {
-    console.error(
-      'Error sending data:',
-      error.response ? error.response.data : error.message
-    );
     return {
       error: error.response ? error.response.data?.error : error.message,
     };
@@ -62,7 +58,6 @@ export const CuCrm = async (req, res) => {
       });
 
       if (existingLead) {
-        console.log(`Duplicate found: ${email}`);
         responseArray.push({ row: rowNumber, status: 'Already Exists' });
         continue;
       }
@@ -129,7 +124,6 @@ export const CuCrm = async (req, res) => {
 
     res.status(201).json({ message: 'Lead Data Sending completed', responseArray });
   } catch (error) {
-    console.error(error);
     res.status(500).json({
       message: 'Error sending lead',
       error: error.message || 'Internal Server Error',

@@ -390,7 +390,7 @@ export const getStudentsRawSQL = async (filters) => {
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    console.time('time taken by main query')
+    undefined
     const [students, countResult, overallStats = {}] = await Promise.all([
       sequelize.query(mainQuery, { type: QueryTypes.SELECT }),
       sequelize.query(countQuery, { type: QueryTypes.SELECT }),
@@ -406,7 +406,7 @@ export const getStudentsRawSQL = async (filters) => {
             callback
           }),
     ]);
-        console.timeEnd('time taken by main query')
+        undefined
 
     function convertFlatArrayToNested(arr) {
       return arr.map((item) => {
@@ -489,7 +489,6 @@ export const getStudentsRawSQL = async (filters) => {
       },
     };
   } catch (error) {
-    console.error('Error in getStudentsRawSQL:', error);
     throw error;
   }
 };

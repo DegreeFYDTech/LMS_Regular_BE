@@ -104,7 +104,6 @@ async function GenerateEmailFunction(data, to) {
     return emailFunction;
 
   } catch (error) {
-    console.error('Email generation failed:', error);
   }
 }
 

@@ -12,17 +12,14 @@ class CallbackNotificationService {
   }
 
   async init() {
-    console.log('Initializing Real-time Callback Notification System...');
 
     if (!this.io) {
-      console.error('ERROR: io instance is required for CallbackNotificationService');
       return this;
     }
     
     this.setupNotificationCron(); 
     this.setupHealthCheck();
 
-    console.log('Real-time Callback Notification System initialized');
     return this;
   }
 
@@ -172,7 +169,6 @@ class CallbackNotificationService {
       };
 
     } catch (error) {
-      console.error('Schedule calculation failed:', error);
       return { success: false, error: error.message };
     }
   }
@@ -226,7 +222,6 @@ class CallbackNotificationService {
       }
 
     } catch (error) {
-      console.error('Error in checkAndSendNotifications:', error);
     }
   }
 
@@ -333,7 +328,7 @@ class CallbackNotificationService {
     Object.entries(scheduleHash).forEach(([time, dataStr]) => {
         try {
             schedule[time] = JSON.parse(dataStr);
-        } catch (e) { console.error('JSON Parse error for slot', time); }
+        } catch (e) {  }
     });
     const now = new Date();
     const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;

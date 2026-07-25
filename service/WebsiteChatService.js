@@ -42,7 +42,7 @@ class WebsiteChatService {
        }
       }
       catch(e){
-      console.log("error",e)
+      undefined
       }
       const leadResult = await processStudentLead(requesteddata);
       
@@ -100,14 +100,12 @@ class WebsiteChatService {
       this.notifySupervisors('chat_created', fullChat.get({ plain: true }));
        this.notifyCounsellors('chat_assigned',chat.counsellorId,fullChat.get({ plain: true }));
       // if (global.io && chat.counsellorId) {
-      //     console.log(`Socket Debug: Emitting chat_assigned to ${chat.counsellorId}`);
       //     global.io.of('/website-chat').to(chat.counsellorId).emit('chat_assigned', fullChat);
       // }
 
       return { isNew: true, chat: fullChat };
 
     } catch (error) {
-      console.error('Error in initiateChat:', error);
       throw error;
     }
   }
@@ -158,7 +156,6 @@ class WebsiteChatService {
           global.io.of('/website-chat').to(chatId).emit('messages_read', readEventData);
       }
     } catch (error) {
-      console.error('Error marking read:', error);
     }
   }
 
@@ -168,10 +165,8 @@ class WebsiteChatService {
       const chat = await WebsiteChat.findByPk(chatId, { 
           include: [{ model: Counsellor }] 
       });
-              console.log(`Chat found for ID: ${chatId} type: ${typeof chatId}`);
 
       if (!chat) {
-        console.error(`Chat not found for ID: ${chatId} type: ${typeof chatId}`);
         throw new Error(`Chat not found for ID: ${chatId}`);
       }
 
@@ -203,7 +198,6 @@ class WebsiteChatService {
       } else {
           updateData.unreadCountStudent = (chat.unreadCountStudent || 0) + 1;
       }
-      console.log('Updating chat with data:', updateData);
 
       await chat.update(updateData);
 
@@ -272,7 +266,6 @@ class WebsiteChatService {
 
       return message;
     } catch (error) {
-      console.error('addMessage Error:', error);
       throw error;
     }
   }
@@ -317,7 +310,6 @@ class WebsiteChatService {
             offset: 0 
         });
       } catch (error) {
-          console.error('getChatHistory Error:', error);
           return await WebsiteChatMessage.findAll({
                 where: { chatId },
                 order: [['createdAt', 'ASC']],
@@ -362,7 +354,6 @@ class WebsiteChatService {
         });
 
         if (dbChats.length === 0) return [];
-        console.log(`Fetched ${dbChats.length} chats from DB for operatorId: ${operatorId}, role: ${role}`);
         const enrichedChats = dbChats.map((chat) => {
             const chatJSON = chat.toJSON();
             
@@ -405,14 +396,12 @@ class WebsiteChatService {
         return finalChats;
 
     } catch (error) {
-        console.error('Error fetching dashboard chats:', error);
         return [];
     }
 }
 
 
  static notifySupervisors(event, data) {
-    console.log(`Notifying supervisors of event: ${event}`,global.io? 'Socket.io available':'Socket.io not available');
     if (global.io) {
       global.io.of('/website-chat').to('supervisors').emit(event, data);
 
@@ -473,7 +462,6 @@ class WebsiteChatService {
               'data', JSON.stringify(data)
           );
       } catch (err) {
-          console.error('Redis Stream Publish Error:', err);
       }
   }
 
@@ -517,7 +505,6 @@ class WebsiteChatService {
           
           return { success: true };
       } catch (error) {
-          console.error('Error closing chat:', error);
           throw error;
       }
       }
@@ -547,7 +534,6 @@ class WebsiteChatService {
           }
 
       } catch (error) {
-          console.error('Error getting exact unread count from Redis:', error);
           return 0;
       }
   }

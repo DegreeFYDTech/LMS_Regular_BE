@@ -75,7 +75,6 @@ export const isApiExist = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error checking API existence:", error);
     return res.status(500).json({
       success: false,
       message: "Server error",
@@ -327,7 +326,6 @@ export const getAllCourses = async (req, res) => {
       message: "All courses fetched successfully",
     });
   } catch (error) {
-    console.error("Error fetching courses:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching courses",
@@ -459,7 +457,6 @@ export const getAllCoursesWithFilter = async (req, res) => {
       message: 'Courses fetched successfully'
     });
   } catch (error) {
-    console.error('Error fetching courses:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching courses',
@@ -492,7 +489,6 @@ export const unifiedSearch = async (req, res) => {
       studentId: req.body.student_id || req.body.studentId
     };
     
-    console.log('Unified Search - Remapped Body:', JSON.stringify(remappedBody, null, 2));
     
     const {
       totalFees = {},
@@ -528,13 +524,11 @@ export const unifiedSearch = async (req, res) => {
       const dbField = fieldMapping[field];
       const value = searchFields[field];
       
-      console.log(`Processing ${field}:`, { dbField, value, valueType: typeof value });
 
       // Handle array values
       if (Array.isArray(value) && value.length > 0) {
         const nonEmptyValues = value.filter(v => v && v.trim() !== '');
         if (nonEmptyValues.length > 0) {
-          console.log(`Adding array condition for ${field}:`, nonEmptyValues);
           // Push to andConditions instead of setting directly on where
           andConditions.push({
             [dbField]: {
@@ -545,7 +539,6 @@ export const unifiedSearch = async (req, res) => {
       } 
       // Handle string values
       else if (typeof value === 'string' && value.trim() !== '') {
-        console.log(`Adding string condition for ${field}:`, value.trim());
         // Push to andConditions instead of setting directly on where
         andConditions.push({
           [dbField]: { [Op.iLike]: value.trim() }
@@ -553,7 +546,6 @@ export const unifiedSearch = async (req, res) => {
       }
       // Handle number or other types
       else if (typeof value === 'number' || (value && typeof value !== 'object')) {
-        console.log(`Adding ${typeof value} condition for ${field}:`, value);
         andConditions.push({
           [dbField]: value
         });
@@ -563,7 +555,6 @@ export const unifiedSearch = async (req, res) => {
     // Handle studyMode separately with NULL inclusion
     if (searchFields.studyMode && searchFields.studyMode.trim() !== '') {
       const studyModeValue = searchFields.studyMode.trim();
-      console.log(`Handling studyMode filter: include '${studyModeValue}' AND NULL values`);
       
       andConditions.push({
         [Op.or]: [
@@ -572,7 +563,6 @@ export const unifiedSearch = async (req, res) => {
         ]
       });
     } else {
-      console.log('No studyMode filter applied - all courses included');
     }
 
     // Range filters - add to andConditions
@@ -639,7 +629,6 @@ export const unifiedSearch = async (req, res) => {
       where[Op.and] = andConditions;
     }
 
-    console.log('Final WHERE clause:', JSON.stringify(where, null, 2));
 
     // Pagination
     const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -690,11 +679,9 @@ export const unifiedSearch = async (req, res) => {
       }];
     }
 
-    console.log('Final Query Options:', JSON.stringify(queryOptions, null, 2));
 
     const { count, rows: courses } = await UniversityCourse.findAndCountAll(queryOptions);
     
-    console.log(`Found ${count} total courses, returning ${courses.length} courses`);
     
     // Log the distribution of universities in the results
     const universityDistribution = {};
@@ -702,7 +689,6 @@ export const unifiedSearch = async (req, res) => {
       const uniName = course.university_name;
       universityDistribution[uniName] = (universityDistribution[uniName] || 0) + 1;
     });
-    console.log('University distribution in results:', universityDistribution);
     
     // Log city distribution to verify filter is working
     const cityDistribution = {};
@@ -710,7 +696,6 @@ export const unifiedSearch = async (req, res) => {
       const city = course.university_city;
       cityDistribution[city] = (cityDistribution[city] || 0) + 1;
     });
-    console.log('City distribution in results:', cityDistribution);
 
     const transformedCourses = courses.map(transformCourseData);
 
@@ -724,8 +709,6 @@ export const unifiedSearch = async (req, res) => {
       courses: transformedCourses
     });
   } catch (error) {
-    console.error('Error in unified search:', error.message);
-    console.error('Error stack:', error.stack);
     return res.status(500).json({
       success: false,
       message: 'Error searching courses',
@@ -826,7 +809,6 @@ export const getDropdownData = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching dropdown data:', error);
     return res.status(500).json({
       success: false,
       message: 'Server Error',
@@ -932,7 +914,6 @@ export const getCascadingFilterOptions = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error fetching cascading filter options:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching cascading filter options",
@@ -946,7 +927,7 @@ export const getCascadingFilterOptions = async (req, res) => {
 export const insertBulkCourses = async (req, res) => {
   try {
     const courses = req.body;
-    console.log(courses)
+    undefined
     if (!Array.isArray(courses) || courses.length === 0) {
       return res.status(400).json({
         success: false,
@@ -985,7 +966,6 @@ export const insertBulkCourses = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Bulk insert error:", error);
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
@@ -1029,7 +1009,6 @@ export const importCoursesFromJSON = async (req, res) => {
       status: 'Active'
     }));
 
-    console.log(`Preparing to import ${formattedCourses.length} courses`);
 
     const insertedCourses = await UniversityCourse.bulkCreate(formattedCourses, {
       returning: true,
@@ -1047,7 +1026,6 @@ export const importCoursesFromJSON = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('❌ Error importing courses:', err);
     res.status(500).json({
       success: false,
       message: 'Server error',
@@ -1086,7 +1064,6 @@ export const toggleCourseStatus = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error toggling course status:', error);
     return res.status(500).json({
       success: false,
       message: 'Error toggling course status',
@@ -1132,7 +1109,6 @@ export const updateCourseStatus = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error updating course status:', error);
     return res.status(500).json({
       success: false,
       message: 'Error updating course status',
@@ -1193,7 +1169,6 @@ export const bulkToggleStatus = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error bulk toggling status:', error);
     return res.status(500).json({
       success: false,
       message: 'Error bulk toggling status',
@@ -1256,7 +1231,6 @@ export const bulkUpdateStatus = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error bulk updating status:', error);
     return res.status(500).json({
       success: false,
       message: 'Error bulk updating status',
@@ -1296,7 +1270,6 @@ export const updateCourse = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error updating course:', error);
     return res.status(500).json({
       success: false,
       message: 'Error updating course',
@@ -1352,7 +1325,6 @@ export const disableCourses = async (req, res) => {
       newStatus,
     });
   } catch (error) {
-    console.error("Error disabling/toggling course(s):", error);
     return res.status(500).json({
       success: false,
       message: "Server error while toggling course(s)",
@@ -1478,7 +1450,6 @@ export const updateUniversal = async (req, res) => {
       updates: updateData,
     });
   } catch (error) {
-    console.error("updateUniversal error:", error);
     return res.status(500).json({
       success: false,
       message: "Server error while updating courses",
@@ -1521,7 +1492,6 @@ export const getByCourseandUniversity = async (req, res) => {
       data: course,
     });
   } catch (error) {
-    console.error("Error in getByCourseandUniversity:", error);
     return res.status(500).json({
       success: false,
       message: "Server error",
@@ -1618,7 +1588,6 @@ export const insertUniversityCourses = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Bulk insert error:', error);
     res.status(500).json({
       message: 'Bulk insert failed',
       error: error.message

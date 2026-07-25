@@ -286,7 +286,6 @@ export const sendSessionMessage = async (req, res) => {
     const payload = req.body;
     const { sessiondata } = payload;
     const studentId = sessiondata.to;
-    console.log(payload);
     const studentData = await Student.findOne({
       where: { student_id: studentId },
       attributes: [
@@ -327,8 +326,6 @@ export const sendSessionMessage = async (req, res) => {
         timeout: 15000,
       }),
     );
-    console.log(response);
-    console.log(ensureCountryCode(studentData.student_phone));
     if (response.status === 200) {
       try {
         await saveMessageToChat(
@@ -395,7 +392,6 @@ export const handleCallback = async (req, res) => {
       ],
     });
     if (student.assigned_counsellor_id) {
-      console.log(`Counsellor assigned: ${student.assigned_counsellor_id}`);
 
       if (global.whatsAppNotificationService) {
         await global.whatsAppNotificationService.sendWhatsAppNotification(
@@ -404,10 +400,8 @@ export const handleCallback = async (req, res) => {
           student.assigned_counsellor_id,
         );
       } else {
-        console.log("WhatsApp notification service not available");
       }
     } else {
-      console.log("No counsellor assigned");
     }
     res
       .status(200)
@@ -486,7 +480,6 @@ export const saveMessageToChat = async (
 
     if (!chat) {
       const sortedParticipants = [sender, receiver].sort();
-      console.log("Creating new chat with ID:", sortedParticipants.join("-"));
       chat = await Chat.create({
         chat_id: sortedParticipants.join("-"),
         participants: [sender, receiver],
@@ -496,9 +489,7 @@ export const saveMessageToChat = async (
           [sortedParticipants[1]]: 0,
         },
       });
-      console.log("New chat created:", chat.chat_id);
     }
-    console.log("helo");
     await addMessageToChat(chat.chat_id, {
       message: messageText,
       message_type: messageType,
@@ -508,9 +499,7 @@ export const saveMessageToChat = async (
       timestamp: new Date(),
       is_read: direction === "sent",
     });
-    console.log("akshat");
     await chat.update({ last_message_time: new Date() });
-    console.log("Message saved to chat:", chat.chat_id);
     return chat;
   } catch (error) {
     throw error;
@@ -759,7 +748,6 @@ export const getMessagesFromPerspective = async (req, res) => {
 
 export const markMessagesAsRead = async (req, res) => {
   const transaction = await sequelize.transaction();
-  console.log("hi");
   try {
     const { otherParticipantNumber } = req.body;
     const studentDetails = await Student.findOne({
@@ -777,7 +765,6 @@ export const markMessagesAsRead = async (req, res) => {
     }
 
     const formattedOtherNumber = ensureCountryCode(studentDetails.student_phone);
-    console.log("trigger22");
     // const chat = await findChatBetween(formattedParticipantNumber, formattedOtherNumber);
 
     // if (!chat) {
@@ -788,12 +775,10 @@ export const markMessagesAsRead = async (req, res) => {
     // const markedCount = await markAsRead(chat.chat_id, formattedParticipantNumber, null, transaction);
 
     const studentPhone = removeCountryCode(formattedOtherNumber);
-    console.log(studentPhone);
     let a = await Student.update(
       { number_of_unread_messages: 0 },
       { where: { student_phone: studentPhone }, transaction },
     );
-    console.log(a);
     // if (chat.unread_count?.[formattedParticipantNumber]) {
     //   await chat.update({
     //     unread_count: { ...chat.unread_count, [formattedParticipantNumber]: 0 }

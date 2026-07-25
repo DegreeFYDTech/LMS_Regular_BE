@@ -61,7 +61,6 @@ const startLeadSwapCron = () => {
     });
   }, { timezone: "Asia/Kolkata" });
 
-  console.log("[CRON] Lead Swap cron registered (5 schedules).");
 };
 
 export default startLeadSwapCron;

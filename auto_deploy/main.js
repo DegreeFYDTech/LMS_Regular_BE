@@ -8,10 +8,8 @@ app.post('/webhook', (req, res) => {
   const scriptPath = path.resolve('auto_deploy/deploy.sh');
   exec(`sh ${scriptPath}`, (err, stdout, stderr) => {
     if (err) {
-      console.error(stderr || err);
       return res.status(500).json({ error: 'Deployment failed', details: stderr || err.message });
     }
-    console.log(stdout);
     res.sendStatus(200);
   });
 });

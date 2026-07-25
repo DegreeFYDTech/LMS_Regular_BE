@@ -56,7 +56,6 @@ async function fetchRecentMetaLeads(pageAccessToken, pageId) {
     params: { access_token: pageAccessToken, fields: 'id,name', limit: 100 },
   });
   const forms = formsRes.data?.data || [];
-  console.log(`📋 Found ${forms.length} lead form(s) for page ${pageId}`);
 
   for (const form of forms) {
     let url = `${BASE_URL}/${form.id}/leads`;
@@ -154,7 +153,6 @@ async function filterExistingLeads(pool, leads, pageAccessToken, sourceName) {
         try {
           const metaDetails = await fetchLeadDataWithCampaign(lead.lead_id, pageAccessToken);
           if (!metaDetails) {
-            console.log(`⚠️ Could not fetch Meta campaign details for existing lead ${lead.lead_id}, skipping check.`);
             continue;
           }
 
@@ -175,23 +173,19 @@ async function filterExistingLeads(pool, leads, pageAccessToken, sourceName) {
             const campaignMatches = latestActivity.utm_campaign === utm_campaign;
 
             if (sourceMatches && campaignMatches) {
-              console.log(`ℹ️ Lead ${lead.lead_id} (exists as ${primary_student_id}) already has an activity with source "${sourceName}" and utm_campaign "${utm_campaign}". Skipping.`);
               continue;
             }
           }
 
-          console.log(`🚨 Lead ${lead.lead_id} (exists as ${primary_student_id}) has new activity: Source="${sourceName}" (prev: "${latestActivity?.source}"), UTM="${utm_campaign}" (prev: "${latestActivity?.utm_campaign}"). Adding to sync queue.`);
           finalMissingLeads.push(lead);
 
         } catch (err) {
-          console.error(`⚠️ Error checking activity for lead ${lead.lead_id}:`, err.message);
         }
       }
     }
 
     return finalMissingLeads;
   } catch (err) {
-    console.error(`⚠️ Enterprise DB query error:`, err.message);
     return leads;
   }
 }
@@ -249,7 +243,6 @@ async function fetchLeadDataWithCampaign(id, accessToken) {
 
     return { lead: leadData, campaign: campaignData };
   } catch (err) {
-    console.error(`❌ Error fetching Graph API for lead ${id}:`, err.response?.data || err.message);
     return null;
   }
 }
@@ -293,68 +286,52 @@ async function processLeadChunk(chunk, accessToken, sourceName) {
       });
 
     } catch (err) {
-      console.error(`❌ Failed processing lead ${lead_id}:`, err.message);
     }
   }
 
   if (final_data.length > 0) {
-    console.log(`🚀 POSTing batch of ${final_data.length} leads to ${BATCH_ENDPOINT}...`);
     try {
       const response = await axios.post(BATCH_ENDPOINT, { data: final_data });
-      console.log(`✅ Batch POST successful.`);
     } catch (err) {
-      console.error(`❌ Batch POST failed:`, err.response?.data || err.message);
     }
   }
 }
 
 // ─── Main Orchestrator ───
 export async function syncMissingLeads() {
-  console.log(`\n[${new Date().toISOString()}] === Starting Hourly Lead Sync ===`);
   await databaseConnection();
   
   const enterprisePool = makePool(ENTERPRISE_URL);
 
   for (const account of ACCOUNTS) {
-    console.log(`\n======================================================`);
-    console.log(`📌 Processing Account: ${account.sourceName} (${account.page_id})`);
     
     // 1. Get Token from DB
     const tokenData = await MetaAdsToken.findOne({ where: { page_id: account.page_id } });
     if (!tokenData || !tokenData.page_access_token) {
-      console.error(`❌ No access token found in DB for page_id: ${account.page_id}`);
       continue;
     }
     const pageAccessToken = tokenData.page_access_token;
-    console.log(`🔑 Access token retrieved successfully.`);
 
     // 2. Fetch all leads in last 30 days
-    console.log(`📡 Fetching Meta leads from last 30 days...`);
     const allLeads = await fetchRecentMetaLeads(pageAccessToken, account.page_id);
-    console.log(`✅ Total Meta leads fetched: ${allLeads.length}`);
 
     if (allLeads.length === 0) continue;
 
     // 3. Cross-check Enterprise DB
-    console.log(`🔎 Checking ${allLeads.length} leads against Enterprise DB...`);
     const missingLeads = await filterExistingLeads(enterprisePool, allLeads, pageAccessToken, account.sourceName);
     const missingLeadIds = missingLeads.map(l => l.lead_id);
     
-    console.log(`🚨 Found ${missingLeadIds.length} missing leads!`);
 
     // 4. Process and Batch Push missing leads
     if (missingLeadIds.length > 0) {
-      console.log(`📦 Formatting and pushing missing leads in chunks of ${BATCH_SIZE}...`);
       for (let i = 0; i < missingLeadIds.length; i += BATCH_SIZE) {
         const chunk = missingLeadIds.slice(i, i + BATCH_SIZE);
-        console.log(`\n  -> Processing chunk ${i / BATCH_SIZE + 1} of ${Math.ceil(missingLeadIds.length / BATCH_SIZE)}...`);
         await processLeadChunk(chunk, pageAccessToken, account.sourceName);
       }
     }
   }
 
   await enterprisePool.end();
-  console.log(`[${new Date().toISOString()}] === Lead Sync Process Completed ===`);
 }
 
 

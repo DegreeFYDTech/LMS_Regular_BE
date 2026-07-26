@@ -240,7 +240,3 @@ export {
   CuBotSending,
   LeadSwapLog
 };
-
-Student.sync({ alter: true }).catch((e) => undefined);
-LeadAssignmentRuleL3.sync({ alter: true }).catch((e) => undefined);
-LeadSwapLog.sync({ alter: true }).catch((e) => undefined);

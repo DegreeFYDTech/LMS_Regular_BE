@@ -11,7 +11,7 @@ import databaseConnection from './config/database-connection.js';
 import startSyncMissingLeadsCron from './cron/syncMissingLeadsCron.js';
 import startMidnightCleanupCron from './cron/midnightCleanupCron.js';
 // import startLeadSwapCron from './cron/leadSwapCron.js';
-import startLpuPhagwaraRegularCron from './cron/lpuPhagwaraRegularCron.js';
+// import startLpuPhagwaraRegularCron from './cron/lpuPhagwaraRegularCron.js';
 
 async function startScheduler() {
 
@@ -20,7 +20,7 @@ async function startScheduler() {
   startSyncMissingLeadsCron();
   startMidnightCleanupCron();
   // startLeadSwapCron();
-  startLpuPhagwaraRegularCron();
+  // startLpuPhagwaraRegularCron();
 
 }
 

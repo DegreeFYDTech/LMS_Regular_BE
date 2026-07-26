@@ -55,7 +55,7 @@ export const createLeadActivity = async (leadData, studentId) => {
       whatsapp: leadData.whatsapp || "",
       cta_name: leadData.ctaName || leadData.cta_name || "",
       form_name: leadData.formName || leadData.form_name || "",
-
+      gcl_id:  leadData.gcl_id || null,
       source: source,
       source_url: sourceurl,
 

@@ -875,6 +875,8 @@ export const mapFiltersForGetStudentsHelper = (
     numberOfUnreadMessages: params.number_of_unread_messages,
     createdAt_start: finalCreatedAtStart,
     createdAt_end: finalCreatedAtEnd,
+    formFilledDate_start: params?.formFilledDate_start,
+    formFilledDate_end: params?.formFilledDate_end,
     nextCallDate_start: params.nextCallDate_start,
     nextCallDate_end: params.nextCallDate_end,
     lastCallDate_start: params.lastCallDate_start,

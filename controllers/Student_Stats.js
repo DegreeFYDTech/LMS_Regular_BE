@@ -105,15 +105,40 @@ export const getOptimizedOverallStatsFromHelper = async ({
      fresh_leads AS (
         ${
           role === "l3"
-            ? `
+            ? selectedagent
+              ? `
           SELECT bs.student_id
           FROM base_students bs
           WHERE NOT EXISTS (
             SELECT 1 FROM student_remarks sr
             WHERE sr.student_id = bs.student_id
-            ${selectedagent ? `AND sr.counsellor_id = ${escape(selectedagent)}` : ""}
+            AND sr.counsellor_id = ${escape(selectedagent)}
           )
-          ${!selectedagent ? "OR bs.total_remarks_l3 = 0" : ""}
+          `
+              : `
+          SELECT bs.student_id
+          FROM base_students bs
+          WHERE EXISTS (
+            SELECT 1 FROM course_status_journeys csj
+            WHERE csj.student_id = bs.student_id
+            AND csj.assigned_l3_counsellor_id IS NOT NULL
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM course_status_journeys csj
+            INNER JOIN student_remarks sr
+              ON sr.student_id = bs.student_id
+              AND sr.counsellor_id = csj.assigned_l3_counsellor_id
+            WHERE csj.student_id = bs.student_id
+            AND csj.assigned_l3_counsellor_id IS NOT NULL
+          )
+          `
+            : (role === "l2" || role === "to")
+            ? `
+          SELECT bs.student_id
+          FROM base_students bs
+          INNER JOIN students s ON bs.student_id = s.student_id
+          WHERE s.remarks_count = 0
+            AND s.assigned_counsellor_id IS NOT NULL
           `
             : `
           SELECT bs.student_id

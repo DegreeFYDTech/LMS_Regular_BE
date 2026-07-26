@@ -47,6 +47,8 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       numberOfUnreadMessages: hasUnreadMessages,
       createdAt_start,
       createdAt_end,
+      formFilledDate_start,
+      formFilledDate_end,
       nextCallDate_start,
       nextCallDate_end,
       lastCallDate_start,
@@ -480,6 +482,22 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
 
     if (createdAt_start || createdAt_end)
       where.push(dateRangeSQL("s.created_at", createdAt_start, createdAt_end));
+    if (formFilledDate_start || formFilledDate_end) {
+      // "Form Filled Date" means the FIRST time this student's journey ever
+      // recorded an Application-stage status — not a separate stored column.
+      const firstApplicationDateExpr = `(
+        SELECT MIN(csj_ffd.created_at) FROM course_status_journeys csj_ffd
+        WHERE csj_ffd.student_id = s.student_id
+          AND csj_ffd.course_status IN (${APPLICATION_STATUSES.map((st) => escape(st)).join(",")})
+      )`;
+      where.push(
+        dateRangeSQL(
+          firstApplicationDateExpr,
+          formFilledDate_start,
+          formFilledDate_end,
+        ),
+      );
+    }
     if (nextCallDateL3_start || nextCallDateL3_end)
       where.push(
         dateRangeSQL(
@@ -621,24 +639,28 @@ export const getStudentsRawSQL = async (filters, req, isDownload = false) => {
       const l2StatusFilter = data === "l2"
         ? ` AND s.current_student_status IN ('Pre Application','Initial Counselling Completed')`
         : "";
+      const l3StatusFilter = data === "l3"
+        ? ` AND s.current_student_status = 'Application'`
+        : "";
+      const roleStatusFilter = `${l2StatusFilter}${l3StatusFilter}`;
 
       switch (callback.toLowerCase()) {
         case "today":
           where.push(
-            `lr.callback_date >= '${todayStart}'::timestamp AND lr.callback_date <= '${todayEnd}'::timestamp${l2StatusFilter}`,
+            `lr.callback_date >= '${todayStart}'::timestamp AND lr.callback_date <= '${todayEnd}'::timestamp${roleStatusFilter}`,
           );
           break;
         case "overdue":
           where.push(
-            `lr.callback_date < '${todayStart}'::timestamp AND lr.callback_date IS NOT NULL${l2StatusFilter}`,
+            `lr.callback_date < '${todayStart}'::timestamp AND lr.callback_date IS NOT NULL${roleStatusFilter}`,
           );
           break;
         case "all":
-          where.push(`lr.callback_date IS NOT NULL${l2StatusFilter}`);
+          where.push(`lr.callback_date IS NOT NULL${roleStatusFilter}`);
           break;
         case "combined":
           where.push(
-            `lr.callback_date <= '${todayEnd}'::timestamp AND lr.callback_date IS NOT NULL${l2StatusFilter}`,
+            `lr.callback_date <= '${todayEnd}'::timestamp AND lr.callback_date IS NOT NULL${roleStatusFilter}`,
           );
           break;
       }
@@ -1945,6 +1967,7 @@ async function getL3OverallStatsFromJourney({
 
     // Build the counsellor filter string for fresh leads logic
     let counsellorIdForFresh = "";
+    let isSupervisorNoAgent = false;
     if (selectedagent) {
       counsellorIdForFresh = `= ${escape(selectedagent)}`;
     } else if (userRole === "l3") {
@@ -1952,7 +1975,8 @@ async function getL3OverallStatsFromJourney({
     } else if ((isToL3View || isToView) && l3TeamIds.length > 0) {
       counsellorIdForFresh = `IN (${l3TeamIds.map(escape).join(",")})`;
     } else {
-      counsellorIdForFresh = `= ''`; // No valid counsellor
+      // Supervisor with no agent selected — use journey-based check
+      isSupervisorNoAgent = true;
     }
 
     const query = `
@@ -2004,17 +2028,36 @@ async function getL3OverallStatsFromJourney({
       ),
       -- Fresh leads for L3: No journey entry OR no remarks from this counsellor
       fresh_leads AS (
+        ${isSupervisorNoAgent ? `
+        SELECT DISTINCT bs.student_id
+        FROM base_students bs
+        WHERE EXISTS (
+          SELECT 1 FROM course_status_journeys csj
+          WHERE csj.student_id = bs.student_id
+          AND csj.assigned_l3_counsellor_id IS NOT NULL
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM course_status_journeys csj
+          INNER JOIN student_remarks sr
+            ON sr.student_id = bs.student_id
+            AND sr.counsellor_id = csj.assigned_l3_counsellor_id
+          WHERE csj.student_id = bs.student_id
+          AND csj.assigned_l3_counsellor_id IS NOT NULL
+        )
+        ${baseStudentFilter}
+        ` : `
         SELECT bs.student_id
         FROM base_students bs
         WHERE (
           NOT EXISTS (
-            SELECT 1 FROM course_status_journeys csj 
-            WHERE csj.student_id = bs.student_id 
+            SELECT 1 FROM course_status_journeys csj
+            WHERE csj.student_id = bs.student_id
             AND csj.assigned_l3_counsellor_id ${counsellorIdForFresh}
           )
           OR bs.remarks_count = 0
         )
         ${baseStudentFilter}
+        `}
       ),
       latest_remarks AS (
         SELECT DISTINCT ON (sr.student_id)
@@ -2033,14 +2076,18 @@ async function getL3OverallStatsFromJourney({
         ORDER BY sr.student_id, sr.created_at DESC
       ),
       today_callbacks AS (
+        -- current_student_status = 'Application' must match the same
+        -- restriction the main list's callback filter applies for L3
+        -- (getStudentsRawSQL's l3StatusFilter) — a looser blacklist on a
+        -- different field lets extra students inflate this count above
+        -- the actual list total.
         SELECT COUNT(DISTINCT lr.student_id) as count
         FROM latest_remarks lr
         INNER JOIN base_students bs ON lr.student_id = bs.student_id
         WHERE lr.student_id IS NOT NULL
-          AND lr.callback_date >= current_date 
+          AND lr.callback_date >= current_date
           AND lr.callback_date < current_date + 1
-          -- Exclude students whose latest journey status is 'Not Interested'
-          AND bs.latest_course_status NOT IN ('Not Interested', 'NotInterested')
+          AND bs.current_student_status = 'Application'
           ${baseStudentFilter}
           ${callbackFilter}
       ),

@@ -112,7 +112,7 @@ export const updateStudentCourseStatus = async (req, res) => {
     });
   }
 };
-export const getLeadStatusApiReport = async (req, res) => {
+const leadStatusApiReportSummary = async (req, res) => {
   try {
     const { from, to } = req.query;
 
@@ -211,7 +211,7 @@ export const getLeadStatusApiReport = async (req, res) => {
 // Drill-down: returns the individual students behind one cell of the API Disposition
 // Pivot (Lead Intelligence "api" sub-tab). Re-runs the same join as getLeadStatusApiReport,
 // filtered to one counsellor/supervisor (+ optionally one college) and one status bucket.
-export const getLeadStatusApiReportDrillDown = async (req, res) => {
+const leadStatusApiReportRaw = async (req, res) => {
   try {
     const { from, to, counsellor, supervisor, college_name, bucket } = req.query;
 
@@ -307,6 +307,14 @@ export const getLeadStatusApiReportDrillDown = async (req, res) => {
       message: "Internal server error",
     });
   }
+};
+
+// Single controller for Lead Status API Report — type=summary (default) for the grouped
+// counsellor/college view, type=raw for the paginated drilldown.
+export const getLeadStatusApiReport = async (req, res) => {
+  const { type = "summary" } = req.query;
+  if (type === "raw") return leadStatusApiReportRaw(req, res);
+  return leadStatusApiReportSummary(req, res);
 };
 
 export const getCollegeStatus = async (req, res) => {
@@ -847,7 +855,7 @@ export const downloadRecordsForView = async (req, res) => {
   }
 };
 
-export const getThreeRecordsOfFormFilled = async (req, res) => {
+const formFilledAggregate = async (req, res) => {
   try {
     const {
       type,
@@ -2163,7 +2171,7 @@ export const debugCounsellorAttribution = async (req, res) => {
 // "agent" pivot table (Leads/Attempted/Connected/ICC/Forms/Still ACTIVE/Adm./PreNI/etc.).
 // Rebuilds the same CTEs, filters and per-bucket CASE WHEN conditions used in
 // getThreeRecordsOfFormFilled so the drilled-down list always matches the displayed count.
-export const getThreeRecordsOfFormFilledDrillDown = async (req, res) => {
+const formFilledDrilldown = async (req, res) => {
   try {
     const {
       type = "agent",
@@ -2836,7 +2844,7 @@ export const getNotInterestedAfterCounselingReport = async (req, res) => {
     });
   }
 };
-export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
+const formFilledExport = async (req, res) => {
   try {
     const {
       type,
@@ -3892,6 +3900,16 @@ export const getThreeRecordsOfFormFilledDownload = async (req, res) => {
   }
 };
 
+// Single merged entry point for `/getrecords/form-filled`, `/getrecords/form-filled/drilldown`,
+// and `/getrecords/form-filled/download` — one function wired to all three routes. The download
+// route sets `mode=export` before calling in (see router); a request is a drilldown when it
+// carries `bucket` plus one of the drill_* selectors; otherwise it's the aggregate report.
+export const getThreeRecordsOfFormFilled = async (req, res) => {
+  const { bucket, drill_counsellor_id, drill_supervisor_id, drill_supervisor_name, drill_group, mode } = req.query;
+  if (mode === "export") return formFilledExport(req, res);
+  const isDrilldown = !!bucket && !!(drill_counsellor_id || drill_supervisor_id || drill_supervisor_name || drill_group);
+  return isDrilldown ? formFilledDrilldown(req, res) : formFilledAggregate(req, res);
+};
 
 export const downloadRecordsForAnalysis = async (req, res) => {
   try {
@@ -4626,7 +4644,7 @@ export const getTrackReportDrillDown = async (req, res) => {
   }
 };
 
-export const getTrackerReport2 = async (req, res) => {
+const trackerReport2Summary = async (req, res) => {
   try {
     const { date_start, date_end, groupBy = "slot" } = req.query;
     const userRole = req.user?.role; // Get user role from request
@@ -5124,7 +5142,7 @@ export const getTrackerReport2 = async (req, res) => {
 // Tracker summary table. Re-runs the same per-student Set-membership logic as
 // getTrackerReport2 (rather than re-deriving counts via SQL) so the drilled-down list
 // always matches the displayed count exactly.
-export const getTrackerReport2DrillDown = async (req, res) => {
+const trackerReport2Raw = async (req, res) => {
   try {
     const {
       date_start,
@@ -5378,7 +5396,7 @@ export const getTrackerReport2DrillDown = async (req, res) => {
   }
 };
 
-export const getTrackerReport2RawData = async (req, res) => {
+const trackerReport2Export = async (req, res) => {
   try {
     const { date_start, date_end, groupBy = "detailed" } = req.query;
 
@@ -5736,7 +5754,18 @@ export const getTrackerReport2RawData = async (req, res) => {
   }
 };
 
-export const getLeadAttemptTimeReport = async (req, res) => {
+// Single controller for Tracker Report 2 — type=summary (default) for the slot/counsellor
+// aggregate view, type=raw for the paginated drilldown, type=export for the full raw dump.
+// Each branch keeps its original query/aggregation logic untouched; this just merges them
+// behind one route instead of three.
+export const getTrackerReport2 = async (req, res) => {
+  const { type = "summary" } = req.query;
+  if (type === "raw") return trackerReport2Raw(req, res);
+  if (type === "export") return trackerReport2Export(req, res);
+  return trackerReport2Summary(req, res);
+};
+
+const leadAttemptTimeSummary = async (req, res) => {
   try {
     const { date_start, date_end, source, group_by = "counsellor" } = req.query;
     const userRole = req.user?.role; // Get user role from request
@@ -6028,7 +6057,7 @@ export const getLeadAttemptTimeReport = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
-export const getLeadAttemptTimeReportRawData = async (req, res) => {
+const leadAttemptTimeExport = async (req, res) => {
   try {
     const { date_start, date_end, source, group_by = "detailed" } = req.query;
 
@@ -6476,7 +6505,7 @@ END as attempt_category
 // Drill-down: returns the individual students behind one cell of the Lead Attempt
 // summary table (a single group_name x bucket combination), reusing the exact same
 // grouping/bucket definitions as getLeadAttemptTimeReport so counts always match.
-export const getLeadAttemptTimeReportDrillDown = async (req, res) => {
+const leadAttemptTimeRaw = async (req, res) => {
   try {
     const {
       date_start,
@@ -6608,6 +6637,16 @@ export const getLeadAttemptTimeReportDrillDown = async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
+};
+
+// Single controller for Lead Attempt Time Report — type=summary (default) for the aggregate
+// view, type=raw for the paginated drilldown, type=export for the full raw dump. Each branch
+// keeps its original query/aggregation logic untouched; this just merges them behind one route.
+export const getLeadAttemptTimeReport = async (req, res) => {
+  const { type = "summary" } = req.query;
+  if (type === "raw") return leadAttemptTimeRaw(req, res);
+  if (type === "export") return leadAttemptTimeExport(req, res);
+  return leadAttemptTimeSummary(req, res);
 };
 
 export const getTrackerReportAnalysis3 = async (req, res) => {

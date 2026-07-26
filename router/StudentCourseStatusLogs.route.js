@@ -11,16 +11,12 @@ import {
   getCourseGraphReport,
   getStudentJourneyDetails,
   replaceL3CounsellorForSpecificJourney,
-  exportCollegeStatusReports,
   replaceL3CounsellorForStudents,
   getFormData,
   checkRegistrationFormType,
   getPaidPhones,
   getF2AReport,
-  getF2AReportDrilldown,
   getF2AFilterOptions,
-  getCollegeStatusReportDrilldown,
-  getCounsellorStatsDrillDown,
 } from "../controllers/StudentCourseStatusLogs.controller.js";
 import { sentStatustoCollege } from "../controllers/Colleges_sending_logic.js";
 
@@ -33,15 +29,11 @@ router.post(
   authorize(["Supervisor", "to", "to_l3"]),
   getDistinctL3CounsellorsByStudentIds,
 );
+// Single endpoint — ?type=summary (default) | raw (drilldown) | export (xlsx)
 router.get(
   "/counsellor-stats",
   authorize(["Supervisor", "to", "to_l3"]),
   getCounsellorStats,
-);
-router.get(
-  "/counsellor-stats/drilldown",
-  authorize(["Supervisor", "to", "to_l3"]),
-  getCounsellorStatsDrillDown,
 );
 router.use("/course-reports", getFormToAdmissionsReport);
 router.get("/course-reports-filter-options", getFormToAdmissionsFilterOptions);
@@ -61,10 +53,8 @@ router.post(
   authorize(["Supervisor", "to", "to_l3"]),
   replaceL3CounsellorForStudents,
 );
-router.get("/reports/export", exportCollegeStatusReports);
-
+// Single endpoint — ?type=summary (default) | raw (drilldown) | export (csv)
 router.get("/reports", getCollegeStatusReports);
-router.get("/reports/drilldown", getCollegeStatusReportDrilldown);
 router.get('/colleges-list', authorize(['Supervisor', 'to', 'to_l3', 'l3', 'l2', 'Analyser']), getCollegesList);
 router.get('/graph-reports', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getCourseGraphReport);
 router.post('/check-form-type', checkRegistrationFormType);
@@ -74,7 +64,7 @@ router.post(
   authorize(["l2", "l3", "Supervisor", "to", "to_l3"]),
   createStatusLog,
 );
+// Single endpoint — ?mode=summary (default) | raw (drilldown)
 router.get('/f2a-report', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getF2AReport);
-router.get('/f2a-report-drilldown', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getF2AReportDrilldown);
 router.get('/f2a-filter-options', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getF2AFilterOptions);
 export default router;

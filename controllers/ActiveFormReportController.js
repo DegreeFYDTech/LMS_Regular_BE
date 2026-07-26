@@ -1,4 +1,5 @@
 import { QueryTypes } from 'sequelize';
+import ExcelJS from 'exceljs';
 import sequelize from '../config/database-config.js';
 import { getFormTypeStudentCondition } from './StudentCourseStatusLogs.controller.js';
 
@@ -12,10 +13,6 @@ export const getActiveFormCollegeReport = async (req, res) => {
         group_by = 'college',
         form_type,
     } = req.query;
-
-    if (!date_from || !date_to) {
-        return res.status(400).json({ message: "date_from and date_to are required" });
-    }
 
     const { sqlFragment: formTypeSql } = await getFormTypeStudentCondition(form_type);
 
@@ -35,60 +32,63 @@ export const getActiveFormCollegeReport = async (req, res) => {
     ];
 
     try {
-        // first_entry_in_range: only students whose FIRST EVER entry in those statuses
-        // (per student+course) falls within the date range.
+        // Date range is optional — when omitted, the report covers all-time data (no entry_date filter).
+        const entryDateFilter = date_from && date_to
+            ? `AND sca.entry_date >= :date_from_start ::timestamp
+               AND sca.entry_date <= :date_to_end ::timestamp`
+            : '';
+
+        // student_course_agg: one pass over course_status_journeys per (student_id, course_id) —
+        // ARRAY_AGG(...)[1] recovers the latest course_status/counsellor (replaces a DISTINCT ON
+        // scan+sort), while MIN(...) FILTER recovers the first-ever entry into an active status
+        // (replaces a second GROUP BY scan). Folding both into one GROUP BY avoids scanning this
+        // large table twice.
         const baseCTEs = `
-            WITH latest_status AS (
-                SELECT DISTINCT ON (student_id, course_id)
+            WITH student_course_agg AS (
+                SELECT
                     student_id,
                     course_id,
-                    course_status,
-                    assigned_l3_counsellor_id
+                    (ARRAY_AGG(course_status ORDER BY created_at DESC))[1] AS course_status,
+                    (ARRAY_AGG(assigned_l3_counsellor_id ORDER BY created_at DESC))[1] AS assigned_l3_counsellor_id,
+                    MIN(created_at AT TIME ZONE 'Asia/Kolkata') FILTER (WHERE course_status IN (:statuses)) AS entry_date
                 FROM course_status_journeys
-                ORDER BY student_id, course_id, created_at DESC
-            ),
-            active_now AS (
-                SELECT student_id, course_id, course_status, assigned_l3_counsellor_id
-                FROM latest_status
-                WHERE course_status IN (:statuses)
-                ${formTypeSql}
-            ),
-            first_entry_in_range AS (
-                SELECT student_id, course_id,
-                       MIN(created_at AT TIME ZONE 'Asia/Kolkata') AS entry_date
-                FROM course_status_journeys
-                WHERE course_status IN (:statuses)
+                WHERE 1=1
                 ${formTypeSql}
                 GROUP BY student_id, course_id
-                HAVING MIN(created_at AT TIME ZONE 'Asia/Kolkata') >= :date_from_start ::timestamp
-                   AND MIN(created_at AT TIME ZONE 'Asia/Kolkata') <= :date_to_end ::timestamp
             ),
             current_active_students AS (
                 SELECT
-                    fe.student_id,
-                    fe.course_id,
-                    fe.entry_date,
+                    sca.student_id,
+                    sca.course_id,
+                    sca.entry_date,
                     uc.university_name,
                     uc.course_name,
-                    an.course_status,
-                    an.assigned_l3_counsellor_id
-                FROM first_entry_in_range fe
-                JOIN active_now an ON fe.student_id = an.student_id AND fe.course_id = an.course_id
-                JOIN university_courses uc ON fe.course_id = uc.course_id
+                    sca.course_status,
+                    sca.assigned_l3_counsellor_id
+                FROM student_course_agg sca
+                JOIN university_courses uc ON sca.course_id = uc.course_id
+                WHERE sca.course_status IN (:statuses)
+                ${entryDateFilter}
             )
         `;
 
+        // Matches the Counsellor Performance Dashboard's "not initiated" rule: only a remark from
+        // the counsellor actually assigned to this student+course counts as "worked" — a remark
+        // from a different L3 counsellor does not. Tracked per (student_id, course_id), not
+        // shared across a student's other active courses.
         const latestL3RemarkCTE = `
             latest_l3_remark AS (
-                SELECT DISTINCT ON (sr.student_id)
-                    sr.student_id,
+                SELECT DISTINCT ON (cas.student_id, cas.course_id)
+                    cas.student_id,
+                    cas.course_id,
                     (sr.created_at AT TIME ZONE 'Asia/Kolkata') AS remark_at_ist,
                     sr.remarks AS remark_content,
                     c.counsellor_name AS l3_counsellor_name
-                FROM student_remarks sr
+                FROM current_active_students cas
+                JOIN student_remarks sr ON sr.student_id = cas.student_id
+                    AND sr.counsellor_id = cas.assigned_l3_counsellor_id
                 JOIN counsellors c ON sr.counsellor_id = c.counsellor_id
-                WHERE lower(c.role) = 'l3'
-                ORDER BY sr.student_id, sr.created_at DESC
+                ORDER BY cas.student_id, cas.course_id, sr.created_at DESC
             )
         `;
 
@@ -109,7 +109,7 @@ export const getActiveFormCollegeReport = async (req, res) => {
                         CASE WHEN lsr.student_id IS NOT NULL THEN ${daysSinceExpr} ELSE NULL END AS days_since
                     FROM current_active_students cas
                     LEFT JOIN counsellors c ON cas.assigned_l3_counsellor_id = c.counsellor_id
-                    LEFT JOIN latest_l3_remark lsr ON cas.student_id = lsr.student_id
+                    LEFT JOIN latest_l3_remark lsr ON cas.student_id = lsr.student_id AND cas.course_id = lsr.course_id
                 )
                 SELECT
                     assigned_l3_name,
@@ -122,7 +122,7 @@ export const getActiveFormCollegeReport = async (req, res) => {
                 GROUP BY assigned_l3_name
                 ORDER BY assigned_l3_name;
             `;
-        } else if (type === 'raw') {
+        } else if (type === 'raw' || type === 'export') {
             // Build optional drill-down filters — reference analysis CTE columns, not raw aliases
             let groupFilter = '';
             if (drill_group) {
@@ -162,7 +162,7 @@ export const getActiveFormCollegeReport = async (req, res) => {
                         CASE WHEN lsr.student_id IS NOT NULL THEN ${daysSinceExpr} ELSE NULL END AS days_since
                     FROM current_active_students cas
                     LEFT JOIN counsellors lc ON cas.assigned_l3_counsellor_id = lc.counsellor_id
-                    LEFT JOIN latest_l3_remark lsr ON cas.student_id = lsr.student_id
+                    LEFT JOIN latest_l3_remark lsr ON cas.student_id = lsr.student_id AND cas.course_id = lsr.course_id
                 )
                 SELECT
                     student_id,
@@ -194,7 +194,7 @@ export const getActiveFormCollegeReport = async (req, res) => {
                         CASE WHEN lsr.student_id IS NULL THEN 'Not Worked' ELSE 'Worked' END AS worked_status,
                         CASE WHEN lsr.student_id IS NOT NULL THEN ${daysSinceExpr} ELSE NULL END AS days_since
                     FROM current_active_students cas
-                    LEFT JOIN latest_l3_remark lsr ON cas.student_id = lsr.student_id
+                    LEFT JOIN latest_l3_remark lsr ON cas.student_id = lsr.student_id AND cas.course_id = lsr.course_id
                 )
                 SELECT
                     university_name,
@@ -211,15 +211,57 @@ export const getActiveFormCollegeReport = async (req, res) => {
 
         const replacements = {
             statuses: ACTIVE_FORM_STATUSES,
-            date_from_start: `${date_from} 00:00:00`,
-            date_to_end: `${date_to} 23:59:59`,
         };
+        if (date_from && date_to) {
+            replacements.date_from_start = `${date_from} 00:00:00`;
+            replacements.date_to_end = `${date_to} 23:59:59`;
+        }
         if (drill_group) replacements.drill_group = drill_group;
 
         const reportData = await sequelize.query(query, {
             replacements,
             type: QueryTypes.SELECT,
         });
+
+        if (type === 'export') {
+            const workbook = new ExcelJS.Workbook();
+            const sheet = workbook.addWorksheet('Active Form Report');
+
+            sheet.columns = [
+                { header: 'Student ID', key: 'student_id', width: 20 },
+                { header: 'Course Name', key: 'course_name', width: 30 },
+                { header: 'College', key: 'college_name', width: 30 },
+                { header: 'Current Status', key: 'course_status', width: 28 },
+                { header: 'Assigned L3', key: 'assigned_l3_name', width: 22 },
+                { header: 'Form Filled Date', key: 'form_filled_date', width: 20 },
+                { header: 'Last L3 Remark Date', key: 'last_l3_remark_date', width: 20 },
+                { header: 'Last L3 Remark', key: 'last_l3_remark', width: 40 },
+                { header: 'L3 Counsellor (Remarked)', key: 'l3_counsellor_name', width: 22 },
+                { header: 'Worked Status', key: 'worked_status', width: 16 },
+                { header: 'Days Since Remark', key: 'days_since', width: 18 },
+            ];
+
+            const headerRow = sheet.getRow(1);
+            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            headerRow.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF4B0082' },
+            };
+
+            reportData.forEach((row) => sheet.addRow(row));
+
+            res.setHeader(
+                'Content-Type',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            );
+            res.setHeader(
+                'Content-Disposition',
+                `attachment; filename="active_form_report_${date_from || 'all'}_to_${date_to || 'all'}.xlsx"`,
+            );
+            await workbook.xlsx.write(res);
+            return res.end();
+        }
 
         res.status(200).json(reportData);
     } catch (error) {

@@ -738,6 +738,13 @@ function processApiResponse(apiResponse, collegeName) {
   const statusCode = responseData.statusCode || responseData.code;
   const message = responseData.message || responseData.Message;
 
+  const errorField = responseData.error;
+  const errorText = Array.isArray(errorField)
+    ? errorField.flat(Infinity).join(" ")
+    : errorField || "";
+  if (typeof errorText === "string" && errorText.toLowerCase().includes("duplicate")) {
+    return "Do not Proceed";
+  }
 
   if (!status && !statusCode) {
     return "Failed due to Technical Issues";

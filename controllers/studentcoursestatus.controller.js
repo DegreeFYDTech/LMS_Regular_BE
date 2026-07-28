@@ -2507,7 +2507,12 @@ const formFilledDrilldown = async (req, res) => {
     if (!bucketCondition) {
       return res.status(400).json({ success: false, message: "Invalid bucket" });
     }
-    whereConds.push(bucketCondition);
+    // Several bucket conditions (active_cases, under_3_remarks) contain a
+    // top-level OR. whereConds is later joined with " AND " — without
+    // wrapping in parens, SQL's AND-binds-tighter-than-OR precedence turns
+    // "A AND B AND (C OR D)" into "(A AND B AND C) OR D", silently dropping
+    // every other filter whenever that OR's second branch matches.
+    whereConds.push(`(${bucketCondition})`);
 
     const whereSQL = whereConds.length ? `WHERE ${whereConds.join(" AND ")} ${counsellorStatusCondition}` : counsellorStatusCondition ? `WHERE 1=1 ${counsellorStatusCondition}` : "";
 

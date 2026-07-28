@@ -2959,6 +2959,294 @@ export const getCourseGraphReport = async (req, res) => {
   }
 };
 
+// ============================================================================
+// Admission Report — team-owner/counsellor wise first-time Admission or
+// Application counts, with a drilldown into the underlying student rows.
+// ============================================================================
+
+// Resolves the counsellor_id list a 'to' user is allowed to see admissions for
+// (themselves + their subordinate counsellors). Returns null when unrestricted.
+const resolveCounsellorScope = async (userRole, userId) => {
+  if (userRole !== "to") return null;
+
+  const subordinates = await Counsellor.findAll({
+    where: {
+      [Op.or]: [{ assigned_to: userId }, { counsellor_id: userId }],
+    },
+    attributes: ["counsellor_id"],
+  });
+
+  const ids = Array.from(
+    new Set(subordinates.map((c) => c.counsellor_id).filter(Boolean)),
+  );
+  return ids.length > 0 ? ids : ["DUMMY_COUNSELLOR_NONE"];
+};
+
+// "Application" is a whole family of course_status values, not a single
+// literal one — a journey that reaches any of these has been submitted as
+// an application, even if it never passes through a status literally named
+// "Application" (most go straight to one of the more specific sub-statuses).
+// Reuses the module-level APPLICATION_STATUSES defined near the top of this
+// file (used elsewhere for the same grouping) plus the literal "Application"
+// status itself, which that list doesn't include.
+const ADMISSION_REPORT_APPLICATION_STATUSES = [...APPLICATION_STATUSES, "Application"];
+
+// Shared context (role scope + date range + base CTE) so every admission-report
+// endpoint (detail list, drilldown, summary) derives counts from the exact same
+// underlying rows — this is what keeps the summary counts and drilldown data in sync.
+// Only these two literal status groups are ever allowed here — req.query.type is
+// never interpolated into SQL directly, it just selects one of these two constants.
+const REPORT_TYPE_STATUSES = {
+  admission: ["Admission"],
+  application: ADMISSION_REPORT_APPLICATION_STATUSES,
+};
+
+const buildAdmissionContext = async (req) => {
+  const userRole = String(req.user.role).trim().toLowerCase();
+  const userId = req.user.id;
+
+  const counsellorScope = await resolveCounsellorScope(userRole, userId);
+
+  const reportType = req.query.type === "application" ? "application" : "admission";
+  const courseStatusList = REPORT_TYPE_STATUSES[reportType]
+    .map((s) => `'${s.replace(/'/g, "''")}'`)
+    .join(",");
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  // Filter range for the table + FTD stat: defaults to "today"
+  const rangeStart = req.query.startDate ? new Date(req.query.startDate) : todayStart;
+  const rangeEnd = req.query.endDate
+    ? new Date(req.query.endDate)
+    : new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
+  const scopeCondition = counsellorScope
+    ? "AND fa.counsellor_id IS NOT NULL AND fa.counsellor_id IN (:counsellorScope)"
+    : "";
+
+  const baseReplacements = {
+    ...(counsellorScope ? { counsellorScope } : {}),
+  };
+
+  const firstAdmissionBase = `
+    SELECT DISTINCT ON (student_id, course_id)
+      student_id, course_id, counsellor_id, deposit_amount, created_at AS admission_date
+    FROM course_status_journeys
+    WHERE course_status IN (${courseStatusList})
+    ORDER BY student_id, course_id, created_at ASC
+  `;
+
+  return {
+    now,
+    monthStart,
+    rangeStart,
+    rangeEnd,
+    scopeCondition,
+    baseReplacements,
+    firstAdmissionBase,
+    reportType,
+  };
+};
+
+// FTD (respects the applied date filter) and MTD (always current month), regardless
+// of which endpoint/drilldown is asking — same first_admission CTE + scope each time.
+const fetchAdmissionStats = async (ctx) => {
+  const { firstAdmissionBase, scopeCondition, baseReplacements, rangeStart, rangeEnd, monthStart, now } = ctx;
+
+  const statsQuery = `
+    WITH first_admission AS (${firstAdmissionBase})
+    SELECT
+      COUNT(*) FILTER (
+        WHERE fa.admission_date >= :rangeStart AND fa.admission_date < :rangeEnd
+      ) AS ftd,
+      COUNT(*) FILTER (
+        WHERE fa.admission_date >= :monthStart AND fa.admission_date < :nextRangeCheck
+      ) AS mtd
+    FROM first_admission fa
+    WHERE 1=1 ${scopeCondition}
+  `;
+
+  const [statsRow] = await sequelize.query(statsQuery, {
+    replacements: {
+      ...baseReplacements,
+      rangeStart,
+      rangeEnd,
+      monthStart,
+      nextRangeCheck: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+    },
+    type: sequelize.QueryTypes.SELECT,
+  });
+
+  return {
+    ftd: parseInt(statsRow?.ftd || 0, 10),
+    mtd: parseInt(statsRow?.mtd || 0, 10),
+  };
+};
+
+// Detail list — the raw student-level rows. Doubles as the drilldown endpoint when
+// counsellorId / teamOwnerId query params are supplied (from clicking a summary count).
+export const getAdmissionReport = async (req, res) => {
+  try {
+    const ctx = await buildAdmissionContext(req);
+    const { firstAdmissionBase, scopeCondition, baseReplacements, rangeStart, rangeEnd } = ctx;
+
+    const page = req.query.all ? 1 : parseInt(req.query.page, 10) || 1;
+    const limit = req.query.all ? 100000 : parseInt(req.query.limit, 10) || 10;
+    const offset = (page - 1) * limit;
+
+    let drilldownCondition = "";
+    const drilldownReplacements = {};
+    if (req.query.counsellorId) {
+      drilldownCondition += " AND fa.counsellor_id = :counsellorId";
+      drilldownReplacements.counsellorId = req.query.counsellorId;
+    }
+    if (req.query.teamOwnerId) {
+      if (req.query.teamOwnerId === "UNASSIGNED") {
+        drilldownCondition += " AND cns.assigned_to IS NULL";
+      } else {
+        drilldownCondition += " AND cns.assigned_to = :teamOwnerId";
+        drilldownReplacements.teamOwnerId = req.query.teamOwnerId;
+      }
+    }
+
+    const stats = await fetchAdmissionStats(ctx);
+
+    const dataQuery = `
+      WITH first_admission AS (${firstAdmissionBase}),
+           first_entry AS (
+             SELECT DISTINCT ON (student_id, course_id)
+               student_id, course_id, created_at AS form_filled_date
+             FROM course_status_journeys
+             ORDER BY student_id, course_id, created_at ASC
+           )
+      SELECT
+        fa.student_id,
+        s.student_name,
+        fa.admission_date,
+        fe.form_filled_date,
+        uc.university_name AS college_name,
+        uc.course_name,
+        fa.deposit_amount AS fees_amount,
+        cns.counsellor_name,
+        team_owner.counsellor_name AS team_owner_name,
+        l2cns.counsellor_name AS l2_counsellor_name
+      FROM first_admission fa
+      JOIN students s ON s.student_id = fa.student_id
+      LEFT JOIN university_courses uc ON uc.course_id = fa.course_id
+      LEFT JOIN first_entry fe ON fe.student_id = fa.student_id AND fe.course_id = fa.course_id
+      LEFT JOIN counsellors cns ON cns.counsellor_id = fa.counsellor_id
+      LEFT JOIN counsellors team_owner ON team_owner.counsellor_id = cns.assigned_to
+      LEFT JOIN counsellors l2cns ON l2cns.counsellor_id = s.assigned_counsellor_id
+      WHERE fa.admission_date >= :rangeStart AND fa.admission_date < :rangeEnd
+        ${scopeCondition} ${drilldownCondition}
+      ORDER BY fa.admission_date DESC
+      LIMIT :limit OFFSET :offset
+    `;
+
+    const countQuery = `
+      WITH first_admission AS (${firstAdmissionBase})
+      SELECT COUNT(*) AS total
+      FROM first_admission fa
+      LEFT JOIN counsellors cns ON cns.counsellor_id = fa.counsellor_id
+      WHERE fa.admission_date >= :rangeStart AND fa.admission_date < :rangeEnd
+        ${scopeCondition} ${drilldownCondition}
+    `;
+
+    const [rows, [countRow]] = await Promise.all([
+      sequelize.query(dataQuery, {
+        replacements: { ...baseReplacements, ...drilldownReplacements, rangeStart, rangeEnd, limit, offset },
+        type: sequelize.QueryTypes.SELECT,
+      }),
+      sequelize.query(countQuery, {
+        replacements: { ...baseReplacements, ...drilldownReplacements, rangeStart, rangeEnd },
+        type: sequelize.QueryTypes.SELECT,
+      }),
+    ]);
+
+    return res.json({
+      success: true,
+      type: ctx.reportType,
+      stats,
+      data: rows,
+      total: parseInt(countRow?.total || 0, 10),
+      page,
+      limit,
+    });
+  } catch (error) {
+    console.error("Error in getAdmissionReport:", error.message);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// Team-owner -> counsellor grouped admission counts for the main report view.
+// Built from the exact same first_admission CTE as getAdmissionReport, so the
+// counts here always reconcile with what the drilldown (getAdmissionReport) returns.
+export const getAdmissionReportSummary = async (req, res) => {
+  try {
+    const ctx = await buildAdmissionContext(req);
+    const { firstAdmissionBase, scopeCondition, baseReplacements, rangeStart, rangeEnd } = ctx;
+
+    const stats = await fetchAdmissionStats(ctx);
+
+    const summaryQuery = `
+      WITH first_admission AS (${firstAdmissionBase})
+      SELECT
+        cns.assigned_to AS team_owner_id,
+        team_owner.counsellor_name AS team_owner_name,
+        fa.counsellor_id,
+        cns.counsellor_name,
+        COUNT(*) AS admission_count
+      FROM first_admission fa
+      LEFT JOIN counsellors cns ON cns.counsellor_id = fa.counsellor_id
+      LEFT JOIN counsellors team_owner ON team_owner.counsellor_id = cns.assigned_to
+      WHERE fa.admission_date >= :rangeStart AND fa.admission_date < :rangeEnd
+        ${scopeCondition}
+      GROUP BY cns.assigned_to, team_owner.counsellor_name, fa.counsellor_id, cns.counsellor_name
+    `;
+
+    const rows = await sequelize.query(summaryQuery, {
+      replacements: { ...baseReplacements, rangeStart, rangeEnd },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    const teamMap = new Map();
+    rows.forEach((row) => {
+      const teamOwnerId = row.team_owner_id || "UNASSIGNED";
+      const teamOwnerName = row.team_owner_name || "Unassigned";
+      const count = parseInt(row.admission_count, 10) || 0;
+
+      if (!teamMap.has(teamOwnerId)) {
+        teamMap.set(teamOwnerId, {
+          team_owner_id: teamOwnerId,
+          team_owner_name: teamOwnerName,
+          admission_count: 0,
+          counsellors: [],
+        });
+      }
+      const team = teamMap.get(teamOwnerId);
+      team.admission_count += count;
+      team.counsellors.push({
+        counsellor_id: row.counsellor_id || "UNASSIGNED",
+        counsellor_name: row.counsellor_name || "Unassigned",
+        admission_count: count,
+      });
+    });
+
+    teamMap.forEach((team) => {
+      team.counsellors.sort((a, b) => b.admission_count - a.admission_count);
+    });
+
+    const data = Array.from(teamMap.values()).sort((a, b) => b.admission_count - a.admission_count);
+
+    return res.json({ success: true, type: ctx.reportType, stats, data });
+  } catch (error) {
+    console.error("Error in getAdmissionReportSummary:", error.message);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
 // reuse the module-level normalizeUniv defined near the top
 
 // Internal API used by other BE services (e.g. CGC BE) that don't have direct DB access
@@ -3407,7 +3695,7 @@ const f2aReportDrilldown = async (req, res) => {
 
     const query = `
       ${withSQL}
-      SELECT *, COUNT(*) OVER() AS _total_count FROM (SELECT DISTINCT
+      SELECT *, COUNT(*) OVER() AS _total_count FROM (SELECT DISTINCT ON (bs.student_id)
         bs.student_id,
         st.student_name,
         st.student_phone,
@@ -3426,7 +3714,13 @@ const f2aReportDrilldown = async (req, res) => {
       LEFT JOIN counsellors cl             ON st.assigned_counsellor_id = cl.counsellor_id
       LEFT JOIN university_courses uc_out  ON uc_out.course_id = bs.course_id
       WHERE bs.group_label = $group_label
-        AND (${BUCKET_WHERE[bucket]})) _sub
+        AND (${BUCKET_WHERE[bucket]})
+      -- base_students has one row per (student_id, course_id) — a student
+      -- with multiple courses would otherwise appear as multiple rows here,
+      -- inflating the drilldown count above the summary's
+      -- COUNT(DISTINCT bs.student_id). DISTINCT ON collapses to one row per
+      -- student, matching the summary's per-student semantics.
+      ORDER BY bs.student_id, st.created_at DESC) _sub
       ORDER BY created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;

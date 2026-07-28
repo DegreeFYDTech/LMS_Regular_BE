@@ -17,6 +17,8 @@ import {
   getPaidPhones,
   getF2AReport,
   getF2AFilterOptions,
+  getAdmissionReport,
+  getAdmissionReportSummary,
 } from "../controllers/StudentCourseStatusLogs.controller.js";
 import { sentStatustoCollege } from "../controllers/Colleges_sending_logic.js";
 
@@ -67,4 +69,11 @@ router.post(
 // Single endpoint — ?mode=summary (default) | raw (drilldown)
 router.get('/f2a-report', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getF2AReport);
 router.get('/f2a-filter-options', authorize(['Supervisor', 'to', 'to_l3', 'Analyser']), getF2AFilterOptions);
+// Note: unlike the other report routes above, this intentionally does NOT
+// include to_l3 — resolveCounsellorScope() only knows how to scope 'to'
+// users down to their subordinates; a to_l3 user would fall through to
+// "unrestricted" (counsellorScope = null) and see every counsellor's
+// admissions, which is a real permission gap, not a deliberate design choice.
+router.get('/admission-report', authorize(['Supervisor', 'to', 'Analyser']), getAdmissionReport);
+router.get('/admission-report-summary', authorize(['Supervisor', 'to', 'Analyser']), getAdmissionReportSummary);
 export default router;

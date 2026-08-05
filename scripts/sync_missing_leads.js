@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import cron from 'node-cron';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import MetaAdsToken from '../models/ads/meta-token.js';
 import databaseConnection from '../config/database-connection.js';
 import { getMetaUrl } from '../config/meta.js';
@@ -16,6 +17,8 @@ const BATCH_ENDPOINT = 'https://enterprise-lms-api.degreefyd.com/api/leads/batch
 
 const META_VERSION = 'v21.0';
 const BASE_URL = `https://graph.facebook.com/${META_VERSION}`;
+
+
 
 const ENTERPRISE_URL = process.env.ENTERPRISE_URL;
 
@@ -49,7 +52,21 @@ function makePool(url) {
 // ─── 1. Fetch ALL recent leads from Graph API ───
 async function fetchRecentMetaLeads(pageAccessToken, pageId) {
   const now = Math.floor(Date.now() / 1000);
-  const since = now - 24 * 60 * 60; // last 1 day
+  let since = now - 24 * 60 * 60; // default to last 1 hour
+
+  const stateFile = path.join(__dirname, `sync_state_${pageId}.json`);
+  if (fs.existsSync(stateFile)) {
+    try {
+      const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+      if (state.last_sync) since = state.last_sync;
+      console.log(`[Phase 1] Found existing state file. Fetching leads created after Unix time: ${since}`);
+    } catch (e) {
+      console.error('[Phase 1] Error reading sync state:', e);
+    }
+  } else {
+    console.log(`[Phase 1] No state file found. Fetching leads created after Unix time: ${since} (last 10 hours)`);
+  }
+
   const leads = [];
 
   const formsRes = await axios.get(`${BASE_URL}/${pageId}/leadgen_forms`, {
@@ -58,22 +75,24 @@ async function fetchRecentMetaLeads(pageAccessToken, pageId) {
   const forms = formsRes.data?.data || [];
 
   for (const form of forms) {
-    let url = `${BASE_URL}/${form.id}/leads`;
-    let params = {
-      access_token: pageAccessToken,
-      fields: 'id,created_time,field_data',
-      since: since,
-      until: now,
-      limit: 100,
-    };
+    const filteringParam = encodeURIComponent(JSON.stringify([{ field: 'time_created', operator: 'GREATER_THAN', value: since }]));
+    let url = `${BASE_URL}/${form.id}/leads?access_token=${pageAccessToken}&fields=id,created_time,field_data&limit=100&filtering=${filteringParam}`;
+    let params = {};
 
+    console.log(`[Phase 1] Fetching leads for form: ${form.name} (${form.id})...`);
     while (url) {
       const res = await axios.get(url, { params });
       const data = res.data?.data || [];
+      console.log(`[Phase 1] Fetched ${data.length} leads from this page for form: ${form.name}`);
+      let stop = false;
 
       for (const lead of data) {
+        // console.log(`Processing lead: ${lead.id} from form: ${form.id}`);
         const createdTs = Math.floor(new Date(lead.created_time).getTime() / 1000);
-        if (createdTs < since) continue;
+        if (createdTs < since) {
+          stop = true;
+          break;
+        }
 
         const parsed = { lead_id: lead.id, created_time: lead.created_time, email: null, phone: null };
         for (const f of lead.field_data || []) {
@@ -86,25 +105,31 @@ async function fetchRecentMetaLeads(pageAccessToken, pageId) {
         leads.push(parsed);
       }
 
+      if (stop) break;
+
       const next = res.data?.paging?.next;
       url = next || null;
       params = {};
     }
   }
 
+  console.log(`[Phase 1] Completed Meta API fetch. Total recent leads found: ${leads.length}`);
   return leads;
 }
 
 // ─── 2. Check which leads exist in Enterprise DB (batch check) ───
-async function filterExistingLeads(pool, leads, pageAccessToken, sourceName) {
+async function filterExistingLeads(pool, leads, pageAccessToken, userAccessToken, sourceName) {
   if (!leads || leads.length === 0) return [];
 
   const emails = [...new Set(leads.map(l => l.email).filter(Boolean))];
   const phones = [...new Set(leads.map(l => l.phone).filter(Boolean))];
 
   if (emails.length === 0 && phones.length === 0) {
+    console.log(`[Phase 2] No emails or phones to cross-check. All ${leads.length} leads are considered missing.`);
     return leads;
   }
+
+  console.log(`[Phase 2] Cross-checking ${emails.length} unique emails and ${phones.length} unique phones against Enterprise DB...`);
 
   const conditions = [];
   const values = [];
@@ -151,13 +176,14 @@ async function filterExistingLeads(pool, leads, pageAccessToken, sourceName) {
       } else {
         // Existing lead, check latest activity
         try {
-          const metaDetails = await fetchLeadDataWithCampaign(lead.lead_id, pageAccessToken);
+          const metaDetails = await fetchLeadDataWithCampaign(lead.lead_id, pageAccessToken, userAccessToken);
+          // console.log(`Fetched meta details for lead_id ${lead.lead_id}:`, metaDetails);
           if (!metaDetails) {
             continue;
           }
 
           const utm_campaign = metaDetails.lead?.ad_name || '';
-
+          
           const activitySql = `
             SELECT source, utm_campaign
             FROM "lead_activities"
@@ -180,10 +206,12 @@ async function filterExistingLeads(pool, leads, pageAccessToken, sourceName) {
           finalMissingLeads.push(lead);
 
         } catch (err) {
+          console.log(`Error fetching lead data for lead_id ${lead.lead_id}:`, err);
         }
       }
     }
 
+    console.log(`[Phase 2] Cross-check complete. Found ${finalMissingLeads.length} completely new or valid missing leads.`);
     return finalMissingLeads;
   } catch (err) {
     return leads;
@@ -218,9 +246,9 @@ function formatToQuestionAnswerArray(obj) {
 }
 
 // ─── 3. Detailed Data Fetch ───
-async function fetchLeadDataWithCampaign(id, accessToken) {
+async function fetchLeadDataWithCampaign(id, pageAccessToken, userAccessToken) {
   try {
-    const leadUrl = getMetaUrl(`${id}?fields=ad_id,ad_name,field_data,created_time&access_token=${accessToken}`);
+    const leadUrl = getMetaUrl(`${id}?fields=ad_id,ad_name,field_data,created_time&access_token=${pageAccessToken}`);
     const leadResponse = await axios.get(leadUrl);
     const leadData = leadResponse.data;
     const adId = leadData.ad_id;
@@ -229,31 +257,54 @@ async function fetchLeadDataWithCampaign(id, accessToken) {
       return { lead: leadData, campaign: null };
     }
 
-    const adUrl = getMetaUrl(`${adId}?fields=campaign_id&access_token=${accessToken}`);
-    const adResponse = await axios.get(adUrl);
-    const campaignId = adResponse.data.campaign_id;
+    let campaignId = null;
+    try {
+      const adUrl = getMetaUrl(`${adId}?fields=campaign_id&access_token=${pageAccessToken}`);
+      const adResponse = await axios.get(adUrl);
+      campaignId = adResponse.data.campaign_id;
+    } catch (adErr) {
+      console.warn(`[fetchLeadDataWithCampaign] Warning: Could not fetch ad details for ad ${adId}. Returning lead data only.`);
+      return { lead: leadData, campaign: null };
+    }
 
     if (!campaignId) {
       return { lead: leadData, campaign: null };
     }
 
-    const campaignUrl = getMetaUrl(`${campaignId}?fields=name,status,buying_type&access_token=${accessToken}`);
-    const campaignResponse = await axios.get(campaignUrl);
-    const campaignData = campaignResponse.data;
+    let campaignData = null;
+    try {
+      // Use userAccessToken for campaign fetch as Page tokens lack permissions for ad account level
+      const tokenToUse = userAccessToken || pageAccessToken;
+      const campaignUrl = getMetaUrl(`${campaignId}?fields=name,status,buying_type&access_token=${tokenToUse}`);
+      const campaignResponse = await axios.get(campaignUrl);
+      campaignData = campaignResponse.data;
+    } catch (campaignErr) {
+      console.warn(`[fetchLeadDataWithCampaign] Warning: Could not fetch campaign details for campaign ${campaignId}. Returning lead data only.`);
+    }
 
     return { lead: leadData, campaign: campaignData };
   } catch (err) {
-    return null;
+    console.error(`[fetchLeadDataWithCampaign] Error fetching lead ${id}:`, err.response?.data?.error?.message || err.message);
+    
+    // FALLBACK: If we don't have Ads permission at all, fetch the lead without ad_id/ad_name so we don't drop it!
+    try {
+      const fallbackUrl = getMetaUrl(`${id}?fields=field_data,created_time&access_token=${pageAccessToken}`);
+      const fallbackResponse = await axios.get(fallbackUrl);
+      return { lead: fallbackResponse.data, campaign: null };
+    } catch (fallbackErr) {
+      console.error(`[fetchLeadDataWithCampaign] Fallback also failed for lead ${id}:`, fallbackErr.response?.data?.error?.message || fallbackErr.message);
+      return null;
+    }
   }
 }
 
 // ─── 4. Batch Processing ───
-async function processLeadChunk(chunk, accessToken, sourceName) {
+async function processLeadChunk(chunk, pageAccessToken, userAccessToken, sourceName) {
   const final_data = [];
 
   for (const lead_id of chunk) {
     try {
-      const data = await fetchLeadDataWithCampaign(lead_id, accessToken);
+      const data = await fetchLeadDataWithCampaign(lead_id, pageAccessToken, userAccessToken);
       if (!data) continue;
 
       const leadDetails = data.lead;
@@ -279,20 +330,24 @@ async function processLeadChunk(chunk, accessToken, sourceName) {
         source: sourceName,
         form_name: leadDetails.id,
         mode: 'Online',
-        sourceUrl: campaignDetails?.name || '',
+        sourceUrl: campaignDetails?.name || leadDetails?.ad_name || '',
         utm_campaign: leadDetails?.ad_name || '',
         utm_campaign_id: leadDetails?.ad_id || '',
         student_comment: formatToQuestionAnswerArray(additional_fields),
       });
 
     } catch (err) {
+      console.error(`[Phase 3] Error mapping lead ${lead_id}:`, err.message);
     }
   }
 
   if (final_data.length > 0) {
     try {
+      console.log(`[Phase 3] Pushing a batch of ${final_data.length} mapped leads to Enterprise API (${BATCH_ENDPOINT})...`);
       const response = await axios.post(BATCH_ENDPOINT, { data: final_data });
+      console.log(`[Phase 3] Batch push successful.`);
     } catch (err) {
+      console.error(`[Phase 3] Error pushing batch:`, err.response ? err.response.data : err.message);
     }
   }
 }
@@ -302,15 +357,17 @@ export async function syncMissingLeads() {
   await databaseConnection();
   
   const enterprisePool = makePool(ENTERPRISE_URL);
-
+ console.log('Starting syncMissingLeads process...',enterprisePool);
   for (const account of ACCOUNTS) {
-    
+    console.log(`Processing account: ${account.page_id} (${account.sourceName})`);
     // 1. Get Token from DB
     const tokenData = await MetaAdsToken.findOne({ where: { page_id: account.page_id } });
+    console.log(`Fetched token data for page_id ${account.page_id}:`, tokenData);
     if (!tokenData || !tokenData.page_access_token) {
       continue;
     }
     const pageAccessToken = tokenData.page_access_token;
+    const userAccessToken = tokenData.long_lived_user_token;
 
     // 2. Fetch all leads in last 30 days
     const allLeads = await fetchRecentMetaLeads(pageAccessToken, account.page_id);
@@ -318,7 +375,7 @@ export async function syncMissingLeads() {
     if (allLeads.length === 0) continue;
 
     // 3. Cross-check Enterprise DB
-    const missingLeads = await filterExistingLeads(enterprisePool, allLeads, pageAccessToken, account.sourceName);
+    const missingLeads = await filterExistingLeads(enterprisePool, allLeads, pageAccessToken, userAccessToken, account.sourceName);
     const missingLeadIds = missingLeads.map(l => l.lead_id);
     
 
@@ -326,13 +383,21 @@ export async function syncMissingLeads() {
     if (missingLeadIds.length > 0) {
       for (let i = 0; i < missingLeadIds.length; i += BATCH_SIZE) {
         const chunk = missingLeadIds.slice(i, i + BATCH_SIZE);
-        await processLeadChunk(chunk, pageAccessToken, account.sourceName);
+        await processLeadChunk(chunk, pageAccessToken, userAccessToken, account.sourceName);
       }
     }
+
+    // 5. Update sync state after successful processing
+    const stateFile = path.join(__dirname, `sync_state_${account.page_id}.json`);
+    const currentSyncTime = Math.floor(Date.now() / 1000);
+    fs.writeFileSync(stateFile, JSON.stringify({ last_sync: currentSyncTime }));
+    console.log(`[Phase 4] Finished processing account ${account.sourceName}. Sync state updated to ${currentSyncTime}.`);
   }
 
+  console.log('All accounts processed successfully. Closing DB connection.');
   await enterprisePool.end();
 }
 
 
 
+syncMissingLeads();

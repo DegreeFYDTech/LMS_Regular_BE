@@ -742,7 +742,14 @@ function processApiResponse(apiResponse, collegeName) {
   const errorText = Array.isArray(errorField)
     ? errorField.flat(Infinity).join(" ")
     : errorField || "";
-  if (typeof errorText === "string" && errorText.toLowerCase().includes("duplicate")) {
+  const messageText = Array.isArray(message)
+    ? message.flat(Infinity).join(" ")
+    : message || "";
+  const duplicateSignalText = `${errorText} ${messageText}`.toLowerCase();
+  if (
+    duplicateSignalText.includes("duplicate") ||
+    duplicateSignalText.includes("already exists")
+  ) {
     return "Do not Proceed";
   }
 

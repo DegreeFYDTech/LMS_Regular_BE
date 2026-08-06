@@ -411,6 +411,30 @@ export const updateStudentStatus = async (req, res) => {
     }
     if(leadStatus === "Admission"){
       await inform_Google(studentId);
+         try{
+       const admissionReponse = await axios.post(
+              `${process.env.CRM_STORAGE_URL}/students`,
+              {
+                ...student?.dataValues,
+                university_name:
+                  courseDetails?.dataValues?.university_name ||
+                  courseDetails?.university_name,
+                campus:courseDetails?.university_city,
+                course:
+                  courseDetails?.dataValues?.course_name ||
+                  courseDetails?.course_name,
+                fee_type: leadSubStatus,
+                course_id: courseDetails?.university_name?.course_id || selectedCourse,
+                deposit_amount: feesAmount,
+                admission_mode:'Regular',
+                payment_type: 'self',
+              },
+            );
+    }
+    catch(AdmissionError)
+    {
+      console.log('AdmissionError:',AdmissionError)
+    }
     }
     if (
       counsellorPreferredMode == "Online" &&

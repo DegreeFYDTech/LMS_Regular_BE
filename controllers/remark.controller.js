@@ -186,6 +186,11 @@ export const getConnectedCallsAnalysis = async (req, res) => {
 
     const currentTimeInIST = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
     const currentHour = new Date(currentTimeInIST).getHours();
+    const todayIST = currentTimeInIST.split(",")[0];
+    const requestedToDate = toDateRaw
+      ? new Date(toDateRaw).toLocaleDateString("en-US", { timeZone: "Asia/Kolkata" })
+      : todayIST;
+    const isToday = requestedToDate === todayIST;
 
     let finalResult = Object.entries(grouped).map(([key, data]) => {
       const total = data.totalConnectedCalls;
@@ -195,7 +200,7 @@ export const getConnectedCallsAnalysis = async (req, res) => {
       const timeSlots = Object.entries(data.timeSlots).reduce((acc, [label, val]) => {
         const slotHour = parseInt(label.split(':')[0], 10);
 
-        if (slotHour > currentHour) {
+        if (isToday && slotHour > currentHour) {
           acc[label] = { count: "-", percentage: "-" };
         } else {
           acc[label] = {

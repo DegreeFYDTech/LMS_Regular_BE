@@ -710,6 +710,13 @@ export const getAnalysisReportSQL = async (req, res) => {
     const currentHour = new Date(
       new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
     ).getHours();
+    const todayIST = new Date()
+      .toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+      .split(",")[0];
+    const requestedToDate = req.query.to
+      ? new Date(req.query.to).toLocaleDateString("en-US", { timeZone: "Asia/Kolkata" })
+      : todayIST;
+    const isToday = requestedToDate === todayIST;
 
     const grouped = {};
     for (const row of results.data) {
@@ -742,7 +749,7 @@ export const getAnalysisReportSQL = async (req, res) => {
 
       const timeSlots = Object.entries(data.timeSlots).reduce((acc, [label, val]) => {
         const slotHour = parseInt(label.split(':')[0], 10);
-        acc[label] = slotHour > currentHour
+        acc[label] = (isToday && slotHour > currentHour)
           ? { count: "-", percentage: "-" }
           : { count: val.count, percentage: total > 0 ? Math.round((val.count / total) * 10000) / 100 : 0 };
         return acc;

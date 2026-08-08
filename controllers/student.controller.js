@@ -410,7 +410,13 @@ export const updateStudentStatus = async (req, res) => {
           : null;
     }
     if(leadStatus === "Admission"){
-      await inform_Google(studentId);
+     try{
+       await inform_Google(studentId);
+     }
+     catch(AdmissionError)
+     {
+      console.log('AdmissionError:',AdmissionError)
+     }
          try{
        const admissionReponse = await axios.post(
               `${process.env.CRM_STORAGE_URL}/students`,

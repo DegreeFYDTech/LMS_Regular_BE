@@ -418,6 +418,12 @@ export const updateStudentStatus = async (req, res) => {
       console.log('AdmissionError:',AdmissionError)
      }
          try{
+          const firstActivity = await StudentLeadActivity.findOne({
+            where: {
+              student_id: studentId,
+            },
+            order: [['createdAt', 'ASC']],
+          });
        const admissionReponse = await axios.post(
               `${process.env.CRM_STORAGE_URL}/students`,
               {
@@ -434,6 +440,8 @@ export const updateStudentStatus = async (req, res) => {
                 deposit_amount: feesAmount,
                 admission_mode:'Regular',
                 payment_type: 'self',
+                campaign_name:firstActivity?.utm_campaign,
+                utm_campaign_id:firstActivity?.utm_campaign_id
               },
             );
     }

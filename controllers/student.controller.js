@@ -1137,10 +1137,35 @@ export const getStudentById = async (req, res) => {
     const counsellorRole = req.user.role;
     let whereConditions = {};
 
-    if (counsellorRole === "l2") {
+    // Explicitly exempt from the ownership restrictions below — always
+    // allowed to open any lead regardless of assignment.
+    const OWNERSHIP_CHECK_EXEMPT_IDS = [
+      "CNS-D45874E2",
+      "CNS-3D7D6EC4",
+      "CNS-31BC1FC5",
+    ];
+
+    if (OWNERSHIP_CHECK_EXEMPT_IDS.includes(counsellorId)) {
+      whereConditions = {
+        student_id: id,
+      };
+    } else if (counsellorRole === "l2") {
       whereConditions = {
         student_id: id,
         assigned_counsellor_id: counsellorId,
+      };
+    } else if (counsellorRole === "to") {
+      // 'to' may only open leads assigned to a counsellor on their own team.
+      const teamCounsellors = await Counsellor.findAll({
+        where: { assigned_to: counsellorId },
+        attributes: ["counsellor_id"],
+      });
+      const teamCounsellorIds = teamCounsellors.map((c) => c.counsellor_id);
+      whereConditions = {
+        student_id: id,
+        assigned_counsellor_id: {
+          [Op.in]: teamCounsellorIds.length ? teamCounsellorIds : ["__NO_TEAM__"],
+        },
       };
     } else if (counsellorRole === "Analyser" || counsellorRole === "analyser") {
       const analyser = await AnalyserUser.findByPk(counsellorId);

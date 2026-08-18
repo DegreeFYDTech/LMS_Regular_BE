@@ -409,6 +409,27 @@ export const updateStudentStatus = async (req, res) => {
           ? leadSubStatus
           : null;
     }
+          if(leadStatus?.toLowerCase() == 'application') {
+      try {
+        const application_response = await axios.post(
+          `${process.env.MARKETING_API_URL}/webhooks/crm`,
+          {
+            "action": "application",
+            "student_id": studentId,
+            "college": courseDetails?.dataValues?.university_name || courseDetails?.university_name,
+            "course": courseDetails?.dataValues?.course_name || courseDetails?.course_name,
+            "eventDate": new Date().toISOString(),
+          },
+          {
+            headers: {
+              'x-api-key': process.env.MARKETING_API_SECRET 
+            }
+          }
+        );
+      } catch(ApplicationError) { 
+        console.log("error while sending the application to crm", ApplicationError.message);
+      }
+   }
     if(leadStatus === "Admission"){
      try{
        await inform_Google(studentId);
@@ -418,12 +439,17 @@ export const updateStudentStatus = async (req, res) => {
       console.log('AdmissionError:',AdmissionError)
      }
          try{
-          const firstActivity = await StudentLeadActivity.findOne({
+          let firstActivity = {}
+           try{
+           firstActivity = await StudentLeadActivity.findOne({
             where: {
               student_id: studentId,
             },
-            order: [['createdAt', 'ASC']],
-          });
+            order: [['created_at', 'ASC']],
+          })}
+            catch(firstActivityError)
+            {
+              console.log("error while fetching the first activity", firstActivityError.message);}
        const admissionReponse = await axios.post(
               `${process.env.CRM_STORAGE_URL}/students`,
               {
